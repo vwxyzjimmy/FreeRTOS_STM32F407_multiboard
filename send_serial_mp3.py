@@ -51,7 +51,7 @@ def main():
     else:
         play_array = mp3_data
     value = play_array
-    play_delay = round(0.0000096549*(44100/mp3_frame_rate), 8)*2*200
+    play_delay = round(0.0000107399*(44100/mp3_frame_rate), 8)*2*200 #0.0000107399
     send_start = 0
     start_time = time.time()
     print("Start to play")

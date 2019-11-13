@@ -53,7 +53,7 @@
 #define configUSE_TICK_HOOK				1
 //#define configCPU_CLOCK_HZ				( SystemCoreClock )
 #define configCPU_CLOCK_HZ				( 168000000 )
-#define configTICK_RATE_HZ				( ( TickType_t )  153600)//153600 210000 21000000 20999999 160000
+#define configTICK_RATE_HZ				( ( TickType_t )  184320) //184320
 #define configMAX_PRIORITIES			( 5 )
 #define configMINIMAL_STACK_SIZE		( ( unsigned short ) 130 )
 #define configTOTAL_HEAP_SIZE			( ( size_t ) ( 75 * 1024 ) )

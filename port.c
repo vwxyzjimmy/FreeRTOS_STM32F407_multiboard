@@ -497,16 +497,6 @@ void xPortSysTickHandler( void )
 	executes all interrupts must be unmasked.  There is therefore no need to
 	save and then restore the interrupt mask value as its value is already
 	known. */
-	/*
-	if(pendsv_check_bool > 0){
-		SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BRy_BIT(LED_RED));
-		pendsv_check_bool = 0;
-	}
-	else{
-		SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BSy_BIT(LED_RED));
-		pendsv_check_bool = 1;
-	}
-	*/
 
 	portDISABLE_INTERRUPTS();
 	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BSy_BIT(LED_RED));
