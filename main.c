@@ -10,7 +10,7 @@
 #include "timers.h"
 
 
-#define HEAP_MAX (64 * 1024) //64 KB
+#define HEAP_MAX (192 * 1024) //64 KB
 
 void vApplicationTickHook() {}
 void vApplicationStackOverflowHook() {}
@@ -23,10 +23,18 @@ void DAC_SetChannel1Data(uint8_t vol);
 void init_usart2(void);
 void usart2_send_char(const char ch);
 void print_sys(char str[255]);
+void test_add_all(void);
+void task1();
+void task2();
+void task3();
 volatile uint8_t rec_play_buf_fir[200], rec_play_buf_sec[200];
 volatile uint8_t *rece_ptr;
 volatile uint8_t *play_ptr;
 volatile uint8_t receive_count = 0;
+volatile TaskHandle_t TaskHandle_1;
+volatile TaskHandle_t TaskHandle_2;
+volatile TaskHandle_t TaskHandle_3;
+uint32_t test_target_array[] = {1, 2, 3, 4, 5};
 
 void setup_mpu(void)
 {
@@ -67,32 +75,43 @@ void setup_mpu(void)
 
 void task1(){
 	printf("task1\r\n");
-	blink(LED_GREEN);
-}
-void task2(){
-	printf("task2\r\n");
-	rece_ptr = rec_play_buf_fir;
+	led_init(LED_GREEN);
+	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BSy_BIT(LED_GREEN));
 	while(1){
-		SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BSy_BIT(LED_ORANGE));
 		if ((READ_BIT(USART2_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART2_BASE + USART_SR_OFFSET, ORE_BIT))){
-			*(rece_ptr+receive_count) = (uint8_t)REG(USART2_BASE + USART_DR_OFFSET);
-			receive_count++;
-			if (receive_count>= 200){
-				if(rece_ptr==rec_play_buf_fir){
-					rece_ptr = rec_play_buf_sec;
-					play_ptr = rec_play_buf_fir;
+			char rec_cmd = (char)REG(USART2_BASE + USART_DR_OFFSET);
+			printf("%c\r\n", rec_cmd);
+			if (rec_cmd == 'a'){
+				xTaskCreate(task2, "task2", 1000, NULL, 1, TaskHandle_2);
+			}
+			else if (rec_cmd == 'b'){
+				printf("%c\r\n", rec_cmd);
+				printf("kill task2\r\n");
+				if (TaskHandle_2 == NULL){
+					printf("dame that null\r\n");
 				}
-				else if(rece_ptr==rec_play_buf_sec){
-					rece_ptr = rec_play_buf_fir;
-					play_ptr = rec_play_buf_sec;
-				}
-				usart2_send_char(receive_count);
-				receive_count = 0;
+				vTaskDelete(TaskHandle_2);
+				printf("already clean task2\r\n");
+				SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BRy_BIT(LED_BLUE));
 			}
 		}
 	}
+	//blink(LED_GREEN);
+}
+void task2(){
+	uint32_t tmp1[120];
+	for(int i=0;i<120;i++)
+		tmp1[i] = *((uint32_t*)(0x200199fc-(4*i)));
+	blink(LED_BLUE);
 }
 void task3(){
+	int tmp_count = 0;
+	for(int i=0;i<100;i++){
+		tmp_count++;
+		;
+	}
+	printf("%d", tmp_count);
+
 	init_dac();
 	init_timer4();
 	led_init(LED_BLUE);
@@ -125,19 +144,19 @@ void task3(){
 int main(void)
 {
 	init_usart2();
-	led_init(LED_RED);
-	led_init(LED_ORANGE);
+	void (*func_ptr)() = task1;
+	*((uint32_t*)(0x10010000-4)) = (uint32_t)0x0000000F;
+	printf("i pass that\r\n");
 	REG(AIRCR_BASE) = NVIC_AIRCR_RESET_VALUE | NVIC_PRIORITYGROUP_4;
+	uint32_t *tmp_ptr = task2;
+	uint32_t *tmp_ptr2 = task3;
 
-	//xTaskCreate(task1, "task1", 1000, NULL, 1, NULL);
-	xTaskCreate(task2, "task2", 1000, NULL, 1, NULL);
-	xTaskCreate(task3, "task3", 1000, NULL, 1, NULL);
+	printf("task2: 0x%X\r\n", (unsigned int)tmp_ptr);
+	xTaskCreate(func_ptr, "task1", 1000, NULL, 1, TaskHandle_1);
 	vTaskStartScheduler();
 
-	//blink(LED_BLUE);	//should not go here
 	while (1)
 		;
-
 }
 
 void svc_handler_c(uint32_t LR, uint32_t MSP)
@@ -374,7 +393,7 @@ void init_usart2(void)
 	SET_BIT(RCC_BASE + RCC_APB1ENR_OFFSET, USART2EN);
 
 	//baud rate
-	const unsigned int BAUDRATE = 921600;
+	const unsigned int BAUDRATE = 115200;
 	//const unsigned int BAUDRATE = 529200;
 	//const unsigned int BAUDRATE = 115200;
 	const unsigned int SYSCLK_MHZ = 168;

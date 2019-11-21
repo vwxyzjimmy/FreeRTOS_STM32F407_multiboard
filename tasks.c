@@ -30,7 +30,7 @@
 #include <string.h>
 #include "blink.h"
 #include "asm_func.h"
-
+#include <stdio.h>
 /* Defining MPU_WRAPPERS_INCLUDED_FROM_API_FILE prevents task.h from redefining
 all the API functions to use the MPU wrappers.  That should only be done when
 task.h is included from an application file. */
@@ -1166,8 +1166,8 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 		{
 			/* If null is passed in here then it is the calling task that is
 			being deleted. */
-			pxTCB = prvGetTCBFromHandle( xTaskToDelete );
 
+			pxTCB = prvGetTCBFromHandle( xTaskToDelete );
 			/* Remove task from the ready list. */
 			if( uxListRemove( &( pxTCB->xStateListItem ) ) == ( UBaseType_t ) 0 )
 			{
@@ -1177,7 +1177,6 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 			{
 				mtCOVERAGE_TEST_MARKER();
 			}
-
 			/* Is the task waiting on an event also? */
 			if( listLIST_ITEM_CONTAINER( &( pxTCB->xEventListItem ) ) != NULL )
 			{
@@ -1187,7 +1186,6 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 			{
 				mtCOVERAGE_TEST_MARKER();
 			}
-
 			/* Increment the uxTaskNumber also so kernel aware debuggers can
 			detect that the task lists need re-generating.  This is done before
 			portPRE_TASK_DELETE_HOOK() as in the Windows port that macro will
