@@ -343,7 +343,6 @@ void svc_handler_c(uint32_t LR, uint32_t MSP)
 			Lastnode = (*Lastnode).Next_TaskHandle_List;
 			if (((*Lastnode).Instruction_addr<=stacked_return_addr) && (stacked_return_addr<=(*Lastnode).Instruction_addr_end)){
 				printf(" DSubTask_id:	0x%X	done\r\n", (*Lastnode).DSubTask_id);
-				for(uint32_t i=0)
 			}
 		}
 	}
