@@ -28,9 +28,11 @@
 /* Standard includes. */
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
+#include "reg.h"
 #include "blink.h"
 #include "asm_func.h"
-#include <stdio.h>
+
 /* Defining MPU_WRAPPERS_INCLUDED_FROM_API_FILE prevents task.h from redefining
 all the API functions to use the MPU wrappers.  That should only be done when
 task.h is included from an application file. */
@@ -743,6 +745,7 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB ) PRIVILEGED_FUNCTION;
 		/* If the stack grows down then allocate the stack then the TCB so the stack
 		does not grow into the TCB.  Likewise if the stack grows up then allocate
 		the TCB then the stack. */
+
 		#if( portSTACK_GROWTH > 0 )
 		{
 			/* Allocate space for the TCB.  Where the memory comes from depends on
@@ -764,19 +767,19 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB ) PRIVILEGED_FUNCTION;
 					pxNewTCB = NULL;
 				}
 			}
+
 		}
 		#else /* portSTACK_GROWTH */
 		{
 		StackType_t *pxStack;
-
 			/* Allocate space for the stack used by the task being created. */
 			pxStack = pvPortMalloc( ( ( ( size_t ) usStackDepth ) * sizeof( StackType_t ) ) ); /*lint !e9079 All values returned by pvPortMalloc() have at least the alignment required by the MCU's stack and this allocation is the stack. */
 
 			if( pxStack != NULL )
 			{
+
 				/* Allocate space for the TCB. */
 				pxNewTCB = ( TCB_t * ) pvPortMalloc( sizeof( TCB_t ) ); /*lint !e9087 !e9079 All values returned by pvPortMalloc() have at least the alignment required by the MCU's stack, and the first member of TCB_t is always a pointer to the task's stack. */
-
 				if( pxNewTCB != NULL )
 				{
 					/* Store the stack location in the TCB. */
@@ -791,6 +794,7 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB ) PRIVILEGED_FUNCTION;
 			}
 			else
 			{
+
 				pxNewTCB = NULL;
 			}
 		}
@@ -809,13 +813,15 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB ) PRIVILEGED_FUNCTION;
 			prvInitialiseNewTask( pxTaskCode, pcName, ( uint32_t ) usStackDepth, pvParameters, uxPriority, pxCreatedTask, pxNewTCB, NULL );
 
 			prvAddNewTaskToReadyList( pxNewTCB );
+
 			xReturn = pdPASS;
+
 		}
+
 		else
 		{
 			xReturn = errCOULD_NOT_ALLOCATE_REQUIRED_MEMORY;
 		}
-
 		return xReturn;
 	}
 
@@ -1121,7 +1127,6 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 		}
 
 		uxTaskNumber++;
-
 		#if ( configUSE_TRACE_FACILITY == 1 )
 		{
 			/* Add a counter into the TCB for tracing only. */
@@ -1153,6 +1158,7 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 	{
 		mtCOVERAGE_TEST_MARKER();
 	}
+
 }
 /*-----------------------------------------------------------*/
 

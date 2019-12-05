@@ -95,7 +95,8 @@ block must by correctly byte aligned. */
 static const size_t xHeapStructSize	= ( sizeof( BlockLink_t ) + ( ( size_t ) ( portBYTE_ALIGNMENT - 1 ) ) ) & ~( ( size_t ) portBYTE_ALIGNMENT_MASK );
 
 /* Create a couple of list links to mark the start and end of the list. */
-static BlockLink_t xStart, *pxEnd = NULL;
+BlockLink_t xStart;
+static BlockLink_t *pxEnd = NULL;
 
 /* Keeps track of the number of free bytes remaining, but says nothing about
 fragmentation. */
@@ -114,7 +115,6 @@ void *pvPortMalloc( size_t xWantedSize )
 {
 BlockLink_t *pxBlock, *pxPreviousBlock, *pxNewBlockLink;
 void *pvReturn = NULL;
-
 	vTaskSuspendAll();
 	{
 		/* If this is the first call to malloc then the heap will require
@@ -134,6 +134,7 @@ void *pvReturn = NULL;
 		kernel, so it must be free. */
 		if( ( xWantedSize & xBlockAllocatedBit ) == 0 )
 		{
+
 			/* The wanted size is increased so it can contain a BlockLink_t
 			structure in addition to the requested amount of bytes. */
 			if( xWantedSize > 0 )
@@ -157,11 +158,11 @@ void *pvReturn = NULL;
 			{
 				mtCOVERAGE_TEST_MARKER();
 			}
-
 			if( ( xWantedSize > 0 ) && ( xWantedSize <= xFreeBytesRemaining ) )
 			{
 				/* Traverse the list from the start	(lowest address) block until
 				one	of adequate size is found. */
+
 				pxPreviousBlock = &xStart;
 				pxBlock = xStart.pxNextFreeBlock;
 				while( ( pxBlock->xBlockSize < xWantedSize ) && ( pxBlock->pxNextFreeBlock != NULL ) )
@@ -174,6 +175,7 @@ void *pvReturn = NULL;
 				was	not found. */
 				if( pxBlock != pxEnd )
 				{
+
 					/* Return the memory space pointed to - jumping over the
 					BlockLink_t structure at its start. */
 					pvReturn = ( void * ) ( ( ( uint8_t * ) pxPreviousBlock->pxNextFreeBlock ) + xHeapStructSize );
@@ -184,6 +186,7 @@ void *pvReturn = NULL;
 
 					/* If the block is larger than required it can be split into
 					two. */
+
 					if( ( pxBlock->xBlockSize - xWantedSize ) > heapMINIMUM_BLOCK_SIZE )
 					{
 						/* This block is to be split into two.  Create a new
@@ -191,6 +194,7 @@ void *pvReturn = NULL;
 						cast is used to prevent byte alignment warnings from the
 						compiler. */
 						pxNewBlockLink = ( void * ) ( ( ( uint8_t * ) pxBlock ) + xWantedSize );
+						*((uint32_t*)0x10000000) = (uint32_t)pxNewBlockLink;
 						configASSERT( ( ( ( size_t ) pxNewBlockLink ) & portBYTE_ALIGNMENT_MASK ) == 0 );
 
 						/* Calculate the sizes of two blocks split from the
@@ -200,6 +204,7 @@ void *pvReturn = NULL;
 
 						/* Insert the new block into the list of free blocks. */
 						prvInsertBlockIntoFreeList( pxNewBlockLink );
+
 					}
 					else
 					{
@@ -236,11 +241,10 @@ void *pvReturn = NULL;
 		{
 			mtCOVERAGE_TEST_MARKER();
 		}
-
 		traceMALLOC( pvReturn, xWantedSize );
 	}
-	( void ) xTaskResumeAll();
 
+	( void ) xTaskResumeAll();
 	#if( configUSE_MALLOC_FAILED_HOOK == 1 )
 	{
 		if( pvReturn == NULL )

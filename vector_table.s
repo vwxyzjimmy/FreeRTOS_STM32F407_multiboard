@@ -42,9 +42,9 @@
 
 /*********************************************************/
 
-.weak	SVC_Handler
-.thumb_set	SVC_Handler,default_handler
-.word SVC_Handler
+.weak	svc_handler
+.thumb_set	svc_handler,default_handler
+.word svc_handler
 
 /*********************************************************/
 

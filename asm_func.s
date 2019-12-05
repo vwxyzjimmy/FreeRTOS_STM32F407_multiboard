@@ -20,6 +20,11 @@ read_ctrl:
 	mrs	r0,	control
 	bx	lr
 
+.global	read_exc_ret
+read_exc_ret:
+	movs	r0,	lr
+	bx	lr
+
 .global	start_user
 start_user:
 	movs	lr,	r0
@@ -41,23 +46,25 @@ sys_call:
 	SVC	#0x0
 	bx	lr
 
-.global	sys_call_add
-	sys_call_add:
-		SVC	#0xA
-		bx	lr
+.type Distributed_Start, %function
+.global Distributed_Start
+Distributed_Start:
+	push	{lr}
 
-.global	sys_call_write
-	sys_call_write:
-		SVC	#0x4
-		bx	lr
+	mov	r0,	r0
+	mov	r1,	r1
+	mov	r2,	sp
+	mov	r3,	lr
+	blx	distributed_manager_task
+	mov	r0,	r0
 
-/*
+	pop	{lr}
+	bx	lr
+
+
 .type svc_handler, %function
 .global svc_handler
-
 svc_handler:
 	movs	r0,	lr
 	mrs	r1,	msp
-
 	b	svc_handler_c
-*/
