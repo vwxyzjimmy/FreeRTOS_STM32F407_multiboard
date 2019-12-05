@@ -1,7 +1,7 @@
-#define Distributed_End()		 			\
+#define Distributed_End(s)		 			\
 do {                			 			\
 	__asm volatile ("svc	#0x2	\n");	\
-	while(1);								\
+	Distributed_Check(s);					\
 } while (0)
 
 
@@ -16,7 +16,7 @@ typedef struct Distributed_TaskHandle_List
     uint32_t *Data_addr;
     uint32_t Data_size;
     uint32_t Finish_Flag;
-    TaskHandle_t TaskHandlex;
+    TaskHandle_t *TaskHandlex;
 }Distributed_TaskHandle_List_t;
 
 typedef struct A_BLOCK_LINK

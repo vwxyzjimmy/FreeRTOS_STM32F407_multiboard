@@ -24,12 +24,13 @@ void usart2_send_char(const char ch);
 void init_usart1(void);
 void usart1_send_char(const char ch);
 void print_sys(char str[255]);
-void test_add_all(void);
 Distributed_TaskHandle_List_t* distributed_manager_task(uint32_t Data_addr, uint32_t Data_size, uint32_t sp, uint32_t lr);
 uint32_t got_sp_minus_immediate(uint32_t addr);
 void task1();
 void task2();
 void task3();
+void Distributed_Check();
+
 volatile uint8_t rec_play_buf_fir[200], rec_play_buf_sec[200];
 volatile uint8_t *rece_ptr;
 volatile uint8_t *play_ptr;
@@ -39,6 +40,38 @@ volatile TaskHandle_t TaskHandle_2;
 volatile TaskHandle_t TaskHandle_3;
 extern BlockLink_t xStart;
 Distributed_TaskHandle_List_t* DStart;
+
+void Distributed_Check(Distributed_TaskHandle_List_t* s){
+	Distributed_TaskHandle_List_t* Lastnode = &DStart;
+	uint32_t DTask_id = s->DTask_id;
+	uint32_t All_Subtask_Done = 0;
+	while(All_Subtask_Done==0){
+		All_Subtask_Done = 1;
+		Lastnode = &DStart;
+		while(Lastnode->Next_TaskHandle_List != NULL){
+			Lastnode = Lastnode->Next_TaskHandle_List;
+			if((Lastnode->DTask_id) == s->DTask_id){
+				printf("DTask_id:0x%X, DSubTask_id:0x%X\r\n", Lastnode->DTask_id, Lastnode->DSubTask_id);
+				if((Lastnode->Finish_Flag) == 0){
+					All_Subtask_Done = 0;
+					printf("Not Done\r\n");
+					break;
+				}
+				else{
+					if((Lastnode->DSubTask_id) != 0){
+						vTaskDelete(*(Lastnode->TaskHandlex));
+						vPortFree(Lastnode->TaskHandlex);
+					}
+					printf("Done\r\n");
+				}
+			}
+		}
+
+	}
+	printf("DTask_id:0x%X	All Done\r\n", Lastnode->DTask_id);
+	while(1);
+}
+
 
 uint32_t got_sp_minus_immediate(uint32_t addr){
 	uint32_t sp_T1_bit_mask = 0xB080;
@@ -69,7 +102,7 @@ uint32_t got_sp_minus_immediate(uint32_t addr){
 }
 
 Distributed_TaskHandle_List_t* distributed_manager_task(uint32_t Data_addr, uint32_t Data_size, uint32_t sp, uint32_t lr){
-	uint32_t slit_num = 3;
+	uint32_t slit_num = 4;
 	static uint32_t *sp_start = 0;
 	static uint32_t *sp_end = 0;
 	static uint32_t *pc_start = 0;
@@ -96,9 +129,14 @@ Distributed_TaskHandle_List_t* distributed_manager_task(uint32_t Data_addr, uint
 	Distributed_TaskHandle_List_t *Subscriber_task;
 
 	for(uint32_t slit_num_th=0;slit_num_th<slit_num;slit_num_th++){
-		uint32_t Data_size_split = ((Data_size/(slit_num))+1);
-		if (slit_num_th == (slit_num-1))
-			Data_size_split = Data_size%Data_size_split;
+		uint32_t Data_size_split;
+		if((Data_size%slit_num) == 0)
+			Data_size_split = Data_size/slit_num;
+		else{
+			Data_size_split = ((Data_size/(slit_num))+1);
+			if (slit_num_th == (slit_num-1))
+				Data_size_split = Data_size%Data_size_split;
+		}
 		printf("slit_num_th:	0x%X, Data_size_split:	0x%X\r\n", slit_num_th, Data_size_split);
 		if (slit_num_th == 0){
 			Distributed_TaskHandle_List_t *NewDTaskControlBlock = pvPortMalloc(sizeof(Distributed_TaskHandle_List_t));
@@ -153,7 +191,7 @@ Distributed_TaskHandle_List_t* distributed_manager_task(uint32_t Data_addr, uint
 				Lastnode = Lastnode->Next_TaskHandle_List;
 			Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
 			void (*func_ptr)() = ((uint32_t)instruction)+1;
-			printf("Generate task%d\r\n", slit_num_th);
+			printf("Generate DSubTask_id %d\r\n", slit_num_th);
 			xTaskCreate((uint16_t*)func_ptr, "task", (stack_size*4), NULL, 1, NewDTaskControlBlock->TaskHandlex);
 		}
 	}
@@ -215,55 +253,28 @@ void task1(){
 }
 
 void task2(){
-	uint32_t *Data_start_addr = 0x10000010;
-	uint32_t Data_start_size = 16;
+	uint32_t *Data_start_addr = 0x10000000;
+	uint32_t Data_start_size = 1024;
 	Distributed_TaskHandle_List_t *s = Distributed_Start(Data_start_addr, Data_start_size);
 	for(uint32_t i=0;i<s->Data_size;i++){
 		*(s->Data_addr + i) = i;
 	}
-	/*
-	while(1){
-		for(uint32_t i=0;i<500000;i++){
-			;
-		}
-		SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BSy_BIT(LED_ORANGE));
-		for(uint32_t i=0;i<500000;i++){
-			;
-		}
-		SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BRy_BIT(LED_ORANGE));
-	}
-	*/
-	Distributed_End();
+	Distributed_End(s);
 }
 
 void task3(){
-	init_dac();
-	init_timer4();
 	led_init(LED_BLUE);
 	printf("task3\r\n");
-	unsigned int play_count = 0;
-	unsigned int led_state = 0;
-	rece_ptr = rec_play_buf_fir;
-	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BSy_BIT(LED_BLUE));
-	while(1);
+
 	while(1){
-		volatile unsigned int read_uv = READ_BIT(TIM4_BASE + TIMx_SR_OFFSET, TIMx_SR_UIF);
-		if(read_uv > 0){
-			CLEAR_BIT(TIM4_BASE + TIMx_SR_OFFSET, TIMx_SR_UIF);
-				if (led_state==0){
-					led_state = 1;
-					SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BSy_BIT(LED_BLUE));
-				}
-				else{
-					led_state = 0;
-					SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BRy_BIT(LED_BLUE));
-				}
-				DAC_SetChannel1Data(((uint8_t)*(play_ptr+play_count)));
-				play_count++;
-				if(play_count>=200){
-					play_count = 0;
-				}
+		for(uint32_t i=0;i<500000;i++){
+			;
 		}
+		SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BSy_BIT(LED_BLUE));
+		for(uint32_t i=0;i<500000;i++){
+			;
+		}
+		SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BRy_BIT(LED_BLUE));
 	}
 }
 
@@ -275,7 +286,9 @@ int main(void)
 	led_init(LED_ORANGE);
 	void (*func_ptr)() = task1;
 	REG(AIRCR_BASE) = NVIC_AIRCR_RESET_VALUE | NVIC_PRIORITYGROUP_4;
-	xTaskCreate(func_ptr, "task1", 1000, NULL, 1, &TaskHandle_1);
+	xTaskCreate(task1, "task1", 1000, NULL, 1, &TaskHandle_1);
+	xTaskCreate(task3, "task3", 1000, NULL, 1, &TaskHandle_3);
+
 	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BSy_BIT(LED_GREEN));
 	vTaskStartScheduler();
 
@@ -285,38 +298,16 @@ int main(void)
 
 void svc_handler_c(uint32_t LR, uint32_t MSP)
 {
-	/*
-	printf("[SVC Handler] LR: 0x%X\r\n", (unsigned int)LR);
-	printf("[SVC Handler] MSP Backup: 0x%X \r\n", (unsigned int)MSP);
-	printf("[SVC Handler] Control: 0x%X\r\n", (unsigned int)read_ctrl());
-	printf("[SVC Handler] SP: 0x%X \r\n", (unsigned int)read_sp());
-	printf("[SVC Handler] MSP: 0x%X \r\n", (unsigned int)read_msp());
-	printf("[SVC Handler] PSP: 0x%X \r\n\n", (unsigned int)read_psp());
-	*/
 	uint32_t *stack_frame_ptr;
-	if (LR & 0x4) //Test bit 2 of EXC_RETURN
-	//if (READ_BIT(((uint32_t *)LR), 2)) //Test bit 2 of EXC_RETURN
-	{
-		stack_frame_ptr = (uint32_t *)read_psp(); //if 1, stacking used PSP
-		//printf("[SVC Handler] Stacking used PSP: 0x%X \r\n\n", (unsigned int)stack_frame_ptr);
+	if (LR & 0x4){
+		stack_frame_ptr = (uint32_t *)read_psp();
 	}
-	else
-	{
-		stack_frame_ptr = (uint32_t *)MSP; //if 0, stacking used MSP
-		//printf("[SVC Handler] Stacking used MSP: 0x%X \r\n\n", (unsigned int)stack_frame_ptr);
+	else{
+		stack_frame_ptr = (uint32_t *)MSP;
 	}
-
-	//uint32_t stacked_r0 = *(stack_frame_ptr);
-	//uint32_t stacked_r1 = *(stack_frame_ptr+1);
 	uint32_t stacked_return_addr = *(stack_frame_ptr+6);
-
 	uint16_t svc_instruction = *((uint16_t *)stacked_return_addr - 1);
 	uint8_t svc_num = (uint8_t)svc_instruction;
-	/*
-	printf("[SVC Handler] Stacked R0: 0x%X \r\n", (unsigned int)stacked_r0);
-	printf("[SVC Handler] Stacked R1: 0x%X \r\n", (unsigned int)stacked_r1);
-	printf("[SVC Handler] SVC number: 0x%X \r\n\n", (unsigned int)svc_num);
-	*/
 	if(svc_num == 0)
 		vPortSVCHandler();
 	else if (svc_num == 1){
@@ -334,17 +325,15 @@ void svc_handler_c(uint32_t LR, uint32_t MSP)
 		while(Lastnode->Next_TaskHandle_List != NULL){
 			Lastnode = Lastnode->Next_TaskHandle_List;
 			if ((Lastnode->Instruction_addr<=stacked_return_addr) && (stacked_return_addr<=Lastnode->Instruction_addr_end)){
-				printf("\r\nSVC 2, DSubTask_id:0x%X	done\r\n\r\nInstruction_addr    :0x%X\r\nstacked_return_addr  :0x%X\r\nInstruction_addr_end:0x%X\r\n\r\n", Lastnode->DSubTask_id, Lastnode->Instruction_addr, stacked_return_addr, Lastnode->Instruction_addr_end);
-
-				for(uint32_t i=0;i<Lastnode->Data_size;i++){
-					printf(" DSubTask_id:0x%X	0x%X	0x%X\r\n", Lastnode->DSubTask_id, (Lastnode->Data_addr+i), *(Lastnode->Data_addr+i));
+				printf("DSubTask_id %d done\r\n", Lastnode->DSubTask_id);
+				Lastnode->Finish_Flag = 1;
+				if (Lastnode->DSubTask_id != 0){
+					*((uint32_t*)(stacked_return_addr&0xFFFFFFFE)) = 0xe7fe;
 				}
-
 				break;
 			}
 		}
 	}
-		//return 0x10000000;
 }
 
 void init_eth(void)
@@ -570,48 +559,22 @@ void usart2_send_char(const char ch)
 
 void usart2_handler(void)
 {
-
 	if (READ_BIT(USART2_BASE + USART_SR_OFFSET, ORE_BIT))
 	{
-		/*
 		char ch = (char)REG(USART2_BASE + USART_DR_OFFSET);
-
 		for (unsigned int i = 0; i < 5000000; i++)
 			;
-
 		if (ch == '\r')
 			usart2_send_char('\n');
-
 		usart2_send_char(ch);
 		usart2_send_char('~');
-		*/
-		uint8_t tmp = (uint8_t)REG(USART2_BASE + USART_DR_OFFSET);
-		usart2_send_char(receive_count);
-		receive_count = 0;
 	}
-
 	else if (READ_BIT(USART2_BASE + USART_SR_OFFSET, RXNE_BIT))
 	{
-		/*
 		char ch = (char)REG(USART2_BASE + USART_DR_OFFSET);
 		if (ch == '\r')
 			usart2_send_char('\n');
 		usart2_send_char(ch);
-		*/
-		*(rece_ptr+receive_count) = (uint8_t)REG(USART2_BASE + USART_DR_OFFSET);
-		receive_count++;
-		if (receive_count>= 200){
-			if(rece_ptr==rec_play_buf_fir){
-				rece_ptr = rec_play_buf_sec;
-				play_ptr = rec_play_buf_fir;
-			}
-			else if(rece_ptr==rec_play_buf_sec){
-				rece_ptr = rec_play_buf_fir;
-				play_ptr = rec_play_buf_sec;
-			}
-			usart2_send_char(receive_count);
-			receive_count = 0;
-		}
 	}
 }
 

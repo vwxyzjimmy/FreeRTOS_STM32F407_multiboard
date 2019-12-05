@@ -25,6 +25,11 @@ read_exc_ret:
 	movs	r0,	lr
 	bx	lr
 
+.global	read_lr
+read_lr:
+	movs	r0,	lr
+	bx	lr
+
 .global	start_user
 start_user:
 	movs	lr,	r0
@@ -50,14 +55,12 @@ sys_call:
 .global Distributed_Start
 Distributed_Start:
 	push	{lr}
-
 	mov	r0,	r0
 	mov	r1,	r1
 	mov	r2,	sp
 	mov	r3,	lr
 	blx	distributed_manager_task
 	mov	r0,	r0
-
 	pop	{lr}
 	bx	lr
 
