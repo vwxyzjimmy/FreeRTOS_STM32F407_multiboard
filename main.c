@@ -99,21 +99,21 @@ Distributed_TaskHandle_List_t* distributed_manager_task(uint32_t Data_addr, uint
 		uint32_t Data_size_split = ((Data_size/(slit_num))+1);
 		if (slit_num_th == (slit_num-1))
 			Data_size_split = Data_size%Data_size_split;
-		printf("Data_size_split:	0x%X\r\n", Data_size_split);
-		if (slit_num_th ==0){
+		printf("slit_num_th:	0x%X, Data_size_split:	0x%X\r\n", slit_num_th, Data_size_split);
+		if (slit_num_th == 0){
 			Distributed_TaskHandle_List_t *NewDTaskControlBlock = pvPortMalloc(sizeof(Distributed_TaskHandle_List_t));
-			(*NewDTaskControlBlock).Processor_id = 0;
-		    (*NewDTaskControlBlock).DTask_id = 0;
-			(*NewDTaskControlBlock).DSubTask_id = slit_num_th;
-			(*NewDTaskControlBlock).Instruction_addr = pc_start;
-			(*NewDTaskControlBlock).Instruction_addr_end = pc_end;
-			(*NewDTaskControlBlock).Data_addr = Data_addr;
-			(*NewDTaskControlBlock).Data_size = Data_size_split;
-			(*NewDTaskControlBlock).Finish_Flag = 0;
+			NewDTaskControlBlock->Processor_id = 0;
+		    NewDTaskControlBlock->DTask_id = 0;
+			NewDTaskControlBlock->DSubTask_id = slit_num_th;
+			NewDTaskControlBlock->Instruction_addr = pc_start;
+			NewDTaskControlBlock->Instruction_addr_end = pc_end;
+			NewDTaskControlBlock->Data_addr = Data_addr;
+			NewDTaskControlBlock->Data_size = Data_size_split;
+			NewDTaskControlBlock->Finish_Flag = 0;
 			Distributed_TaskHandle_List_t* Lastnode = &DStart;
-			while((*Lastnode).Next_TaskHandle_List != NULL)
-				Lastnode = (*Lastnode).Next_TaskHandle_List;
-			(*Lastnode).Next_TaskHandle_List = NewDTaskControlBlock;
+			while(Lastnode->Next_TaskHandle_List != NULL)
+				Lastnode = Lastnode->Next_TaskHandle_List;
+			Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
 			Subscriber_task = NewDTaskControlBlock;
 		}
 		else{
@@ -138,23 +138,23 @@ Distributed_TaskHandle_List_t* distributed_manager_task(uint32_t Data_addr, uint
 			}
 
 			Distributed_TaskHandle_List_t *NewDTaskControlBlock = pvPortMalloc(sizeof(Distributed_TaskHandle_List_t));
-			(*NewDTaskControlBlock).Next_TaskHandle_List = NULL;
-			(*NewDTaskControlBlock).Processor_id = 0;
-		    (*NewDTaskControlBlock).DTask_id = 0;
-			(*NewDTaskControlBlock).DSubTask_id = slit_num_th;
-			(*NewDTaskControlBlock).Instruction_addr = instruction;
-			(*NewDTaskControlBlock).Instruction_addr_end = instruction + (instruction_size/4);
-			(*NewDTaskControlBlock).Data_addr = (instruction+(instruction_size/4));
-			(*NewDTaskControlBlock).Data_size = Data_size;
-			(*NewDTaskControlBlock).Finish_Flag = 0;
-			(*NewDTaskControlBlock).TaskHandlex = pvPortMalloc(sizeof(TaskHandle_t));
+			NewDTaskControlBlock->Next_TaskHandle_List = NULL;
+			NewDTaskControlBlock->Processor_id = 0;
+		    NewDTaskControlBlock->DTask_id = 0;
+			NewDTaskControlBlock->DSubTask_id = slit_num_th;
+			NewDTaskControlBlock->Instruction_addr = instruction;
+			NewDTaskControlBlock->Instruction_addr_end = instruction + (instruction_size/4);
+			NewDTaskControlBlock->Data_addr = (instruction+(instruction_size/4));
+			NewDTaskControlBlock->Data_size = Data_size_split;
+			NewDTaskControlBlock->Finish_Flag = 0;
+			NewDTaskControlBlock->TaskHandlex = pvPortMalloc(sizeof(TaskHandle_t));
 			Distributed_TaskHandle_List_t* Lastnode = &DStart;
-			while((*Lastnode).Next_TaskHandle_List != NULL)
-				Lastnode = (*Lastnode).Next_TaskHandle_List;
-			(*Lastnode).Next_TaskHandle_List = NewDTaskControlBlock;
+			while(Lastnode->Next_TaskHandle_List != NULL)
+				Lastnode = Lastnode->Next_TaskHandle_List;
+			Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
 			void (*func_ptr)() = ((uint32_t)instruction)+1;
 			printf("Generate task%d\r\n", slit_num_th);
-			xTaskCreate((uint16_t*)func_ptr, "task", (stack_size*4), NULL, 1, (*NewDTaskControlBlock).TaskHandlex);
+			xTaskCreate((uint16_t*)func_ptr, "task", (stack_size*4), NULL, 1, NewDTaskControlBlock->TaskHandlex);
 		}
 	}
 	return Subscriber_task;
@@ -206,23 +206,20 @@ void task1(){
 				xTaskCreate(task2, "task2", 1000, NULL, 1, &TaskHandle_2);
 			}
 			else if (rec_cmd == 'b'){
-				printf("kill task2\r\n");
 				vTaskDelete(TaskHandle_2);
-				vTaskDelete(TaskHandle_3);
-				printf("already clean task 2 3\r\n");
+				printf("kill task2\r\n");
 				SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BRy_BIT(LED_BLUE));
 			}
 		}
 	}
-	//blink(LED_GREEN);
 }
 
 void task2(){
 	uint32_t *Data_start_addr = 0x10000010;
 	uint32_t Data_start_size = 16;
 	Distributed_TaskHandle_List_t *s = Distributed_Start(Data_start_addr, Data_start_size);
-	for(uint32_t i=0;i<(*s).Data_size;i++){
-		*((*s).Data_addr + i) = i*i;
+	for(uint32_t i=0;i<s->Data_size;i++){
+		*(s->Data_addr + i) = i;
 	}
 	/*
 	while(1){
@@ -272,7 +269,7 @@ void task3(){
 
 int main(void)
 {
-	(*DStart).Next_TaskHandle_List = NULL;
+	DStart->Next_TaskHandle_List = NULL;
 	init_usart1();
 	led_init(LED_GREEN);
 	led_init(LED_ORANGE);
@@ -320,18 +317,13 @@ void svc_handler_c(uint32_t LR, uint32_t MSP)
 	printf("[SVC Handler] Stacked R1: 0x%X \r\n", (unsigned int)stacked_r1);
 	printf("[SVC Handler] SVC number: 0x%X \r\n\n", (unsigned int)svc_num);
 	*/
-	printf("svc_num: 0x%X\r\n", svc_num);
 	if(svc_num == 0)
 		vPortSVCHandler();
 	else if (svc_num == 1){
 		Distributed_TaskHandle_List_t* Lastnode = &DStart;
-		while((*Lastnode).Next_TaskHandle_List != NULL){
-			Lastnode = (*Lastnode).Next_TaskHandle_List;
-			if (((*Lastnode).Instruction_addr<=stacked_return_addr) && (stacked_return_addr<=(*Lastnode).Instruction_addr_end)){
-				printf("\r\n");
-				printf(" DSubTask_id:	0x%X\r\n", (*Lastnode).DSubTask_id);
-				printf("0x%X	0x%X\r\n", (uint16_t*)stacked_return_addr, *((uint16_t*)stacked_return_addr));
-				printf("\r\n");
+		while(Lastnode->Next_TaskHandle_List != NULL){
+			Lastnode = Lastnode->Next_TaskHandle_List;
+			if ((Lastnode->Instruction_addr<=stacked_return_addr) && (stacked_return_addr<=Lastnode->Instruction_addr_end)){
 				break;
 			}
 		}
@@ -339,10 +331,16 @@ void svc_handler_c(uint32_t LR, uint32_t MSP)
 	}
 	else if (svc_num == 2){
 		Distributed_TaskHandle_List_t* Lastnode = &DStart;
-		while((*Lastnode).Next_TaskHandle_List != NULL){
-			Lastnode = (*Lastnode).Next_TaskHandle_List;
-			if (((*Lastnode).Instruction_addr<=stacked_return_addr) && (stacked_return_addr<=(*Lastnode).Instruction_addr_end)){
-				printf(" DSubTask_id:	0x%X	done\r\n", (*Lastnode).DSubTask_id);
+		while(Lastnode->Next_TaskHandle_List != NULL){
+			Lastnode = Lastnode->Next_TaskHandle_List;
+			if ((Lastnode->Instruction_addr<=stacked_return_addr) && (stacked_return_addr<=Lastnode->Instruction_addr_end)){
+				printf("\r\nSVC 2, DSubTask_id:0x%X	done\r\n\r\nInstruction_addr    :0x%X\r\nstacked_return_addr  :0x%X\r\nInstruction_addr_end:0x%X\r\n\r\n", Lastnode->DSubTask_id, Lastnode->Instruction_addr, stacked_return_addr, Lastnode->Instruction_addr_end);
+
+				for(uint32_t i=0;i<Lastnode->Data_size;i++){
+					printf(" DSubTask_id:0x%X	0x%X	0x%X\r\n", Lastnode->DSubTask_id, (Lastnode->Data_addr+i), *(Lastnode->Data_addr+i));
+				}
+
+				break;
 			}
 		}
 	}

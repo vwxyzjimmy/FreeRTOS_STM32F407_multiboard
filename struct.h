@@ -1,6 +1,7 @@
 #define Distributed_End()		 			\
 do {                			 			\
 	__asm volatile ("svc	#0x2	\n");	\
+	while(1);								\
 } while (0)
 
 
