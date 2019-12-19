@@ -56,10 +56,9 @@ sys_call:
 Distributed_Start:
 	push	{lr}
 	mov	r0,	r0
-	mov	r1,	r1
-	mov	r2,	sp
-	mov	r3,	lr
-	blx	distributed_manager_task
+	mov	r1,	sp
+	mov	r2,	lr
+	blx	Distributed_manager_task
 	mov	r0,	r0
 	pop	{lr}
 	bx	lr
