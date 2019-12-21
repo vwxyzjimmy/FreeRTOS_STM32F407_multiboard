@@ -29,7 +29,7 @@ void task2();
 void task3();
 Distributed_TaskHandle_List_t* Distributed_manager_task(void* S, uint32_t sp, uint32_t lr);
 uint32_t Got_sp_minus_immediate(uint32_t addr);
-void Distributed_Check(Distributed_TaskHandle_List_t* s);
+void Distributed_Check(Distributed_TaskHandle_List_t* s, uint32_t* Result_Data_addr, uint32_t Result_Data_size);
 void Distributed_TaskCreate(void* task, Distributed_Data_t *s, uint32_t Stack_size);
 Distributed_TaskHandle_List_t* Distributed_GetNode(uint32_t Return_addr);
 Distributed_Data_t* Distributed_Set_Traget_Data(uint32_t* addr, uint32_t size);
@@ -100,20 +100,20 @@ void Distributed_TaskCreate(void* task, Distributed_Data_t *S, uint32_t Stack_si
 	vPortFree(S);
 }
 
-void Distributed_Check(Distributed_TaskHandle_List_t* s){
-	Distributed_TaskHandle_List_t* Lastnode = &DStart;
-	Distributed_TaskHandle_List_t* pre_Lastnode = &DStart;
+void Distributed_Check(Distributed_TaskHandle_List_t* s, uint32_t* Result_Data_addr, uint32_t Result_Data_size){
+
+	Distributed_TaskHandle_List_t* Lastnode = DStart;
+	Distributed_TaskHandle_List_t* pre_Lastnode = DStart;
 	uint32_t All_Subtask_Done = 0;
 	uint32_t Total_Data_Size = 0;
 	uint32_t Every_Data_Size[s->Data_number];
 	while(All_Subtask_Done == 0){
 		All_Subtask_Done = 1;
-		Lastnode = &DStart;
+		Lastnode = DStart;
 		Total_Data_Size = 0;
 		for(uint32_t i=0;i<s->Data_number;i++)
 			Every_Data_Size[i] = 0;
-		while(Lastnode->Next_TaskHandle_List != NULL){
-			Lastnode = Lastnode->Next_TaskHandle_List;
+		while(Lastnode != NULL){
 			if((Lastnode->DTask_id) == s->DTask_id){
 				if((Lastnode->Finish_Flag) == 0){
 					All_Subtask_Done = 0;
@@ -126,14 +126,14 @@ void Distributed_Check(Distributed_TaskHandle_List_t* s){
 					}
 				}
 			}
+			Lastnode = Lastnode->Next_TaskHandle_List;
 		}
 	}
+
 	uint32_t* Data_addr = pvPortMalloc(Total_Data_Size*sizeof(Total_Data_Size));
-	Lastnode = &DStart;
-	while(Lastnode->Next_TaskHandle_List != NULL){
-		pre_Lastnode = Lastnode;
-		Lastnode = Lastnode->Next_TaskHandle_List;
-		if((Lastnode->DTask_id) == s->DTask_id){
+	Lastnode = DStart;
+	while(Lastnode != NULL){
+		if(((Lastnode->DTask_id) == s->DTask_id)&&((Lastnode->Processor_id) == s->Processor_id)){
 			for(uint32_t i=0;i<Lastnode->Data_number;i++){
 				uint32_t* tmp_Data_addr = Data_addr;
 				uint32_t* From_Data_addr = Lastnode->Data_addr;
@@ -162,13 +162,33 @@ void Distributed_Check(Distributed_TaskHandle_List_t* s){
 			}
 			vPortFree(Lastnode->Data_size);
 			vPortFree(Lastnode->Data_Max_size);
-			pre_Lastnode->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
-			vPortFree(Lastnode);
+			Distributed_TaskHandle_List_t* Delete_node;
+			if((pre_Lastnode == DStart) && (Lastnode == DStart)){
+				Delete_node = Lastnode;
+				if (Lastnode->Next_TaskHandle_List != NULL)
+					DStart = Lastnode->Next_TaskHandle_List;
+				else
+					DStart = NULL;
+				pre_Lastnode = DStart;
+				Lastnode = pre_Lastnode;
+			}
+			else{
+				Delete_node = Lastnode;
+				pre_Lastnode->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
+				Lastnode = Lastnode->Next_TaskHandle_List;
+			}
+			vPortFree(Delete_node);
+		}
+		else{
+			pre_Lastnode = Lastnode;
+			Lastnode = Lastnode->Next_TaskHandle_List;
 		}
 	}
+	/*
 	printf("Result:\r\n");
 	for(uint32_t i=0;i<Total_Data_Size;i++)
 		printf("0x%X	0x%X\r\n", (Data_addr+i), *(Data_addr+i));
+	*/
 
 	Distributed_Data_t* Send_S = pvPortMalloc(sizeof(Distributed_Data_t));
 	Send_S->Data_addr = Data_addr;
@@ -302,8 +322,9 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* S, uint32_t sp, ui
 			}
 
 			Distributed_TaskHandle_List_t *NewDTaskControlBlock = pvPortMalloc(sizeof(Distributed_TaskHandle_List_t));
-			NewDTaskControlBlock->Processor_id = 0;
-		    NewDTaskControlBlock->DTask_id = 0;
+			NewDTaskControlBlock->Next_TaskHandle_List = NULL;
+			NewDTaskControlBlock->Processor_id = 1;
+		    NewDTaskControlBlock->DTask_id = 1;
 			NewDTaskControlBlock->DSubTask_id = slit_num_th;
 			NewDTaskControlBlock->Instruction_addr = pc_start;
 			NewDTaskControlBlock->Instruction_addr_end = pc_end;
@@ -315,10 +336,17 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* S, uint32_t sp, ui
 			NewDTaskControlBlock->Finish_Flag = 0;
 			NewDTaskControlBlock->xQueue = ((Distributed_Data_t*)S)->xQueue;
 			NewDTaskControlBlock->Distributed_Data_List = Start_Distributed_Data_List;
-			Distributed_TaskHandle_List_t* Lastnode = &DStart;
-			while(Lastnode->Next_TaskHandle_List != NULL)
-				Lastnode = Lastnode->Next_TaskHandle_List;
-			Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
+			Distributed_TaskHandle_List_t* Lastnode = DStart;
+
+			if(Lastnode == NULL)
+				DStart = NewDTaskControlBlock;
+			else{
+				while(Lastnode->Next_TaskHandle_List != NULL){
+					Lastnode = Lastnode->Next_TaskHandle_List;
+				}
+				Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
+			}
+
 			Subscriber_task = NewDTaskControlBlock;
 		}
 		else{
@@ -362,13 +390,12 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* S, uint32_t sp, ui
 
 				tmp_Data_addr = tmp_Data_addr + Data_size_split_record[Data_number_i];
 				tmp_Distributed_Data = tmp_Distributed_Data->Next_Distributed_Data;
-
 			}
 
 			Distributed_TaskHandle_List_t *NewDTaskControlBlock = pvPortMalloc(sizeof(Distributed_TaskHandle_List_t));
 			NewDTaskControlBlock->Next_TaskHandle_List = NULL;
-			NewDTaskControlBlock->Processor_id = 0;
-		    NewDTaskControlBlock->DTask_id = 0;
+			NewDTaskControlBlock->Processor_id = 1;
+		    NewDTaskControlBlock->DTask_id = 1;
 			NewDTaskControlBlock->DSubTask_id = slit_num_th;
 			NewDTaskControlBlock->Instruction_addr = instruction;
 			NewDTaskControlBlock->Instruction_addr_end = instruction + (instruction_size/4);
@@ -379,13 +406,19 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* S, uint32_t sp, ui
 			NewDTaskControlBlock->Finish_Flag = 0;
 			NewDTaskControlBlock->TaskHandlex = pvPortMalloc(sizeof(TaskHandle_t));
 			NewDTaskControlBlock->Distributed_Data_List = Start_Distributed_Data_List;
+			NewDTaskControlBlock->Next_TaskHandle_List = NULL;
+			Distributed_TaskHandle_List_t* Lastnode = DStart;
 
-			Distributed_TaskHandle_List_t* Lastnode = &DStart;
-			while(Lastnode->Next_TaskHandle_List != NULL)
-				Lastnode = Lastnode->Next_TaskHandle_List;
-			Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
+			if(Lastnode == NULL)
+				DStart = NewDTaskControlBlock;
+			else{
+				while(Lastnode->Next_TaskHandle_List != NULL){
+					Lastnode = Lastnode->Next_TaskHandle_List;
+				}
+				Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
+			}
+
 			void (*func_ptr)() = ((uint32_t)instruction)+1;
-
 			xTaskCreate((uint16_t*)func_ptr, "task", (stack_size*4), NULL, 1, NewDTaskControlBlock->TaskHandlex);
 		}
 	}
@@ -476,7 +509,7 @@ void task2(void *S){
 		*(array2->Data_addr + i) = *(array2->Data_addr + i)+1;
 	}
 
-	Distributed_End(s);
+	Distributed_End(s, array1->Data_addr, array1->Data_size);
 }
 
 void task3(){
@@ -530,7 +563,6 @@ void svc_handler_c(uint32_t LR, uint32_t MSP){
 	}
 	else if (svc_num == 2){
 		Distributed_TaskHandle_List_t* Lastnode = Distributed_GetNode(stacked_return_addr);
-		Lastnode->Finish_Flag = 1;
 		if (Lastnode->DSubTask_id != 0){
 			*((uint32_t*)(stacked_return_addr&0xFFFFFFFE)) = 0xe7fe;
 		}

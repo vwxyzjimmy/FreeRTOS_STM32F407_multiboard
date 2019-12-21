@@ -46,6 +46,13 @@ write_ctrl:
 
 	bx	lr
 
+.type read_r0_from_svc, %function
+.global	read_r0_from_svc
+read_r0_from_svc:
+	movs	r0, r0
+	bx	lr
+
+
 .global	sys_call
 sys_call:
 	SVC	#0x0
