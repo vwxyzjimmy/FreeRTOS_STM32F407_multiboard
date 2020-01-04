@@ -1,6 +1,5 @@
 #define Distributed_End(s, addr, size)		 						\
 do {                			 									\
-	s->Finish_Flag = 1;												\
 	__asm volatile ("svc	#0x2	\n");							\
 	Distributed_Check(s, addr, size);								\
 } while (0)
