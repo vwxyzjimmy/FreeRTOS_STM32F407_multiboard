@@ -83,13 +83,17 @@
 #define BL_1_BIT 6
 #define BL_0_BIT 5
 #define DC 4
+#define TE 3
+#define RE 2
 
 #define ETH_MACFFR_OFFSET  0x0004
 #define RA 31
+#define HPF 10
 #define SAF 9
 #define PCF_1_BIT 7
 #define PCF_0_BIT 6
 #define BFD 5
+#define PAM 4
 #define DAIF 3
 #define HM 2
 #define HU 1
@@ -103,10 +107,14 @@
 #define PA_0_BIT 11
 #define MR_4_BIT 10
 #define MR_0_BIT 6
-#define CR_2_BIT 4
+#define CR_3_BIT 5
 #define CR_0_BIT 2
 #define MW 1
 #define MB 0
+
+#define ETH_MACMIIDR_OFFSET 0x0014
+#define MD_15_BIT 15
+#define MD_0_BIT 0
 
 #define ETH_MACVLANTR_OFFSET 0x001C
 #define VLANTC 16
@@ -123,6 +131,19 @@
 #define RFCE 2
 #define TFCE 1
 
+#define ETH_MAC_ADDRESS0 0x0
+#define ETH_MAC_ADDRESS1 0x8
+#define ETH_MAC_ADDRESS2 0x10
+#define ETH_MAC_ADDRESS3 0x18
+
+#define ETH_MACAxHR_OFFSET 0x40
+#define MO 31
+#define MACAxH_15_BIT 15
+#define MACAxH_0_BIT 0
+
+#define ETH_MACAxLR_OFFSET 0x44
+#define MACAxL_31_BIT 31
+#define MACAxL_0_BIT 0
 
 #define ETH_DMABMR_OFFSET 0x1000
 #define AAB 25
@@ -130,6 +151,8 @@
 #define RDP_5_BIT 22
 #define RDP_0_BIT 17
 #define FB 16
+#define PM_1_BIT 15
+#define PM_0_BIT 14
 #define PBL_5_BIT 13
 #define PBL_0_BIT 8
 #define DSL_5_BIT 6
@@ -137,17 +160,41 @@
 #define DA 1
 #define SR 0
 
+#define ETH_DMARDLAR_OFFSET 0x100C
+#define ETH_DMATDLAR_OFFSET 0x1010
+
 #define ETH_DMAOMR_OFFSET 0x1018
 #define DTCEFD 26
 #define RSF 25
 #define DFRF 24
 #define TSF 21
+#define FTF 20
 #define TTC_2_BIT 16
 #define TTC_0_BIT 14
+#define ST 13
 #define FEF 7
+#define FUGF 6
 #define RTC_1_BIT 4
 #define RTC_0_BIT 3
 #define OSF 2
+#define SR 1
+
+#define ETH_DMAIER_OFFSET 0x101C
+#define NISE 16
+#define AISE 15
+#define ERIE 14
+#define FBEIE 13
+#define ETIE 10
+#define RWTIE 9
+#define PRSIE 8
+#define RBUIE 7
+#define RIE 6
+#define TUIE 5
+#define ROIE 4
+#define TJTIE 3
+#define TBUIE 2
+#define TPSIE 1
+#define TIE 0
 
 //FLASH
 #define FLASH_BASE 0x40023C00
@@ -247,6 +294,9 @@
 #define GPIOx_AFRL_OFFSET 0x20
 #define AFRLy_3_BIT(y) ((y)*4 + 3)
 #define AFRLy_0_BIT(y) ((y)*4)
+#define GPIOx_AFRH_OFFSET 0x24
+#define AFRHy_3_BIT(y) ((y-8)*4 + 3)
+#define AFRHy_0_BIT(y) ((y-8)*4)
 
 //EXTI
 #define EXTI_BASE 0x40013C00

@@ -65,3 +65,26 @@ typedef struct A_BLOCK_LINK
 	}																								\
 	tmp_array;																						\
 })
+
+
+typedef struct  {
+	volatile uint32_t   Status;
+	uint32_t   ControlBufferSize;
+	uint32_t   Buffer1Addr;
+	uint32_t   Buffer2NextDescAddr;
+#ifdef USE_ENHANCED_DMA_DESCRIPTORS
+	uint32_t   ExtendedStatus;
+	uint32_t   Reserved1;
+	uint32_t   TimeStampLow;
+	uint32_t   TimeStampHigh;
+#endif
+} ETH_DMADESCTypeDef;
+
+#define ETH_TXBUFNB   5
+#define ETH_RXBUFNB   5
+#define ETH_TX_BUF_SIZE 1524
+#define ETH_RX_BUF_SIZE 1524
+ETH_DMADESCTypeDef  DMARxDscrTab[ETH_RXBUFNB] __attribute__((aligned (4)));/* Ethernet Rx MA Descriptor */
+ETH_DMADESCTypeDef  DMATxDscrTab[ETH_TXBUFNB] __attribute__((aligned (4)));/* Ethernet Tx DMA Descriptor */
+uint8_t Rx_Buff[ETH_RXBUFNB][ETH_RX_BUF_SIZE] __attribute__((aligned (4))); /* Ethernet Receive Buffer */
+uint8_t Tx_Buff[ETH_TXBUFNB][ETH_TX_BUF_SIZE] __attribute__((aligned (4))); /* Ethernet Transmit Buffer */
