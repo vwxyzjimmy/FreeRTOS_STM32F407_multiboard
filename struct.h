@@ -26,7 +26,7 @@ typedef struct Distributed_Data
     uint32_t* Data_addr;
     uint32_t Data_size;
 	QueueHandle_t* xQueue;
-	struct Distributed_Data* Next_Distributed_Data
+	struct Distributed_Data* Next_Distributed_Data;
 }Distributed_Data_t;
 
 typedef struct Distributed_TaskHandle_List
@@ -80,6 +80,12 @@ typedef struct  {
 #endif
 } ETH_DMADESCTypeDef;
 
+typedef struct  {
+  volatile ETH_DMADESCTypeDef *FS_Rx_Desc;          /*!< First Segment Rx Desc */
+  volatile ETH_DMADESCTypeDef *LS_Rx_Desc;          /*!< Last Segment Rx Desc */
+  volatile uint32_t  Seg_Count;                     /*!< Segment count */
+} ETH_DMA_Rx_Frame_infos;
+
 #define ETH_TXBUFNB   5
 #define ETH_RXBUFNB   5
 #define ETH_TX_BUF_SIZE 1524
@@ -88,3 +94,8 @@ ETH_DMADESCTypeDef  DMARxDscrTab[ETH_RXBUFNB] __attribute__((aligned (4)));/* Et
 ETH_DMADESCTypeDef  DMATxDscrTab[ETH_TXBUFNB] __attribute__((aligned (4)));/* Ethernet Tx DMA Descriptor */
 uint8_t Rx_Buff[ETH_RXBUFNB][ETH_RX_BUF_SIZE] __attribute__((aligned (4))); /* Ethernet Receive Buffer */
 uint8_t Tx_Buff[ETH_TXBUFNB][ETH_TX_BUF_SIZE] __attribute__((aligned (4))); /* Ethernet Transmit Buffer */
+
+volatile ETH_DMADESCTypeDef  *DMATxDescToSet;
+volatile ETH_DMADESCTypeDef  *DMARxDescToGet;
+ETH_DMA_Rx_Frame_infos RX_Frame_Descriptor;
+volatile ETH_DMA_Rx_Frame_infos *DMA_RX_FRAME_infos;

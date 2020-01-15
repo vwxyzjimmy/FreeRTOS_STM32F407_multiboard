@@ -158,10 +158,38 @@
 #define DSL_5_BIT 6
 #define DSL_0_BIT 2
 #define DA 1
-#define SR 0
+#define DMABMR_SR 0
+
+#define ETH_DMATPDR_OFFSET 0x1004
 
 #define ETH_DMARDLAR_OFFSET 0x100C
 #define ETH_DMATDLAR_OFFSET 0x1010
+
+#define ETH_DMASR_OFFSET 0x1014
+#define TSTS 29
+#define PMTS 28
+#define MMCS 27
+#define EBS_2_BIT 25
+#define EBS_0_BIT 23
+#define TPS_2_BIT 22
+#define TPS_0_BIT 20
+#define RPS_2_BIT 19
+#define RPS_0_BIT 17
+#define NIS 16
+#define AIS 15
+#define ERS 14
+#define FBES 13
+#define ETS 10
+#define RWTS 9
+#define RPSS 8
+#define RBUS 7
+#define RS 6
+#define TUS 5
+#define ROS 4
+#define TJTS 3
+#define TBUS 2
+#define TPSS 1
+#define TS 0
 
 #define ETH_DMAOMR_OFFSET 0x1018
 #define DTCEFD 26
@@ -177,7 +205,7 @@
 #define RTC_1_BIT 4
 #define RTC_0_BIT 3
 #define OSF 2
-#define SR 1
+#define DMAOMR_SR 1
 
 #define ETH_DMAIER_OFFSET 0x101C
 #define NISE 16

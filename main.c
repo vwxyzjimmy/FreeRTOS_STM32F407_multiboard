@@ -35,6 +35,9 @@ Distributed_TaskHandle_List_t* Distributed_GetNode(uint32_t Return_addr);
 Distributed_Data_t* Distributed_Set_Traget_Data(uint32_t* addr, uint32_t size);
 void Distributed_Add_Traget_Data(Distributed_Data_t* S, uint32_t* addr, uint32_t size);
 
+uint32_t ETH_WritePHYRegister(uint16_t PHYAddress, uint16_t PHYReg, uint16_t PHYValue);
+uint32_t ETH_ReadPHYRegister(uint16_t PHYAddress, uint16_t PHYReg);
+uint32_t ETH_CheckFrameReceived(void);
 void List_FreeBlock();
 
 volatile uint8_t rec_play_buf_fir[200], rec_play_buf_sec[200];
@@ -677,8 +680,8 @@ void init_eth(uint16_t PHYAddress, uint8_t *Addr){
 	SET_BIT(RCC_BASE + RCC_AHB1RSTR_OFFSET, ETHMACRST);
 	CLEAR_BIT(RCC_BASE + RCC_AHB1RSTR_OFFSET, ETHMACRST);
 
-	SET_BIT(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, SR);
-	while(READ_BIT(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, SR) != 0);
+	SET_BIT(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, DMABMR_SR);
+	while(READ_BIT(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, DMABMR_SR) != 0);
 	WRITE_BITS(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, CR_3_BIT, CR_0_BIT, 0b100);
 
 	uint32_t result;
@@ -703,7 +706,7 @@ void init_eth(uint16_t PHYAddress, uint8_t *Addr){
 
 	uint32_t ETH_Mode;
 	uint32_t ETH_Speed;
-	result = ETH_ReadPHYRegister(ETHERNET_PHY_ADDRESS, 0x0010);	//PHY_SR
+	result = ETH_ReadPHYRegister(PHYAddress, 0x0010);	//PHY_SR
 	if ((result & 0x0004) != 0){								//PHY_DUPLEX_STATUS
 		ETH_Mode = ((uint32_t)0x00000800);						//ETH_Mode_FullDuplex
 		printf("ETH_Mode_FullDuplex\r\n");
@@ -785,7 +788,7 @@ void init_eth(uint16_t PHYAddress, uint8_t *Addr){
 	ETH_DMATxDescChainInit(DMATxDscrTab, &Tx_Buff[0][0], ETH_TXBUFNB);	// ETH_TXBUFNB 5
 	ETH_DMARxDescChainInit(DMARxDscrTab, &Rx_Buff[0][0], ETH_RXBUFNB);	// ETH_RXBUFNB 5
 
-	for(i=0; i<ETH_TXBUFNB; i++)
+	for(uint32_t i=0; i<ETH_TXBUFNB; i++)
 		(&DMATxDscrTab[i])->Status |= 0x00C00000;	// DMATxDesc_Checksum 0x00C00000
 
 	SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, TE);
@@ -800,7 +803,7 @@ void init_eth(uint16_t PHYAddress, uint8_t *Addr){
 	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, ST);
 	for(uint32_t i=0;i<0x00000001U;i++)
 		;
-	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, SR);
+	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, DMAOMR_SR);
 	for(uint32_t i=0;i<0x00000001U;i++)
 		;
 
@@ -857,7 +860,7 @@ uint32_t ETH_ReadPHYRegister(uint16_t PHYAddress, uint16_t PHYReg){
 void ETH_DMATxDescChainInit(ETH_DMADESCTypeDef *DMATxDescTab, uint8_t* TxBuff, uint32_t TxBuffCount){
   uint32_t i = 0;
   ETH_DMADESCTypeDef *DMATxDesc;
-  //DMATxDescToSet = DMATxDescTab;
+  DMATxDescToSet = DMATxDescTab;
   for(i=0; i < TxBuffCount; i++){
 	DMATxDesc = DMATxDescTab + i;
 	DMATxDesc->Status = 0x00100000 ;	// ETH_DMATxDesc_TCH 0x00100000;
@@ -874,7 +877,7 @@ void ETH_DMATxDescChainInit(ETH_DMADESCTypeDef *DMATxDescTab, uint8_t* TxBuff, u
 void ETH_DMARxDescChainInit(ETH_DMADESCTypeDef *DMARxDescTab, uint8_t *RxBuff, uint32_t RxBuffCount){
 	uint32_t i = 0;
 	ETH_DMADESCTypeDef *DMARxDesc;
-	//DMARxDescToGet = DMARxDescTab;
+	DMARxDescToGet = DMARxDescTab;
 	for(i=0; i < RxBuffCount; i++){
 		DMARxDesc = DMARxDescTab+i;
 		DMARxDesc->Status = 0x80000000;		// ETH_DMARxDesc_OWN
@@ -886,7 +889,111 @@ void ETH_DMARxDescChainInit(ETH_DMADESCTypeDef *DMARxDescTab, uint8_t *RxBuff, u
 			DMARxDesc->Buffer2NextDescAddr = (uint32_t)(DMARxDescTab);
 	}
 	REG(ETHERNET_MAC_BASE + ETH_DMARDLAR_OFFSET) = (uint32_t) DMARxDescTab;
-	//DMA_RX_FRAME_infos = &RX_Frame_Descriptor;
+	DMA_RX_FRAME_infos = &RX_Frame_Descriptor;
+}
+
+void DP83848Send(uint8_t* data, uint16_t length){
+	for(uint16_t i;i<length;i++){
+		*(((uint8_t *)DMATxDescToSet->Buffer1Addr)+i) = *(data+i);
+	}
+
+	volatile ETH_DMADESCTypeDef *DMATxDesc;
+	if (DMATxDescToSet->Status & 0x80000000)	//ETH_DMATxDesc_OWN
+		printf("Error: ETHERNET OWN DMA\r\n");
+
+	uint32_t buf_count = 0;
+	uint32_t size = 0;
+
+	DMATxDesc = DMATxDescToSet;
+	if (length > ETH_TX_BUF_SIZE){
+		buf_count = length/ETH_TX_BUF_SIZE;
+		if (length%ETH_TX_BUF_SIZE)
+			buf_count++;
+	}
+	else
+		buf_count = 1;
+	if (buf_count == 1){
+		/*set LAST and FIRST segment */
+		DMATxDesc->Status |=(0x10000000 | 0x20000000);	// ETH_DMATxDesc_FS ETH_DMATxDesc_LS
+		/* Set frame size */
+		DMATxDesc->ControlBufferSize = (length & 0x00001FFF);	// ETH_DMATxDesc_TBS1
+		/* Set Own bit of the Tx descriptor Status: gives the buffer back to ETHERNET DMA */
+		DMATxDesc->Status |= 0x80000000;	// ETH_DMATxDesc_OWN
+		DMATxDesc= (ETH_DMADESCTypeDef *)(DMATxDesc->Buffer2NextDescAddr);
+	}
+	else{
+		for (uint32_t i=0; i< buf_count; i++){
+			/* Clear FIRST and LAST segment bits */
+			DMATxDesc->Status &= ~(0x10000000 | 0x20000000);	// ETH_DMATxDesc_FS ETH_DMATxDesc_LS
+			if (i == 0) {
+				/* Setting the first segment bit */
+				DMATxDesc->Status |= 0x10000000;	// ETH_DMATxDesc_FS
+			}
+			/* Program size */
+			DMATxDesc->ControlBufferSize = (ETH_TX_BUF_SIZE & 0x00001FFF);	// ETH_DMATxDesc_TBS1
+			if (i == (buf_count-1)){
+				/* Setting the last segment bit */
+				DMATxDesc->Status |= 0x20000000;	// ETH_DMATxDesc_LS
+				size = length - (buf_count-1)*ETH_TX_BUF_SIZE;
+				DMATxDesc->ControlBufferSize = (size & 0x00001FFF);	// ETH_DMATxDesc_TBS1
+			}
+			/* Set Own bit of the Tx descriptor Status: gives the buffer back to ETHERNET DMA */
+			DMATxDesc->Status |= 0x80000000;	// ETH_DMATxDesc_OWN
+			DMATxDesc = (ETH_DMADESCTypeDef *)(DMATxDesc->Buffer2NextDescAddr);
+		}
+	}
+	DMATxDescToSet = DMATxDesc;
+	/* When Tx Buffer unavailable flag is set: clear it and resume transmission */
+	if (READ_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, TBUS) != 0){
+		/* Clear TBUS ETHERNET DMA flag */
+		SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, TBUS);
+		/* Resume DMA transmission*/
+		REG(ETHERNET_MAC_BASE + ETH_DMATPDR_OFFSET) = 0;
+	}
+	/* Return SUCCESS */
+	return 1;
+}
+
+void ETH_IRQHandler(void){
+	/* Handles all the received frames */
+	/* check if any packet received */
+	  while(ETH_CheckFrameReceived()){
+	    /* process received ethernet packet */
+	    Pkt_Handle();
+	}
+	/* Clear the Eth DMA Rx IT pending bits */
+	SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, RS);
+	SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, NIS);
+}
+
+uint32_t ETH_CheckFrameReceived(void){
+  /* check if last segment */
+  if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&			// ETH_DMARxDesc_OWN	RESET
+  	((DMARxDescToGet->Status & 0x00000100) != (uint32_t)0)){			// ETH_DMARxDesc_LS		RESET
+    DMA_RX_FRAME_infos->Seg_Count++;
+    if (DMA_RX_FRAME_infos->Seg_Count == 1){
+      DMA_RX_FRAME_infos->FS_Rx_Desc = DMARxDescToGet;
+    }
+    DMA_RX_FRAME_infos->LS_Rx_Desc = DMARxDescToGet;
+    return 1;
+  }
+  /* check if first segment */
+  else if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&			// ETH_DMARxDesc_OWN RESET
+          ((DMARxDescToGet->Status & 0x00000200) != (uint32_t)0)&&			// ETH_DMARxDesc_FS  RESET
+            ((DMARxDescToGet->Status & 0x00000100) == (uint32_t)0)){		// ETH_DMARxDesc_LS	 RESET
+    DMA_RX_FRAME_infos->FS_Rx_Desc = DMARxDescToGet;
+    DMA_RX_FRAME_infos->LS_Rx_Desc = NULL;
+    DMA_RX_FRAME_infos->Seg_Count = 1;
+    DMARxDescToGet = (ETH_DMADESCTypeDef*) (DMARxDescToGet->Buffer2NextDescAddr);
+  }
+  /* check if intermediate segment */
+  else if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&					// ETH_DMARxDesc_OWN RESET
+          ((DMARxDescToGet->Status & 0x00000200) == (uint32_t)0)&&					// ETH_DMARxDesc_FS  RESET
+            ((DMARxDescToGet->Status & 0x00000100) == (uint32_t)0)){			// ETH_DMARxDesc_LS 	 RESET
+    (DMA_RX_FRAME_infos->Seg_Count) ++;
+    DMARxDescToGet = (ETH_DMADESCTypeDef*) (DMARxDescToGet->Buffer2NextDescAddr);
+  }
+  return 0;
 }
 
 void init_dac(void){
