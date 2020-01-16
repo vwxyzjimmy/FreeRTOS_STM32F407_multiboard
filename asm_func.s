@@ -77,3 +77,10 @@ svc_handler:
 	movs	r0,	lr
 	mrs	r1,	msp
 	b	svc_handler_c
+
+.type hardfault_handler, %function
+.global hardfault_handler
+hardfault_handler:
+	movs	r0,	lr
+	mrs	r1,	msp
+	b	hardfault_handler_c

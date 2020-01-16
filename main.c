@@ -9,7 +9,7 @@
 #include "queue.h"
 #include "timers.h"
 #include "struct.h"
-#define HEAP_MAX (128 * 1024) //64 KB
+#define HEAP_MAX (32 * 1024) 	// 128 KB
 
 void vApplicationTickHook() {;}
 void vApplicationStackOverflowHook() {;}
@@ -19,14 +19,12 @@ void vApplicationMallocFailedHook() {;}
 void setup_mpu(void);
 void init_dac(void);
 void DAC_SetChannel1Data(uint8_t vol);
-void init_usart2(void);
-void usart2_send_char(const char ch);
 void init_usart1(void);
+void init_usart2(void);
 void usart1_send_char(const char ch);
+void usart2_send_char(const char ch);
 void print_sys(char str[255]);
-void task1();
-void Distributed_task();
-void task3();
+
 Distributed_TaskHandle_List_t* Distributed_manager_task(void* S, uint32_t sp, uint32_t lr);
 uint32_t Got_sp_minus_immediate(uint32_t addr);
 void Distributed_Check(Distributed_TaskHandle_List_t* s, uint32_t* Result_Data_addr, uint32_t Result_Data_size);
@@ -34,11 +32,23 @@ void Distributed_TaskCreate(void* task, Distributed_Data_t *s, uint32_t Stack_si
 Distributed_TaskHandle_List_t* Distributed_GetNode(uint32_t Return_addr);
 Distributed_Data_t* Distributed_Set_Traget_Data(uint32_t* addr, uint32_t size);
 void Distributed_Add_Traget_Data(Distributed_Data_t* S, uint32_t* addr, uint32_t size);
+void List_FreeBlock();
 
+void init_eth(uint16_t PHYAddress, uint8_t *Addr);
 uint32_t ETH_WritePHYRegister(uint16_t PHYAddress, uint16_t PHYReg, uint16_t PHYValue);
 uint32_t ETH_ReadPHYRegister(uint16_t PHYAddress, uint16_t PHYReg);
+void ETH_DMATxDescChainInit(ETH_DMADESCTypeDef *DMATxDescTab, uint8_t* TxBuff, uint32_t TxBuffCount);
+void ETH_DMARxDescChainInit(ETH_DMADESCTypeDef *DMARxDescTab, uint8_t *RxBuff, uint32_t RxBuffCount);
+void DP83848Send(uint8_t* data, uint16_t length);
+void eth_handler(void);
 uint32_t ETH_CheckFrameReceived(void);
-void List_FreeBlock();
+FrameTypeDef ETH_Get_Received_Frame(void);
+void Pkt_Handle(void);
+
+void task1();
+void Distributed_task();
+void task3();
+void test_eth_send(void);
 
 volatile uint8_t rec_play_buf_fir[200], rec_play_buf_sec[200];
 volatile uint8_t *rece_ptr;
@@ -470,92 +480,6 @@ void setup_mpu(void){
 	SET_BIT(MPU_BASE + MPU_CTRL_OFFSET, MPU_ENABLE_BIT);
 }
 
-void task1(){
-	uint32_t count = 0;
-	while(1){
-		if ((READ_BIT(USART1_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART1_BASE + USART_SR_OFFSET, ORE_BIT))){
-			char rec_cmd = (char)REG(USART1_BASE + USART_DR_OFFSET);
-			printf("%c\r\n", rec_cmd);
-			if (rec_cmd == 'a'){
-				count++;
-				for(uint32_t i=0;i<16;i++){
-					*(((uint32_t*)0x10000000)+i) = 0;
-					*(((uint32_t*)0x10000100)+i) = 0;
-					*(((uint32_t*)0x10000200)+i) = 0;
-				}
-				List_FreeBlock();
-				Distributed_Data_t* s = Distributed_Set_Traget_Data(0x10000000, 16);
-				Distributed_Add_Traget_Data(s, 0x10000100, 8);
-				Distributed_Add_Traget_Data(s, 0x10000200, 13);
-
-				Distributed_TaskCreate(Distributed_task, s, 1000);
-				List_FreeBlock();
-			}
-			else if (rec_cmd == 'b'){
-				vTaskDelete(TaskHandle_2);
-				printf("kill Distributed_task\r\n");
-				SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BRy_BIT(LED_BLUE));
-			}
-		}
-	}
-}
-
-void Distributed_task(void *S){
-	Distributed_TaskHandle_List_t *s = Distributed_Start(S);
-	Distributed_Data_t* array1 = Distributed_Get_Traget_Data(s);
-	Distributed_Data_t* array2 = Distributed_Get_Traget_Data(s);
-	Distributed_Data_t* array3 = Distributed_Get_Traget_Data(s);
-
-	for(uint32_t i=0;i<array1->Data_size;i++){
-		//*(array1->Data_addr + i) = *(array1->Data_addr + i)+1;
-		*(array1->Data_addr + i) = i;
-	}
-	for(uint32_t i=0;i<array2->Data_size;i++){
-		//*(array2->Data_addr + i) = *(array2->Data_addr + i)+1;
-		*(array2->Data_addr + i) = i;
-	}
-
-	for(uint32_t i=0;i<array3->Data_size;i++){
-		//*(array3->Data_addr + i) = *(array3->Data_addr + i)+1;
-		*(array3->Data_addr + i) = i;
-	}
-
-	Distributed_End(s, array1->Data_addr, array1->Data_size);
-}
-
-void task3(){
-	led_init(LED_BLUE);
-	printf("task3\r\n");
-
-	while(1){
-		for(uint32_t i=0;i<500000;i++){
-			;
-		}
-		SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BSy_BIT(LED_BLUE));
-		for(uint32_t i=0;i<500000;i++){
-			;
-		}
-		SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BRy_BIT(LED_BLUE));
-	}
-}
-
-int main(void){
-	DStart->Next_TaskHandle_List = NULL;
-	init_usart1();
-	led_init(LED_GREEN);
-	led_init(LED_ORANGE);
-	void (*func_ptr)() = task1;
-	REG(AIRCR_BASE) = NVIC_AIRCR_RESET_VALUE | NVIC_PRIORITYGROUP_4;
-	xTaskCreate(task1, "task1", 1000, NULL, 1, &TaskHandle_1);
-	xTaskCreate(task3, "task3", 1000, NULL, 1, &TaskHandle_3);
-
-	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BSy_BIT(LED_GREEN));
-	vTaskStartScheduler();
-
-	while (1)
-		;
-}
-
 void svc_handler_c(uint32_t LR, uint32_t MSP){
 	uint32_t *stack_frame_ptr;
 	if (LR & 0x4){
@@ -581,421 +505,6 @@ void svc_handler_c(uint32_t LR, uint32_t MSP){
 	}
 }
 
-void init_eth(uint16_t PHYAddress, uint8_t *Addr){
-	SET_BIT(NVIC_ISER_BASE + NVIC_ISERn_OFFSET(1), 29); //IRQ61 => (m+(32*n)) | m=29, n=1
-	SET_BIT(RCC_BASE + RCC_APB2ENR_OFFSET, SYSCFGEN_BIT);
-	SET_BIT(SYSCFG_BASE + SYSCFG_PMC_OFFSET, MII_RMII_SEL_BIT);
-
-	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTA));
-
-	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_1_BIT(1));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_0_BIT(1));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OTYPER_OFFSET, OTy_BIT(1));
-	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(1));
-	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(1));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(1));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(1));
-	WRITE_BITS(GPIO_BASE(GPIO_PORTA) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(1), AFRLy_0_BIT(1), 11);
-
-	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_1_BIT(2));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_0_BIT(2));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OTYPER_OFFSET, OTy_BIT(2));
-	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(2));
-	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(2));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(2));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(2));
-	WRITE_BITS(GPIO_BASE(GPIO_PORTA) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(2), AFRLy_0_BIT(2), 11);
-
-	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_1_BIT(7));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_0_BIT(7));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OTYPER_OFFSET, OTy_BIT(7));
-	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(7));
-	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(7));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(7));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(7));
-	WRITE_BITS(GPIO_BASE(GPIO_PORTA) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(7), AFRLy_0_BIT(7), 11);
-
-	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTC));
-
-	SET_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_MODER_OFFSET, MODERy_1_BIT(1));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_MODER_OFFSET, MODERy_0_BIT(1));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_OTYPER_OFFSET, OTy_BIT(1));
-	SET_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(1));
-	SET_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(1));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(1));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(1));
-	WRITE_BITS(GPIO_BASE(GPIO_PORTC) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(1), AFRLy_0_BIT(1), 11);
-
-	SET_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_MODER_OFFSET, MODERy_1_BIT(4));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_MODER_OFFSET, MODERy_0_BIT(4));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_OTYPER_OFFSET, OTy_BIT(4));
-	SET_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(4));
-	SET_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(4));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(4));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(4));
-	WRITE_BITS(GPIO_BASE(GPIO_PORTC) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(4), AFRLy_0_BIT(4), 11);
-
-	SET_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_MODER_OFFSET, MODERy_1_BIT(5));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_MODER_OFFSET, MODERy_0_BIT(5));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_OTYPER_OFFSET, OTy_BIT(5));
-	SET_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(5));
-	SET_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(5));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(5));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(5));
-	WRITE_BITS(GPIO_BASE(GPIO_PORTC) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(5), AFRLy_0_BIT(5), 11);
-
-	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTG));
-
-	SET_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_MODER_OFFSET, MODERy_1_BIT(11));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_MODER_OFFSET, MODERy_0_BIT(11));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_OTYPER_OFFSET, OTy_BIT(11));
-	SET_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(11));
-	SET_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(11));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(11));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(11));
-	WRITE_BITS(GPIO_BASE(GPIO_PORTG) + GPIOx_AFRH_OFFSET, AFRHy_3_BIT(11), AFRHy_0_BIT(11), 11);
-
-	SET_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_MODER_OFFSET, MODERy_1_BIT(13));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_MODER_OFFSET, MODERy_0_BIT(13));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_OTYPER_OFFSET, OTy_BIT(13));
-	SET_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(13));
-	SET_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(13));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(13));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(13));
-	WRITE_BITS(GPIO_BASE(GPIO_PORTG) + GPIOx_AFRH_OFFSET, AFRHy_3_BIT(13), AFRHy_0_BIT(13), 11);
-
-	SET_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_MODER_OFFSET, MODERy_1_BIT(14));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_MODER_OFFSET, MODERy_0_BIT(14));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_OTYPER_OFFSET, OTy_BIT(14));
-	SET_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(14));
-	SET_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(14));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(14));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTG) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(14));
-	WRITE_BITS(GPIO_BASE(GPIO_PORTG) + GPIOx_AFRH_OFFSET, AFRHy_3_BIT(14), AFRHy_0_BIT(14), 11);
-
-	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, ETHMACRXEN);
-	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, ETHMACTXEN);
-	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, ETHMACEN);
-
-	SET_BIT(RCC_BASE + RCC_AHB1RSTR_OFFSET, ETHMACRST);
-	CLEAR_BIT(RCC_BASE + RCC_AHB1RSTR_OFFSET, ETHMACRST);
-
-	SET_BIT(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, DMABMR_SR);
-	while(READ_BIT(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, DMABMR_SR) != 0);
-	WRITE_BITS(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, CR_3_BIT, CR_0_BIT, 0b100);
-
-	uint32_t result;
-	result = ETH_WritePHYRegister(PHYAddress, 0, 0x8000);
-	if (result == 0)
-		printf("Fail: ETH_WritePHYRegister(PHYAddress, 0, 0x8000)\r\n");
-
-	for(uint32_t i=0;i<0x000000FFU;i++)
-		;
-	volatile uint16_t ReadPHYRegister = 0;
-	while(!ReadPHYRegister)
-		ReadPHYRegister = (ETH_ReadPHYRegister(PHYAddress, 1)&0x0004);	//PHY_BSR	PHY_Linked_Status
-	printf("Pass ETH_ReadPHYRegister(PHYAddress, 1)&0x0004\r\n");
-
-	result = ETH_WritePHYRegister(PHYAddress, 0, 0x1000);	//PHY_BCR	PHY_AutoNegotiation
-	if (result == 0)
-		printf("ETH_WritePHYRegister(PHYAddress, 0, 0x1000)\r\n");
-	ReadPHYRegister = 0;
-	while(!ReadPHYRegister)
-		ReadPHYRegister = (ETH_ReadPHYRegister(PHYAddress, 1)&0x0020);	//PHY_BSR	PHY_AutoNego_Complete
-	printf("Pass ETH_ReadPHYRegister(PHYAddress, 1)&0x0020\r\n");
-
-	uint32_t ETH_Mode;
-	uint32_t ETH_Speed;
-	result = ETH_ReadPHYRegister(PHYAddress, 0x0010);	//PHY_SR
-	if ((result & 0x0004) != 0){								//PHY_DUPLEX_STATUS
-		ETH_Mode = ((uint32_t)0x00000800);						//ETH_Mode_FullDuplex
-		printf("ETH_Mode_FullDuplex\r\n");
-	}
-	else{
-		ETH_Mode = ((uint32_t)0x00000000);						//ETH_Mode_HalfDuplex
-		printf("ETH_Mode_HalfDuplex\r\n");
-	}
-	if ((result & 0x0002) != 0){								//PHY_SPEED_STATUS
-		ETH_Speed  = ((uint32_t)0x00000000);					//ETH_Speed_10M
-		printf("ETH_Speed_10M\r\n");
-	}
-	else{
-		ETH_Speed  = ((uint32_t)0x00004000);					//ETH_Speed_100M
-		printf("ETH_Speed_100M\r\n");
-	}
-
-	//ETH_MACCR
-	if (ETH_Speed==0x00004000)
-		SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, FES);
-	else
-		CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, FES);
-	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, LM);
-	if (ETH_Mode==0x00000800)
-		SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, DM);
-	else
-		CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, DM);
-	SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, IPCO);
-	SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, RD);
-	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, APCS);
-
-	for(uint32_t i=0;i<0x00000001U;i++)
-		;
-
-	//ETH_MACFFR
-	SET_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, RA);
-	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, BFD);
-	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, PM);
-
-	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, PM);
-	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, HM);
-	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, HPF);
-
-	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, HU);
-	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, HPF);
-
-	for(uint32_t i=0;i<0x00000001U;i++)
-		;
-
-	//ETH_DMAOMR
-	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, DTCEFD);
-	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, RSF);
-	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, TSF);
-	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, FEF);
-	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, FUGF);
-	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, OSF);
-
-	//ETH_DMABMR
-	SET_BIT(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, AAB);
-	SET_BIT(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, FB);
-	WRITE_BITS(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, RDP_5_BIT, RDP_0_BIT, 0x20);
-	WRITE_BITS(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, PBL_5_BIT, PBL_0_BIT, 0x20);
-	WRITE_BITS(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, PM_1_BIT, PM_0_BIT, 0x1);
-	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, DA);
-
-	for(uint32_t i=0;i<0x00000001U;i++)
-		;
-
-	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAIER_OFFSET, NISE);
-	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAIER_OFFSET, RIE);
-	uint32_t ETH_MAC_ADDRESS = ETH_MAC_ADDRESS0;
-	/* initialize MAC address in ethernet MAC */
-	uint32_t MAC_addr_high_reg = ((uint32_t)Addr[5] << 8) | (uint32_t)Addr[4];
-	uint32_t MAC_addr_low_reg = ((uint32_t)Addr[3] << 24) | ((uint32_t)Addr[2] << 16) | ((uint32_t)Addr[1] << 8) | Addr[0];
-	WRITE_BITS(ETHERNET_MAC_BASE + ETH_MACAxHR_OFFSET + ETH_MAC_ADDRESS, MACAxH_15_BIT, MACAxH_0_BIT, MAC_addr_high_reg);
-	WRITE_BITS(ETHERNET_MAC_BASE + ETH_MACAxLR_OFFSET + ETH_MAC_ADDRESS, MACAxL_31_BIT, MACAxL_0_BIT, MAC_addr_low_reg);
-
-	/* Initialize Tx Rx Descriptors list: Chain Mode */
-	ETH_DMATxDescChainInit(DMATxDscrTab, &Tx_Buff[0][0], ETH_TXBUFNB);	// ETH_TXBUFNB 5
-	ETH_DMARxDescChainInit(DMARxDscrTab, &Rx_Buff[0][0], ETH_RXBUFNB);	// ETH_RXBUFNB 5
-
-	for(uint32_t i=0; i<ETH_TXBUFNB; i++)
-		(&DMATxDscrTab[i])->Status |= 0x00C00000;	// DMATxDesc_Checksum 0x00C00000
-
-	SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, TE);
-	for(uint32_t i=0;i<0x00000001U;i++)
-		;
-	SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, RE);
-	for(uint32_t i=0;i<0x00000001U;i++)
-		;
-	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, FTF);
-	for(uint32_t i=0;i<0x00000001U;i++)
-		;
-	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, ST);
-	for(uint32_t i=0;i<0x00000001U;i++)
-		;
-	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, DMAOMR_SR);
-	for(uint32_t i=0;i<0x00000001U;i++)
-		;
-
-}
-
-uint32_t ETH_WritePHYRegister(uint16_t PHYAddress, uint16_t PHYReg, uint16_t PHYValue){
-	WRITE_BITS(ETHERNET_MAC_BASE + ETH_MACMIIDR_OFFSET, MD_15_BIT, MD_0_BIT, PHYValue);
-	WRITE_BITS(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, PA_4_BIT, PA_0_BIT, PHYAddress);
-	WRITE_BITS(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, MR_4_BIT, MR_0_BIT, PHYReg);
-	SET_BIT(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, MW);
-	SET_BIT(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, MB);
-	volatile uint8_t read_ETH_MACMIIAR_MB = 1;
-	uint32_t TO_LIMIT = 0x0003FFFF;
-	uint32_t TO_COUNT = 0;
-
-	while(read_ETH_MACMIIAR_MB && (TO_COUNT<TO_LIMIT)){
-		read_ETH_MACMIIAR_MB = READ_BIT(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, MB);
-		TO_COUNT++;
-	}
-	if (TO_COUNT>=TO_LIMIT){
-		printf("Turn Over Write ETH_MACMIIAR_MB\r\n");
-		return 0;
-	}
-	else{
-		printf("Pass Write ETH_MACMIIAR_MB\r\n");
-		return 1;
-	}
-}
-
-uint32_t ETH_ReadPHYRegister(uint16_t PHYAddress, uint16_t PHYReg){
-	WRITE_BITS(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, PA_4_BIT, PA_0_BIT, PHYAddress);
-	WRITE_BITS(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, MR_4_BIT, MR_0_BIT, PHYReg);
-	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, MW);
-	SET_BIT(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, MB);
-	volatile uint8_t read_ETH_MACMIIAR_MB = 1;
-	uint32_t TO_LIMIT = 0x0003FFFF;
-	uint32_t TO_COUNT = 0;
-
-	while(read_ETH_MACMIIAR_MB && (TO_COUNT<TO_LIMIT)){
-		read_ETH_MACMIIAR_MB = READ_BIT(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, MB);
-		TO_COUNT++;
-	}
-	if (TO_COUNT>=TO_LIMIT){
-		printf("Turn Read Over ETH_MACMIIAR_MB\r\n");
-		return 0;
-	}
-	else{
-		printf("Pass Read ETH_MACMIIAR_MB\r\n");
-		uint16_t ret = REG(ETHERNET_MAC_BASE + ETH_MACMIIDR_OFFSET);
-		return ret;
-	}
-}
-
-void ETH_DMATxDescChainInit(ETH_DMADESCTypeDef *DMATxDescTab, uint8_t* TxBuff, uint32_t TxBuffCount){
-  uint32_t i = 0;
-  ETH_DMADESCTypeDef *DMATxDesc;
-  DMATxDescToSet = DMATxDescTab;
-  for(i=0; i < TxBuffCount; i++){
-	DMATxDesc = DMATxDescTab + i;
-	DMATxDesc->Status = 0x00100000 ;	// ETH_DMATxDesc_TCH 0x00100000;
-	DMATxDesc->Buffer1Addr = (uint32_t)(&TxBuff[i*ETH_TX_BUF_SIZE]);	// ETH_TX_BUF_SIZE ETH_MAX_PACKET_SIZE 1524U
-	if(i < (TxBuffCount-1))
-		DMATxDesc->Buffer2NextDescAddr = (uint32_t)(DMATxDescTab+i+1);
-	else
-		DMATxDesc->Buffer2NextDescAddr = (uint32_t) DMATxDescTab;
-  }
-  REG(ETHERNET_MAC_BASE + ETH_DMATDLAR_OFFSET) = (uint32_t) DMATxDescTab;
-  //ETH->DMATDLAR = (uint32_t) DMATxDescTab;
-}
-
-void ETH_DMARxDescChainInit(ETH_DMADESCTypeDef *DMARxDescTab, uint8_t *RxBuff, uint32_t RxBuffCount){
-	uint32_t i = 0;
-	ETH_DMADESCTypeDef *DMARxDesc;
-	DMARxDescToGet = DMARxDescTab;
-	for(i=0; i < RxBuffCount; i++){
-		DMARxDesc = DMARxDescTab+i;
-		DMARxDesc->Status = 0x80000000;		// ETH_DMARxDesc_OWN
-		DMARxDesc->ControlBufferSize = 0x00004000 | (uint32_t)ETH_RX_BUF_SIZE;		// ETH_DMARxDesc_RCH 0x00004000	ETH_RX_BUF_SIZE ETH_MAX_PACKET_SIZE   1524
-		DMARxDesc->Buffer1Addr = (uint32_t)(&RxBuff[i*ETH_RX_BUF_SIZE]);	// ETH_RX_BUF_SIZE 1524
-		if(i < (RxBuffCount-1))
-			DMARxDesc->Buffer2NextDescAddr = (uint32_t)(DMARxDescTab+i+1);
-		else
-			DMARxDesc->Buffer2NextDescAddr = (uint32_t)(DMARxDescTab);
-	}
-	REG(ETHERNET_MAC_BASE + ETH_DMARDLAR_OFFSET) = (uint32_t) DMARxDescTab;
-	DMA_RX_FRAME_infos = &RX_Frame_Descriptor;
-}
-
-void DP83848Send(uint8_t* data, uint16_t length){
-	for(uint16_t i;i<length;i++){
-		*(((uint8_t *)DMATxDescToSet->Buffer1Addr)+i) = *(data+i);
-	}
-
-	volatile ETH_DMADESCTypeDef *DMATxDesc;
-	if (DMATxDescToSet->Status & 0x80000000)	//ETH_DMATxDesc_OWN
-		printf("Error: ETHERNET OWN DMA\r\n");
-
-	uint32_t buf_count = 0;
-	uint32_t size = 0;
-
-	DMATxDesc = DMATxDescToSet;
-	if (length > ETH_TX_BUF_SIZE){
-		buf_count = length/ETH_TX_BUF_SIZE;
-		if (length%ETH_TX_BUF_SIZE)
-			buf_count++;
-	}
-	else
-		buf_count = 1;
-	if (buf_count == 1){
-		/*set LAST and FIRST segment */
-		DMATxDesc->Status |=(0x10000000 | 0x20000000);	// ETH_DMATxDesc_FS ETH_DMATxDesc_LS
-		/* Set frame size */
-		DMATxDesc->ControlBufferSize = (length & 0x00001FFF);	// ETH_DMATxDesc_TBS1
-		/* Set Own bit of the Tx descriptor Status: gives the buffer back to ETHERNET DMA */
-		DMATxDesc->Status |= 0x80000000;	// ETH_DMATxDesc_OWN
-		DMATxDesc= (ETH_DMADESCTypeDef *)(DMATxDesc->Buffer2NextDescAddr);
-	}
-	else{
-		for (uint32_t i=0; i< buf_count; i++){
-			/* Clear FIRST and LAST segment bits */
-			DMATxDesc->Status &= ~(0x10000000 | 0x20000000);	// ETH_DMATxDesc_FS ETH_DMATxDesc_LS
-			if (i == 0) {
-				/* Setting the first segment bit */
-				DMATxDesc->Status |= 0x10000000;	// ETH_DMATxDesc_FS
-			}
-			/* Program size */
-			DMATxDesc->ControlBufferSize = (ETH_TX_BUF_SIZE & 0x00001FFF);	// ETH_DMATxDesc_TBS1
-			if (i == (buf_count-1)){
-				/* Setting the last segment bit */
-				DMATxDesc->Status |= 0x20000000;	// ETH_DMATxDesc_LS
-				size = length - (buf_count-1)*ETH_TX_BUF_SIZE;
-				DMATxDesc->ControlBufferSize = (size & 0x00001FFF);	// ETH_DMATxDesc_TBS1
-			}
-			/* Set Own bit of the Tx descriptor Status: gives the buffer back to ETHERNET DMA */
-			DMATxDesc->Status |= 0x80000000;	// ETH_DMATxDesc_OWN
-			DMATxDesc = (ETH_DMADESCTypeDef *)(DMATxDesc->Buffer2NextDescAddr);
-		}
-	}
-	DMATxDescToSet = DMATxDesc;
-	/* When Tx Buffer unavailable flag is set: clear it and resume transmission */
-	if (READ_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, TBUS) != 0){
-		/* Clear TBUS ETHERNET DMA flag */
-		SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, TBUS);
-		/* Resume DMA transmission*/
-		REG(ETHERNET_MAC_BASE + ETH_DMATPDR_OFFSET) = 0;
-	}
-	/* Return SUCCESS */
-	return 1;
-}
-
-void ETH_IRQHandler(void){
-	/* Handles all the received frames */
-	/* check if any packet received */
-	  while(ETH_CheckFrameReceived()){
-	    /* process received ethernet packet */
-	    Pkt_Handle();
-	}
-	/* Clear the Eth DMA Rx IT pending bits */
-	SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, RS);
-	SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, NIS);
-}
-
-uint32_t ETH_CheckFrameReceived(void){
-  /* check if last segment */
-  if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&			// ETH_DMARxDesc_OWN	RESET
-  	((DMARxDescToGet->Status & 0x00000100) != (uint32_t)0)){			// ETH_DMARxDesc_LS		RESET
-    DMA_RX_FRAME_infos->Seg_Count++;
-    if (DMA_RX_FRAME_infos->Seg_Count == 1){
-      DMA_RX_FRAME_infos->FS_Rx_Desc = DMARxDescToGet;
-    }
-    DMA_RX_FRAME_infos->LS_Rx_Desc = DMARxDescToGet;
-    return 1;
-  }
-  /* check if first segment */
-  else if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&			// ETH_DMARxDesc_OWN RESET
-          ((DMARxDescToGet->Status & 0x00000200) != (uint32_t)0)&&			// ETH_DMARxDesc_FS  RESET
-            ((DMARxDescToGet->Status & 0x00000100) == (uint32_t)0)){		// ETH_DMARxDesc_LS	 RESET
-    DMA_RX_FRAME_infos->FS_Rx_Desc = DMARxDescToGet;
-    DMA_RX_FRAME_infos->LS_Rx_Desc = NULL;
-    DMA_RX_FRAME_infos->Seg_Count = 1;
-    DMARxDescToGet = (ETH_DMADESCTypeDef*) (DMARxDescToGet->Buffer2NextDescAddr);
-  }
-  /* check if intermediate segment */
-  else if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&					// ETH_DMARxDesc_OWN RESET
-          ((DMARxDescToGet->Status & 0x00000200) == (uint32_t)0)&&					// ETH_DMARxDesc_FS  RESET
-            ((DMARxDescToGet->Status & 0x00000100) == (uint32_t)0)){			// ETH_DMARxDesc_LS 	 RESET
-    (DMA_RX_FRAME_infos->Seg_Count) ++;
-    DMARxDescToGet = (ETH_DMADESCTypeDef*) (DMARxDescToGet->Buffer2NextDescAddr);
-  }
-  return 0;
-}
-
 void init_dac(void){
 	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTA));
 	SET_BIT(RCC_BASE + RCC_APB1ENR_OFFSET, DACEN);
@@ -1017,6 +526,10 @@ void init_dac(void){
 	DAC_SetChannel1Data(0);
 }
 
+void DAC_SetChannel1Data(uint8_t vol){
+	WRITE_BITS( DAC_BASE + DAC_DHR8R1_OFFSET, DAC_DHR8R1_DACC1DHR_7_BIT, DAC_DHR8R1_DACC1DHR_0_BIT, vol);
+}
+
 void init_timer4(void){
 	SET_BIT(RCC_BASE + RCC_APB1ENR_OFFSET, TIM4EN);
 	WRITE_BITS(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_CKD_1_BIT, TIMx_CKD_0_BIT, 0b00);
@@ -1029,10 +542,6 @@ void init_timer4(void){
 	WRITE_BITS(TIM4_BASE + TIMx_PSC_OFFSET, TIMx_PSC_15_BIT, TIMx_PSC_0_BIT, 3);
 	WRITE_BITS(TIM4_BASE + TIMx_ARR_OFFSET, TIMx_ARR_15_BIT, TIMx_ARR_0_BIT, 952);
 	SET_BIT(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_CEN);
-}
-
-void DAC_SetChannel1Data(uint8_t vol){
-	WRITE_BITS( DAC_BASE + DAC_DHR8R1_OFFSET, DAC_DHR8R1_DACC1DHR_7_BIT, DAC_DHR8R1_DACC1DHR_0_BIT, vol);
 }
 
 void init_usart2(void){
@@ -1241,6 +750,594 @@ void usart1_handler(void){
 			receive_count = 0;
 		}
 	}
+}
+
+void init_eth(uint16_t PHYAddress, uint8_t *Addr){
+	SET_BIT(NVIC_ISER_BASE + NVIC_ISERn_OFFSET(1), 29); //IRQ61 => (m+(32*n)) | m=29, n=1
+
+	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTA));
+	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTB));
+	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTC));
+
+	SET_BIT(RCC_BASE + RCC_APB2ENR_OFFSET, SYSCFGEN_BIT);
+	SET_BIT(SYSCFG_BASE + SYSCFG_PMC_OFFSET, MII_RMII_SEL_BIT);
+
+	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_1_BIT(1));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_0_BIT(1));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OTYPER_OFFSET, OTy_BIT(1));
+	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(1));
+	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(1));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(1));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(1));
+	WRITE_BITS(GPIO_BASE(GPIO_PORTA) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(1), AFRLy_0_BIT(1), 11);
+
+	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_1_BIT(2));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_0_BIT(2));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OTYPER_OFFSET, OTy_BIT(2));
+	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(2));
+	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(2));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(2));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(2));
+	WRITE_BITS(GPIO_BASE(GPIO_PORTA) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(2), AFRLy_0_BIT(2), 11);
+
+	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_1_BIT(7));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_0_BIT(7));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OTYPER_OFFSET, OTy_BIT(7));
+	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(7));
+	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(7));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(7));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(7));
+	WRITE_BITS(GPIO_BASE(GPIO_PORTA) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(7), AFRLy_0_BIT(7), 11);
+
+	SET_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_MODER_OFFSET, MODERy_1_BIT(11));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_MODER_OFFSET, MODERy_0_BIT(11));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_OTYPER_OFFSET, OTy_BIT(11));
+	SET_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(11));
+	SET_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(11));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(11));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(11));
+	WRITE_BITS(GPIO_BASE(GPIO_PORTB) + GPIOx_AFRH_OFFSET, AFRHy_3_BIT(11), AFRHy_0_BIT(11), 11);
+
+	SET_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_MODER_OFFSET, MODERy_1_BIT(12));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_MODER_OFFSET, MODERy_0_BIT(12));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_OTYPER_OFFSET, OTy_BIT(12));
+	SET_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(12));
+	SET_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(12));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(12));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(12));
+	WRITE_BITS(GPIO_BASE(GPIO_PORTB) + GPIOx_AFRH_OFFSET, AFRHy_3_BIT(12), AFRHy_0_BIT(12), 11);
+
+	SET_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_MODER_OFFSET, MODERy_1_BIT(13));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_MODER_OFFSET, MODERy_0_BIT(13));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_OTYPER_OFFSET, OTy_BIT(13));
+	SET_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(13));
+	SET_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(13));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(13));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(13));
+	WRITE_BITS(GPIO_BASE(GPIO_PORTB) + GPIOx_AFRH_OFFSET, AFRHy_3_BIT(13), AFRHy_0_BIT(13), 11);
+
+	SET_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_MODER_OFFSET, MODERy_1_BIT(1));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_MODER_OFFSET, MODERy_0_BIT(1));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_OTYPER_OFFSET, OTy_BIT(1));
+	SET_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(1));
+	SET_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(1));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(1));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(1));
+	WRITE_BITS(GPIO_BASE(GPIO_PORTC) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(1), AFRLy_0_BIT(1), 11);
+
+	SET_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_MODER_OFFSET, MODERy_1_BIT(4));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_MODER_OFFSET, MODERy_0_BIT(4));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_OTYPER_OFFSET, OTy_BIT(4));
+	SET_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(4));
+	SET_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(4));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(4));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(4));
+	WRITE_BITS(GPIO_BASE(GPIO_PORTC) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(4), AFRLy_0_BIT(4), 11);
+
+	SET_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_MODER_OFFSET, MODERy_1_BIT(5));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_MODER_OFFSET, MODERy_0_BIT(5));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_OTYPER_OFFSET, OTy_BIT(5));
+	SET_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(5));
+	SET_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(5));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(5));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(5));
+	WRITE_BITS(GPIO_BASE(GPIO_PORTC) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(5), AFRLy_0_BIT(5), 11);
+
+	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, ETHMACRXEN);
+	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, ETHMACTXEN);
+	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, ETHMACEN);
+
+	SET_BIT(RCC_BASE + RCC_AHB1RSTR_OFFSET, ETHMACRST);
+	CLEAR_BIT(RCC_BASE + RCC_AHB1RSTR_OFFSET, ETHMACRST);
+
+	SET_BIT(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, DMABMR_SR);
+	while(READ_BIT(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, DMABMR_SR) != 0);
+
+	WRITE_BITS(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, CR_2_BIT, CR_0_BIT, 0b100);
+	uint32_t result;
+	volatile uint16_t ReadPHYRegister = 0;
+	uint16_t tmp_ReadPHYRegister = 0;
+	printf("eth gpio done\r\n");
+
+	while(!ReadPHYRegister){
+		result = ETH_WritePHYRegister(PHYAddress, 0, 0x8000);	// PHY_BCR PHY_Reset
+		if (result == 0)
+			printf("Fail: ETH_WritePHYRegister(PHYAddress, 0, 0x8000)\r\n");
+
+		for(uint32_t i=0;i<0x000FFFFF;i++)	// PHY_RESET_DELAY
+			;
+
+		tmp_ReadPHYRegister = ETH_ReadPHYRegister(PHYAddress, 1);	// PHY_BSR
+		ReadPHYRegister = (tmp_ReadPHYRegister&0x0004);	//PHY_BSR	PHY_Linked_Status
+	}
+	printf("Pass ETH_ReadPHYRegister(PHYAddress, 1)&0x0004, tmp_ReadPHYRegister: 0x%X\r\n", tmp_ReadPHYRegister);
+
+	result = ETH_WritePHYRegister(PHYAddress, 0, 0x1000);	//PHY_BCR	PHY_AutoNegotiation
+	if (result == 0)
+		printf("Fail ETH_WritePHYRegister(PHYAddress, 0, 0x1000)\r\n");
+	ReadPHYRegister = 0;
+	while(!ReadPHYRegister){
+		tmp_ReadPHYRegister = ETH_ReadPHYRegister(PHYAddress, 1);
+		ReadPHYRegister = (tmp_ReadPHYRegister&0x0020);	//PHY_BSR	PHY_AutoNego_Complete
+	}
+	printf("Pass ETH_ReadPHYRegister(PHYAddress, 1)&0x0020, tmp_ReadPHYRegister: 0x%X\r\n", tmp_ReadPHYRegister);
+
+	uint32_t ETH_Mode;
+	uint32_t ETH_Speed;
+	ReadPHYRegister = ETH_ReadPHYRegister(PHYAddress, 0x0010);	//PHY_SR
+	if ((ReadPHYRegister & 0x0004) != 0){								//PHY_DUPLEX_STATUS
+		ETH_Mode = ((uint32_t)0x00000800);						//ETH_Mode_FullDuplex
+		printf("ETH_Mode_FullDuplex\r\n");
+	}
+	else{
+		ETH_Mode = ((uint32_t)0x00000000);						//ETH_Mode_HalfDuplex
+		printf("ETH_Mode_HalfDuplex\r\n");
+	}
+	if ((ReadPHYRegister & 0x0002) != 0){								//PHY_SPEED_STATUS
+		ETH_Speed  = ((uint32_t)0x00000000);					//ETH_Speed_10M
+		printf("ETH_Speed_10M\r\n");
+	}
+	else{
+		ETH_Speed  = ((uint32_t)0x00004000);					//ETH_Speed_100M
+		printf("ETH_Speed_100M\r\n");
+	}
+
+	//ETH_MACCR
+	if (ETH_Speed==0x00004000)
+		SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, FES);
+	else
+		CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, FES);
+	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, LM);
+	if (ETH_Mode==0x00000800)
+		SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, DM);
+	else
+		CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, DM);
+	SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, IPCO);
+	SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, RD);
+	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, APCS);
+
+	for(uint32_t i=0;i<0x00000001U;i++)
+		;
+
+	//ETH_MACFFR
+	SET_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, RA);
+	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, BFD);
+	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, PM);
+
+	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, PM);
+	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, HM);
+	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, HPF);
+
+	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, HU);
+	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, HPF);
+
+	for(uint32_t i=0;i<0x00000001U;i++)
+		;
+
+	//ETH_DMAOMR
+	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, DTCEFD);
+	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, RSF);
+	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, TSF);
+	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, FEF);
+	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, FUGF);
+	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, OSF);
+
+	//ETH_DMABMR
+	SET_BIT(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, AAB);
+	SET_BIT(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, FB);
+	WRITE_BITS(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, RDP_5_BIT, RDP_0_BIT, 0x20);
+	WRITE_BITS(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, PBL_5_BIT, PBL_0_BIT, 0x20);
+	WRITE_BITS(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, PM_1_BIT, PM_0_BIT, 0x1);
+	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, DA);
+
+	for(uint32_t i=0;i<0x00000001U;i++)
+		;
+
+	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAIER_OFFSET, NISE);
+	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAIER_OFFSET, RIE);
+	uint32_t ETH_MAC_ADDRESS = ETH_MAC_ADDRESS0;
+	/* initialize MAC address in ethernet MAC */
+	uint32_t MAC_addr_high_reg = ((uint32_t)Addr[5] << 8) | (uint32_t)Addr[4];
+	uint32_t MAC_addr_low_reg = ((uint32_t)Addr[3] << 24) | ((uint32_t)Addr[2] << 16) | ((uint32_t)Addr[1] << 8) | Addr[0];
+	WRITE_BITS(ETHERNET_MAC_BASE + ETH_MACAxHR_OFFSET + ETH_MAC_ADDRESS, MACAxH_15_BIT, MACAxH_0_BIT, MAC_addr_high_reg);
+	WRITE_BITS(ETHERNET_MAC_BASE + ETH_MACAxLR_OFFSET + ETH_MAC_ADDRESS, MACAxL_31_BIT, MACAxL_0_BIT, MAC_addr_low_reg);
+
+	/* Initialize Tx Rx Descriptors list: Chain Mode */
+	ETH_DMATxDescChainInit(DMATxDscrTab, &Tx_Buff[0][0], ETH_TXBUFNB);	// ETH_TXBUFNB 5
+	ETH_DMARxDescChainInit(DMARxDscrTab, &Rx_Buff[0][0], ETH_RXBUFNB);	// ETH_RXBUFNB 5
+
+	for(uint32_t i=0; i<ETH_TXBUFNB; i++)
+		(&DMATxDscrTab[i])->Status |= 0x00C00000;	// DMATxDesc_Checksum 0x00C00000
+
+	SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, TE);
+	for(uint32_t i=0;i<0x00000001U;i++)
+		;
+	SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, RE);
+	for(uint32_t i=0;i<0x00000001U;i++)
+		;
+	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, FTF);
+	for(uint32_t i=0;i<0x00000001U;i++)
+		;
+	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, ST);
+	for(uint32_t i=0;i<0x00000001U;i++)
+		;
+	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, DMAOMR_SR);
+	for(uint32_t i=0;i<0x00000001U;i++)
+		;
+
+}
+
+uint32_t ETH_WritePHYRegister(uint16_t PHYAddress, uint16_t PHYReg, uint16_t PHYValue){
+	WRITE_BITS(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, PA_4_BIT, PA_0_BIT, PHYAddress);
+	WRITE_BITS(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, MR_4_BIT, MR_0_BIT, PHYReg);
+	SET_BIT(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, MW);
+	SET_BIT(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, MB);
+	WRITE_BITS(ETHERNET_MAC_BASE + ETH_MACMIIDR_OFFSET, MD_15_BIT, MD_0_BIT, PHYValue);
+	volatile uint8_t read_ETH_MACMIIAR_MB = 1;
+	uint32_t TO_LIMIT = 0x0003FFFF;
+	uint32_t TO_COUNT = 0;
+	while(read_ETH_MACMIIAR_MB && (TO_COUNT<TO_LIMIT)){
+		read_ETH_MACMIIAR_MB = READ_BIT(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, MB);
+		TO_COUNT++;
+	}
+	if (TO_COUNT>=TO_LIMIT){
+		//printf("Turn Over Write ETH_MACMIIAR_MB\r\n");
+		return 0;
+	}
+	else{
+		//printf("Pass Write ETH_MACMIIAR_MB\r\n");
+		return 1;
+	}
+}
+
+uint32_t ETH_ReadPHYRegister(uint16_t PHYAddress, uint16_t PHYReg){
+	WRITE_BITS(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, PA_4_BIT, PA_0_BIT, PHYAddress);
+	WRITE_BITS(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, MR_4_BIT, MR_0_BIT, PHYReg);
+	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, MW);
+	SET_BIT(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, MB);
+	volatile uint8_t read_ETH_MACMIIAR_MB = 1;
+	uint32_t TO_LIMIT = 0x0003FFFF;
+	uint32_t TO_COUNT = 0;
+
+	while(read_ETH_MACMIIAR_MB && (TO_COUNT<TO_LIMIT)){
+		read_ETH_MACMIIAR_MB = READ_BIT(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, MB);
+		TO_COUNT++;
+	}
+	if (TO_COUNT>=TO_LIMIT){
+		//printf("Turn Read Over ETH_MACMIIAR_MB\r\n");
+		return 0;
+	}
+	else{
+		volatile uint16_t ret = REG(ETHERNET_MAC_BASE + ETH_MACMIIDR_OFFSET);
+		//printf("Pass Read ETH_MACMIIAR_MB ret: 0x%X\r\n", ret);
+		return ret;
+	}
+}
+
+void ETH_DMATxDescChainInit(ETH_DMADESCTypeDef *DMATxDescTab, uint8_t* TxBuff, uint32_t TxBuffCount){
+  uint32_t i = 0;
+  ETH_DMADESCTypeDef *DMATxDesc;
+  DMATxDescToSet = DMATxDescTab;
+  for(i=0; i < TxBuffCount; i++){
+	DMATxDesc = DMATxDescTab + i;
+	DMATxDesc->Status = 0x00100000 ;	// ETH_DMATxDesc_TCH 0x00100000;
+	DMATxDesc->Buffer1Addr = (uint32_t)(&TxBuff[i*ETH_TX_BUF_SIZE]);	// ETH_TX_BUF_SIZE ETH_MAX_PACKET_SIZE 1524U
+	if(i < (TxBuffCount-1))
+		DMATxDesc->Buffer2NextDescAddr = (uint32_t)(DMATxDescTab+i+1);
+	else
+		DMATxDesc->Buffer2NextDescAddr = (uint32_t) DMATxDescTab;
+  }
+  REG(ETHERNET_MAC_BASE + ETH_DMATDLAR_OFFSET) = (uint32_t) DMATxDescTab;
+  //ETH->DMATDLAR = (uint32_t) DMATxDescTab;
+}
+
+void ETH_DMARxDescChainInit(ETH_DMADESCTypeDef *DMARxDescTab, uint8_t *RxBuff, uint32_t RxBuffCount){
+	uint32_t i = 0;
+	ETH_DMADESCTypeDef *DMARxDesc;
+	DMARxDescToGet = DMARxDescTab;
+	for(i=0; i < RxBuffCount; i++){
+		DMARxDesc = DMARxDescTab+i;
+		DMARxDesc->Status = 0x80000000;		// ETH_DMARxDesc_OWN
+		DMARxDesc->ControlBufferSize = 0x00004000 | (uint32_t)ETH_RX_BUF_SIZE;		// ETH_DMARxDesc_RCH 0x00004000	ETH_RX_BUF_SIZE ETH_MAX_PACKET_SIZE   1524
+		DMARxDesc->Buffer1Addr = (uint32_t)(&RxBuff[i*ETH_RX_BUF_SIZE]);	// ETH_RX_BUF_SIZE 1524
+		if(i < (RxBuffCount-1))
+			DMARxDesc->Buffer2NextDescAddr = (uint32_t)(DMARxDescTab+i+1);
+		else
+			DMARxDesc->Buffer2NextDescAddr = (uint32_t)(DMARxDescTab);
+	}
+	REG(ETHERNET_MAC_BASE + ETH_DMARDLAR_OFFSET) = (uint32_t) DMARxDescTab;
+	DMA_RX_FRAME_infos = &RX_Frame_Descriptor;
+}
+
+void DP83848Send(uint8_t* data, uint16_t length){
+	for(uint16_t i;i<length;i++){
+		*(((uint8_t *)DMATxDescToSet->Buffer1Addr)+i) = *(data+i);
+	}
+
+	volatile ETH_DMADESCTypeDef *DMATxDesc;
+	if (DMATxDescToSet->Status & 0x80000000)	//ETH_DMATxDesc_OWN
+		printf("Error: ETHERNET OWN DMA\r\n");
+
+	uint32_t buf_count = 0;
+	uint32_t size = 0;
+
+	DMATxDesc = DMATxDescToSet;
+	if (length > ETH_TX_BUF_SIZE){
+		buf_count = length/ETH_TX_BUF_SIZE;
+		if (length%ETH_TX_BUF_SIZE)
+			buf_count++;
+	}
+	else
+		buf_count = 1;
+	if (buf_count == 1){
+		/*set LAST and FIRST segment */
+		DMATxDesc->Status |=(0x10000000 | 0x20000000);	// ETH_DMATxDesc_FS ETH_DMATxDesc_LS
+		/* Set frame size */
+		DMATxDesc->ControlBufferSize = (length & 0x00001FFF);	// ETH_DMATxDesc_TBS1
+		/* Set Own bit of the Tx descriptor Status: gives the buffer back to ETHERNET DMA */
+		DMATxDesc->Status |= 0x80000000;	// ETH_DMATxDesc_OWN
+		DMATxDesc= (ETH_DMADESCTypeDef *)(DMATxDesc->Buffer2NextDescAddr);
+	}
+	else{
+		for (uint32_t i=0; i< buf_count; i++){
+			/* Clear FIRST and LAST segment bits */
+			DMATxDesc->Status &= ~(0x10000000 | 0x20000000);	// ETH_DMATxDesc_FS ETH_DMATxDesc_LS
+			if (i == 0) {
+				/* Setting the first segment bit */
+				DMATxDesc->Status |= 0x10000000;	// ETH_DMATxDesc_FS
+			}
+			/* Program size */
+			DMATxDesc->ControlBufferSize = (ETH_TX_BUF_SIZE & 0x00001FFF);	// ETH_DMATxDesc_TBS1
+			if (i == (buf_count-1)){
+				/* Setting the last segment bit */
+				DMATxDesc->Status |= 0x20000000;	// ETH_DMATxDesc_LS
+				size = length - (buf_count-1)*ETH_TX_BUF_SIZE;
+				DMATxDesc->ControlBufferSize = (size & 0x00001FFF);	// ETH_DMATxDesc_TBS1
+			}
+			/* Set Own bit of the Tx descriptor Status: gives the buffer back to ETHERNET DMA */
+			DMATxDesc->Status |= 0x80000000;	// ETH_DMATxDesc_OWN
+			DMATxDesc = (ETH_DMADESCTypeDef *)(DMATxDesc->Buffer2NextDescAddr);
+		}
+	}
+	DMATxDescToSet = DMATxDesc;
+	/* When Tx Buffer unavailable flag is set: clear it and resume transmission */
+	if (READ_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, TBUS) != 0){
+		/* Clear TBUS ETHERNET DMA flag */
+		SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, TBUS);
+		/* Resume DMA transmission*/
+		REG(ETHERNET_MAC_BASE + ETH_DMATPDR_OFFSET) = 0;
+	}
+	/* Return SUCCESS */
+	return 1;
+}
+
+void eth_handler(void){
+	/* Handles all the received frames */
+	/* check if any packet received */
+	  while(ETH_CheckFrameReceived()){
+	    /* process received ethernet packet */
+	    Pkt_Handle();
+	}
+	/* Clear the Eth DMA Rx IT pending bits */
+	SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, RS);
+	SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, NIS);
+}
+
+uint32_t ETH_CheckFrameReceived(void){
+  /* check if last segment */
+  if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&			// ETH_DMARxDesc_OWN	RESET
+  	((DMARxDescToGet->Status & 0x00000100) != (uint32_t)0)){			// ETH_DMARxDesc_LS		RESET
+    DMA_RX_FRAME_infos->Seg_Count++;
+    if (DMA_RX_FRAME_infos->Seg_Count == 1){
+      DMA_RX_FRAME_infos->FS_Rx_Desc = DMARxDescToGet;
+    }
+    DMA_RX_FRAME_infos->LS_Rx_Desc = DMARxDescToGet;
+    return 1;
+  }
+  /* check if first segment */
+  else if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&			// ETH_DMARxDesc_OWN RESET
+          ((DMARxDescToGet->Status & 0x00000200) != (uint32_t)0)&&			// ETH_DMARxDesc_FS  RESET
+            ((DMARxDescToGet->Status & 0x00000100) == (uint32_t)0)){		// ETH_DMARxDesc_LS	 RESET
+    DMA_RX_FRAME_infos->FS_Rx_Desc = DMARxDescToGet;
+    DMA_RX_FRAME_infos->LS_Rx_Desc = NULL;
+    DMA_RX_FRAME_infos->Seg_Count = 1;
+    DMARxDescToGet = (ETH_DMADESCTypeDef*) (DMARxDescToGet->Buffer2NextDescAddr);
+  }
+  /* check if intermediate segment */
+  else if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&					// ETH_DMARxDesc_OWN RESET
+          ((DMARxDescToGet->Status & 0x00000200) == (uint32_t)0)&&					// ETH_DMARxDesc_FS  RESET
+            ((DMARxDescToGet->Status & 0x00000100) == (uint32_t)0)){			// ETH_DMARxDesc_LS 	 RESET
+    (DMA_RX_FRAME_infos->Seg_Count) ++;
+    DMARxDescToGet = (ETH_DMADESCTypeDef*) (DMARxDescToGet->Buffer2NextDescAddr);
+  }
+  return 0;
+}
+
+FrameTypeDef ETH_Get_Received_Frame(void){
+  uint32_t framelength = 0;
+  FrameTypeDef frame = {0,0,0};
+
+  /* Get the Frame Length of the received packet: substruct 4 bytes of the CRC */
+  framelength = ((DMARxDescToGet->Status & 0x3FFF0000) >> 16) - 4;	// ETH_DMARxDesc_FL ETH_DMARxDesc_FrameLengthShift
+  frame.length = framelength;
+
+  /* Get the address of the first frame descriptor and the buffer start address */
+  frame.descriptor = DMA_RX_FRAME_infos->FS_Rx_Desc;
+  frame.buffer =(DMA_RX_FRAME_infos->FS_Rx_Desc)->Buffer1Addr;
+
+  /* Update the ETHERNET DMA global Rx descriptor with next Rx descriptor */
+  /* Chained Mode */
+  /* Selects the next DMA Rx descriptor list for next buffer to read */
+  DMARxDescToGet = (ETH_DMADESCTypeDef*) (DMARxDescToGet->Buffer2NextDescAddr);
+
+  /* Return Frame */
+  return (frame);
+}
+
+void Pkt_Handle(void) {
+	volatile ETH_DMADESCTypeDef *DMARxNextDesc;
+    FrameTypeDef frame;
+    /* get received frame */
+    frame = ETH_Get_Received_Frame();
+    /* Obtain the size of the packet and put it into the "len" variable. */
+    uint32_t receiveLen = frame.length;
+    uint8_t *receiveBuffer = (uint8_t*)frame.buffer;
+    printf("0011%d0022\r\n", receiveLen);
+    if(receiveBuffer[41] == 201){
+        for (uint32_t i = 0; i < receiveLen; i++) {
+            printf("%c", receiveBuffer[i]);
+        }
+		printf("\r\n");
+    }
+    /* Check if frame with multiple DMA buffer segments */
+    if (DMA_RX_FRAME_infos->Seg_Count > 1) {
+        DMARxNextDesc = DMA_RX_FRAME_infos->FS_Rx_Desc;
+    }
+	else {
+        DMARxNextDesc = frame.descriptor;
+    }
+    /* Set Own bit in Rx descriptors: gives the buffers back to DMA */
+    for (uint32_t i = 0; i < DMA_RX_FRAME_infos->Seg_Count; i++) {
+        DMARxNextDesc->Status = 0x80000000;		//	ETH_DMARxDesc_OWN
+        DMARxNextDesc = (ETH_DMADESCTypeDef *)(DMARxNextDesc->Buffer2NextDescAddr);
+    }
+    /* Clear Segment_Count */
+    DMA_RX_FRAME_infos->Seg_Count = 0;
+    /* When Rx Buffer unavailable flag is set: clear it and resume reception */
+	if (READ_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, RBUS) != (uint32_t)0 ) {
+        /* Clear RBUS ETHERNET DMA flag */
+		SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, RBUS);
+        /* Resume DMA reception */
+        REG(ETHERNET_MAC_BASE + ETH_DMATPDR_OFFSET) = 0;
+    }
+}
+
+void task1(){
+	uint32_t count = 0;
+	while(1){
+		if ((READ_BIT(USART1_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART1_BASE + USART_SR_OFFSET, ORE_BIT))){
+			char rec_cmd = (char)REG(USART1_BASE + USART_DR_OFFSET);
+			printf("%c\r\n", rec_cmd);
+			if (rec_cmd == 'a'){
+				count++;
+				for(uint32_t i=0;i<16;i++){
+					*(((uint32_t*)0x10000000)+i) = 0;
+					*(((uint32_t*)0x10000100)+i) = 0;
+					*(((uint32_t*)0x10000200)+i) = 0;
+				}
+				List_FreeBlock();
+				Distributed_Data_t* s = Distributed_Set_Traget_Data(0x10000000, 16);
+				Distributed_Add_Traget_Data(s, 0x10000100, 8);
+				Distributed_Add_Traget_Data(s, 0x10000200, 13);
+
+				Distributed_TaskCreate(Distributed_task, s, 1000);
+				List_FreeBlock();
+			}
+			else if (rec_cmd == 'b'){
+				vTaskDelete(TaskHandle_2);
+				printf("kill Distributed_task\r\n");
+				SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BRy_BIT(LED_BLUE));
+			}
+		}
+	}
+}
+
+void Distributed_task(void *S){
+	Distributed_TaskHandle_List_t *s = Distributed_Start(S);
+	Distributed_Data_t* array1 = Distributed_Get_Traget_Data(s);
+	Distributed_Data_t* array2 = Distributed_Get_Traget_Data(s);
+	Distributed_Data_t* array3 = Distributed_Get_Traget_Data(s);
+
+	for(uint32_t i=0;i<array1->Data_size;i++){
+		//*(array1->Data_addr + i) = *(array1->Data_addr + i)+1;
+		*(array1->Data_addr + i) = i;
+	}
+	for(uint32_t i=0;i<array2->Data_size;i++){
+		//*(array2->Data_addr + i) = *(array2->Data_addr + i)+1;
+		*(array2->Data_addr + i) = i;
+	}
+
+	for(uint32_t i=0;i<array3->Data_size;i++){
+		//*(array3->Data_addr + i) = *(array3->Data_addr + i)+1;
+		*(array3->Data_addr + i) = i;
+	}
+
+	Distributed_End(s, array1->Data_addr, array1->Data_size);
+}
+
+void task3(){
+	led_init(LED_BLUE);
+	while(1){
+		for(uint32_t i=0;i<500000;i++){
+			;
+		}
+		SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BSy_BIT(LED_BLUE));
+		for(uint32_t i=0;i<500000;i++){
+			;
+		}
+		SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BRy_BIT(LED_BLUE));
+	}
+}
+void test_eth_send(void){
+	uint8_t MyMacAddr[6] = {0x08, 0x00, 0x06, 0x00, 0x00, 0x09};
+	init_eth(DP83848_PHY_ADDRESS, MyMacAddr);
+	uint8_t mydata[60] = {    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
+				 0x00, 0x01, 0x08, 0x06, 0x00, 0x01, 0x08, 0x00, 0x06, 0x04,
+				 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0xc0, 0xa8,
+				 0x02, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0xa8,
+				 0x02, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	uint8_t green_led = 0;
+	while(1){
+		uint32_t clock = 8400000;
+		while(clock--);
+		DP83848Send(mydata, 60);
+
+		if (green_led==0){
+			SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BSy_BIT(LED_GREEN));
+			green_led = 1;
+		}
+		else{
+			SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BRy_BIT(LED_GREEN));
+			green_led = 0;
+		}
+	}
+}
+
+int main(void){
+	DStart->Next_TaskHandle_List = NULL;
+	init_usart1();
+	led_init(LED_GREEN);
+	led_init(LED_ORANGE);
+	led_init(LED_RED);
+
+	REG(AIRCR_BASE) = NVIC_AIRCR_RESET_VALUE | NVIC_PRIORITYGROUP_4;
+	//xTaskCreate(task1, "task1", 1000, NULL, 1, &TaskHandle_1);
+	xTaskCreate(test_eth_send, "test_eth_send", 1000, NULL, 1, &TaskHandle_1);
+	xTaskCreate(task3, "task3", 1000, NULL, 1, &TaskHandle_3);
+	vTaskStartScheduler();
+	while (1)
+		;
 }
 
 void *_sbrk(int incr){

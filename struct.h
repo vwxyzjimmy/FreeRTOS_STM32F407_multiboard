@@ -86,6 +86,12 @@ typedef struct  {
   volatile uint32_t  Seg_Count;                     /*!< Segment count */
 } ETH_DMA_Rx_Frame_infos;
 
+typedef struct{
+  uint32_t length;
+  uint32_t buffer;
+  volatile ETH_DMADESCTypeDef *descriptor;
+}FrameTypeDef;
+
 #define ETH_TXBUFNB   5
 #define ETH_RXBUFNB   5
 #define ETH_TX_BUF_SIZE 1524
@@ -99,3 +105,5 @@ volatile ETH_DMADESCTypeDef  *DMATxDescToSet;
 volatile ETH_DMADESCTypeDef  *DMARxDescToGet;
 ETH_DMA_Rx_Frame_infos RX_Frame_Descriptor;
 volatile ETH_DMA_Rx_Frame_infos *DMA_RX_FRAME_infos;
+
+#define     DP83848_PHY_ADDRESS     0x01

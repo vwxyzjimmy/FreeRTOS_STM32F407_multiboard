@@ -107,7 +107,7 @@
 #define PA_0_BIT 11
 #define MR_4_BIT 10
 #define MR_0_BIT 6
-#define CR_3_BIT 5
+#define CR_2_BIT 4
 #define CR_0_BIT 2
 #define MW 1
 #define MB 0
