@@ -34,12 +34,12 @@ Distributed_Data_t* Distributed_Set_Traget_Data(uint32_t* addr, uint32_t size);
 void Distributed_Add_Traget_Data(Distributed_Data_t* S, uint32_t* addr, uint32_t size);
 void List_FreeBlock();
 
-void init_eth(uint16_t PHYAddress, uint8_t *Addr);
+uint8_t init_eth(uint16_t PHYAddress, uint8_t *Addr);
 uint32_t ETH_WritePHYRegister(uint16_t PHYAddress, uint16_t PHYReg, uint16_t PHYValue);
 uint32_t ETH_ReadPHYRegister(uint16_t PHYAddress, uint16_t PHYReg);
 void ETH_DMATxDescChainInit(ETH_DMADESCTypeDef *DMATxDescTab, uint8_t* TxBuff, uint32_t TxBuffCount);
 void ETH_DMARxDescChainInit(ETH_DMADESCTypeDef *DMARxDescTab, uint8_t *RxBuff, uint32_t RxBuffCount);
-void DP83848Send(uint8_t* data, uint16_t length);
+uint8_t DP83848Send(uint8_t* data, uint16_t length);
 void eth_handler(void);
 uint32_t ETH_CheckFrameReceived(void);
 FrameTypeDef ETH_Get_Received_Frame(void);
@@ -752,7 +752,7 @@ void usart1_handler(void){
 	}
 }
 
-void init_eth(uint16_t PHYAddress, uint8_t *Addr){
+uint8_t init_eth(uint16_t PHYAddress, uint8_t *Addr){
 	SET_BIT(NVIC_ISER_BASE + NVIC_ISERn_OFFSET(1), 29); //IRQ61 => (m+(32*n)) | m=29, n=1
 
 	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTA));
@@ -843,9 +843,11 @@ void init_eth(uint16_t PHYAddress, uint8_t *Addr){
 	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(5));
 	WRITE_BITS(GPIO_BASE(GPIO_PORTC) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(5), AFRLy_0_BIT(5), 11);
 
+	printf("eth gpio done\r\n");
+
+	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, ETHMACEN);
 	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, ETHMACRXEN);
 	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, ETHMACTXEN);
-	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, ETHMACEN);
 
 	SET_BIT(RCC_BASE + RCC_AHB1RSTR_OFFSET, ETHMACRST);
 	CLEAR_BIT(RCC_BASE + RCC_AHB1RSTR_OFFSET, ETHMACRST);
@@ -854,84 +856,138 @@ void init_eth(uint16_t PHYAddress, uint8_t *Addr){
 	while(READ_BIT(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, DMABMR_SR) != 0);
 
 	WRITE_BITS(ETHERNET_MAC_BASE + ETH_MACMIIAR_OFFSET, CR_2_BIT, CR_0_BIT, 0b100);
+
 	uint32_t result;
 	volatile uint16_t ReadPHYRegister = 0;
-	uint16_t tmp_ReadPHYRegister = 0;
-	printf("eth gpio done\r\n");
+	volatile uint16_t tmp_ReadPHYRegister = 0;
 
-	while(!ReadPHYRegister){
-		result = ETH_WritePHYRegister(PHYAddress, 0, 0x8000);	// PHY_BCR PHY_Reset
-		if (result == 0)
-			printf("Fail: ETH_WritePHYRegister(PHYAddress, 0, 0x8000)\r\n");
-
-		for(uint32_t i=0;i<0x000FFFFF;i++)	// PHY_RESET_DELAY
-			;
-
-		tmp_ReadPHYRegister = ETH_ReadPHYRegister(PHYAddress, 1);	// PHY_BSR
-		ReadPHYRegister = (tmp_ReadPHYRegister&0x0004);	//PHY_BSR	PHY_Linked_Status
-	}
-	printf("Pass ETH_ReadPHYRegister(PHYAddress, 1)&0x0004, tmp_ReadPHYRegister: 0x%X\r\n", tmp_ReadPHYRegister);
-
-	result = ETH_WritePHYRegister(PHYAddress, 0, 0x1000);	//PHY_BCR	PHY_AutoNegotiation
-	if (result == 0)
-		printf("Fail ETH_WritePHYRegister(PHYAddress, 0, 0x1000)\r\n");
-	ReadPHYRegister = 0;
-	while(!ReadPHYRegister){
-		tmp_ReadPHYRegister = ETH_ReadPHYRegister(PHYAddress, 1);
-		ReadPHYRegister = (tmp_ReadPHYRegister&0x0020);	//PHY_BSR	PHY_AutoNego_Complete
-	}
-	printf("Pass ETH_ReadPHYRegister(PHYAddress, 1)&0x0020, tmp_ReadPHYRegister: 0x%X\r\n", tmp_ReadPHYRegister);
-
+	uint32_t TO_LIMIT = 0x0004FFFF;
+	uint32_t TO_COUNT = 0;
 	uint32_t ETH_Mode;
 	uint32_t ETH_Speed;
+
+
+	result = ETH_WritePHYRegister(PHYAddress, 0, 0x8000);	// PHY_BCR	PHY_Reset
+	if (result == 0){
+		printf("Fail: PHY_BCR	PHY_Reset, result: 	0x%X\r\n", result);
+		return 0;
+	}
+
+	for(uint32_t i=0;i<0x0000FFFF;i++)	// PHY_RESET_DELAY
+		;
+
+	//ETH_Mode = ETH_MODE_FULLDUPLEX;
+	ETH_Mode = ETH_MODE_HALFDUPLEX;
+	ETH_Speed = ETH_SPEED_10M;
+	result = ETH_WritePHYRegister(PHYAddress, 0, ((ETH_Mode >> 3) | (ETH_Speed >> 1)));	//PHY_BCR	Disable PHY_AutoNegotiation
+	if (result == 0){
+		printf("Fail: PHY_BCR	Disable PHY_AutoNegotiation, result:	0x%X\r\n", result);
+		return 0;
+	}
+	for(uint32_t i=0;i<0x000FFFF;i++)	// PHY_RESET_DELAY
+		;
+
+	/*
+	result = ETH_WritePHYRegister(PHYAddress, 0, 0x8000);	// PHY_BCR	PHY_Reset
+	if (result == 0){
+		printf("Fail: PHY_BCR	PHY_Reset, result: 	0x%X\r\n", result);
+		return 0;
+	}
+
+	for(uint32_t i=0;i<0x0000FFFF;i++)	// PHY_RESET_DELAY
+		;
+
+	ReadPHYRegister = 0;
+	TO_COUNT = 0;
+	while((ReadPHYRegister!=0x784D) && (TO_COUNT<TO_LIMIT)){
+		tmp_ReadPHYRegister = ETH_ReadPHYRegister(PHYAddress, 1);
+		//ReadPHYRegister = (tmp_ReadPHYRegister&0x0004);	//PHY_BSR	PHY_Linked_Status
+		ReadPHYRegister = (tmp_ReadPHYRegister);
+		TO_COUNT++;
+	}
+	if(TO_LIMIT == TO_COUNT){
+		printf("Time Out PHY_BSR	PHY_Linked_Status, ReadPHYRegister:	0x%X\r\n", tmp_ReadPHYRegister);
+		TO_COUNT = 0;
+		return 0;
+	}
+	printf("Pass PHY_BSR	PHY_Linked_Status, ReadPHYRegister:	0x%X\r\n", tmp_ReadPHYRegister);
+
+	result = ETH_WritePHYRegister(PHYAddress, 0, 0x1000);	//PHY_BCR	PHY_AutoNegotiation
+	if (result == 0){
+		printf("Fail: PHY_BCR	PHY_AutoNegotiation, result:	0x%X\r\n", result);
+		return 0;
+	}
+
+	for(uint32_t i=0;i<0x0000FFFF;i++)	// PHY_RESET_DELAY
+		;
+
+	ReadPHYRegister = 0;
+	TO_COUNT = 0;
+	while((!ReadPHYRegister) && (TO_COUNT<TO_LIMIT)){
+		tmp_ReadPHYRegister = ETH_ReadPHYRegister(PHYAddress, 1);
+		ReadPHYRegister = (tmp_ReadPHYRegister&0x0020);	//PHY_BSR	PHY_AutoNego_Complete
+		TO_COUNT++;
+	}
+	if(TO_LIMIT == TO_COUNT){
+		printf("Time Out: PHY_BSR	PHY_AutoNego_Complete, ReadPHYRegister:	0x%X\r\n", tmp_ReadPHYRegister);
+		TO_COUNT = 0;
+		return 0;
+	}
+	printf("Pass PHY_AutoNego_Complete: 0x%X\r\n", tmp_ReadPHYRegister);
+	for(uint32_t i=0;i<0x0000FFFF;i++)	// PHY_RESET_DELAY
+		;
 	ReadPHYRegister = ETH_ReadPHYRegister(PHYAddress, 0x0010);	//PHY_SR
-	if ((ReadPHYRegister & 0x0004) != 0){								//PHY_DUPLEX_STATUS
+	printf("PHY_SR: 0x%X\r\n", ReadPHYRegister);
+	if ((ReadPHYRegister & 0x0004) != 0){						//PHY_DUPLEX_STATUS
 		ETH_Mode = ((uint32_t)0x00000800);						//ETH_Mode_FullDuplex
-		printf("ETH_Mode_FullDuplex\r\n");
 	}
 	else{
 		ETH_Mode = ((uint32_t)0x00000000);						//ETH_Mode_HalfDuplex
-		printf("ETH_Mode_HalfDuplex\r\n");
 	}
-	if ((ReadPHYRegister & 0x0002) != 0){								//PHY_SPEED_STATUS
+	if ((ReadPHYRegister & 0x0002) != 0){						//PHY_SPEED_STATUS
 		ETH_Speed  = ((uint32_t)0x00000000);					//ETH_Speed_10M
-		printf("ETH_Speed_10M\r\n");
 	}
 	else{
 		ETH_Speed  = ((uint32_t)0x00004000);					//ETH_Speed_100M
+	}
+	*/
+	//ETH_MACCR
+	if (ETH_Speed==0x00004000){
+		SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, FES);
 		printf("ETH_Speed_100M\r\n");
 	}
-
-	//ETH_MACCR
-	if (ETH_Speed==0x00004000)
-		SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, FES);
-	else
+	else{
 		CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, FES);
+		printf("ETH_Speed_10M\r\n");
+	}
+
 	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, LM);
-	if (ETH_Mode==0x00000800)
+
+	if (ETH_Mode==0x00000800){
 		SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, DM);
-	else
+		printf("ETH_Mode_FullDuplex\r\n");
+	}
+	else{
 		CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, DM);
+		printf("ETH_Mode_HalfDuplex\r\n");
+	}
 	SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, IPCO);
 	SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, RD);
 	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, APCS);
 
-	for(uint32_t i=0;i<0x00000001U;i++)
+	for(uint32_t i=0;i<0x0000FFFF;i++)
 		;
-
 	//ETH_MACFFR
 	SET_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, RA);
 	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, BFD);
-	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, PM);
 
 	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, PM);
 	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, HM);
 	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, HPF);
 
 	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, HU);
-	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACFFR_OFFSET, HPF);
 
-	for(uint32_t i=0;i<0x00000001U;i++)
+	for(uint32_t i=0;i<0x0000FFFF;i++)
 		;
 
 	//ETH_DMAOMR
@@ -950,7 +1006,7 @@ void init_eth(uint16_t PHYAddress, uint8_t *Addr){
 	WRITE_BITS(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, PM_1_BIT, PM_0_BIT, 0x1);
 	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_DMABMR_OFFSET, DA);
 
-	for(uint32_t i=0;i<0x00000001U;i++)
+	for(uint32_t i=0;i<0x0000FFFF;i++)
 		;
 
 	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAIER_OFFSET, NISE);
@@ -970,21 +1026,21 @@ void init_eth(uint16_t PHYAddress, uint8_t *Addr){
 		(&DMATxDscrTab[i])->Status |= 0x00C00000;	// DMATxDesc_Checksum 0x00C00000
 
 	SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, TE);
-	for(uint32_t i=0;i<0x00000001U;i++)
+	for(uint32_t i=0;i<0x0000FFFF;i++)
 		;
 	SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, RE);
-	for(uint32_t i=0;i<0x00000001U;i++)
+	for(uint32_t i=0;i<0x0000FFFF;i++)
 		;
 	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, FTF);
-	for(uint32_t i=0;i<0x00000001U;i++)
+	for(uint32_t i=0;i<0x0000FFFF;i++)
 		;
 	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, ST);
-	for(uint32_t i=0;i<0x00000001U;i++)
+	for(uint32_t i=0;i<0x0000FFFF;i++)
 		;
 	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, DMAOMR_SR);
-	for(uint32_t i=0;i<0x00000001U;i++)
+	for(uint32_t i=0;i<0x0000FFFF;i++)
 		;
-
+	return 1;
 }
 
 uint32_t ETH_WritePHYRegister(uint16_t PHYAddress, uint16_t PHYReg, uint16_t PHYValue){
@@ -1028,7 +1084,7 @@ uint32_t ETH_ReadPHYRegister(uint16_t PHYAddress, uint16_t PHYReg){
 		return 0;
 	}
 	else{
-		volatile uint16_t ret = REG(ETHERNET_MAC_BASE + ETH_MACMIIDR_OFFSET);
+		volatile uint16_t ret = (uint16_t)REG(ETHERNET_MAC_BASE + ETH_MACMIIDR_OFFSET);
 		//printf("Pass Read ETH_MACMIIAR_MB ret: 0x%X\r\n", ret);
 		return ret;
 	}
@@ -1048,7 +1104,6 @@ void ETH_DMATxDescChainInit(ETH_DMADESCTypeDef *DMATxDescTab, uint8_t* TxBuff, u
 		DMATxDesc->Buffer2NextDescAddr = (uint32_t) DMATxDescTab;
   }
   REG(ETHERNET_MAC_BASE + ETH_DMATDLAR_OFFSET) = (uint32_t) DMATxDescTab;
-  //ETH->DMATDLAR = (uint32_t) DMATxDescTab;
 }
 
 void ETH_DMARxDescChainInit(ETH_DMADESCTypeDef *DMARxDescTab, uint8_t *RxBuff, uint32_t RxBuffCount){
@@ -1069,14 +1124,16 @@ void ETH_DMARxDescChainInit(ETH_DMADESCTypeDef *DMARxDescTab, uint8_t *RxBuff, u
 	DMA_RX_FRAME_infos = &RX_Frame_Descriptor;
 }
 
-void DP83848Send(uint8_t* data, uint16_t length){
+uint8_t DP83848Send(uint8_t* data, uint16_t length){
 	for(uint16_t i;i<length;i++){
 		*(((uint8_t *)DMATxDescToSet->Buffer1Addr)+i) = *(data+i);
 	}
 
 	volatile ETH_DMADESCTypeDef *DMATxDesc;
-	if (DMATxDescToSet->Status & 0x80000000)	//ETH_DMATxDesc_OWN
-		printf("Error: ETHERNET OWN DMA\r\n");
+	if (DMATxDescToSet->Status & 0x80000000){				//ETH_DMATxDesc_OWN
+		printf("Error: ETHERNET DMA OWN descriptor\r\n");
+		return 0;
+	}
 
 	uint32_t buf_count = 0;
 	uint32_t size = 0;
@@ -1091,7 +1148,7 @@ void DP83848Send(uint8_t* data, uint16_t length){
 		buf_count = 1;
 	if (buf_count == 1){
 		/*set LAST and FIRST segment */
-		DMATxDesc->Status |=(0x10000000 | 0x20000000);	// ETH_DMATxDesc_FS ETH_DMATxDesc_LS
+		DMATxDesc->Status |= (0x10000000|0x20000000);	// ETH_DMATxDesc_FS ETH_DMATxDesc_LS
 		/* Set frame size */
 		DMATxDesc->ControlBufferSize = (length & 0x00001FFF);	// ETH_DMATxDesc_TBS1
 		/* Set Own bit of the Tx descriptor Status: gives the buffer back to ETHERNET DMA */
@@ -1099,9 +1156,9 @@ void DP83848Send(uint8_t* data, uint16_t length){
 		DMATxDesc= (ETH_DMADESCTypeDef *)(DMATxDesc->Buffer2NextDescAddr);
 	}
 	else{
-		for (uint32_t i=0; i< buf_count; i++){
+		for (uint32_t i=0; i<buf_count; i++){
 			/* Clear FIRST and LAST segment bits */
-			DMATxDesc->Status &= ~(0x10000000 | 0x20000000);	// ETH_DMATxDesc_FS ETH_DMATxDesc_LS
+			DMATxDesc->Status &= ~(0x10000000|0x20000000);	// ETH_DMATxDesc_FS ETH_DMATxDesc_LS
 			if (i == 0) {
 				/* Setting the first segment bit */
 				DMATxDesc->Status |= 0x10000000;	// ETH_DMATxDesc_FS
@@ -1121,12 +1178,15 @@ void DP83848Send(uint8_t* data, uint16_t length){
 	}
 	DMATxDescToSet = DMATxDesc;
 	/* When Tx Buffer unavailable flag is set: clear it and resume transmission */
-	if (READ_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, TBUS) != 0){
+	if(READ_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, TBUS) != 0){
 		/* Clear TBUS ETHERNET DMA flag */
 		SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, TBUS);
 		/* Resume DMA transmission*/
 		REG(ETHERNET_MAC_BASE + ETH_DMATPDR_OFFSET) = 0;
+		return 0;
 	}
+	printf("TBUS: %X\r\n", READ_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, TBUS));
+
 	/* Return SUCCESS */
 	return 1;
 }
@@ -1134,6 +1194,7 @@ void DP83848Send(uint8_t* data, uint16_t length){
 void eth_handler(void){
 	/* Handles all the received frames */
 	/* check if any packet received */
+	printf("god cha\r\n");
 	  while(ETH_CheckFrameReceived()){
 	    /* process received ethernet packet */
 	    Pkt_Handle();
@@ -1202,13 +1263,15 @@ void Pkt_Handle(void) {
     /* Obtain the size of the packet and put it into the "len" variable. */
     uint32_t receiveLen = frame.length;
     uint8_t *receiveBuffer = (uint8_t*)frame.buffer;
-    printf("0011%d0022\r\n", receiveLen);
+    printf("ReceiveLen: 0x%X\r\n", receiveLen);
+
     if(receiveBuffer[41] == 201){
         for (uint32_t i = 0; i < receiveLen; i++) {
             printf("%c", receiveBuffer[i]);
         }
 		printf("\r\n");
     }
+
     /* Check if frame with multiple DMA buffer segments */
     if (DMA_RX_FRAME_infos->Seg_Count > 1) {
         DMARxNextDesc = DMA_RX_FRAME_infos->FS_Rx_Desc;
@@ -1300,18 +1363,41 @@ void task3(){
 }
 void test_eth_send(void){
 	uint8_t MyMacAddr[6] = {0x08, 0x00, 0x06, 0x00, 0x00, 0x09};
-	init_eth(DP83848_PHY_ADDRESS, MyMacAddr);
-	uint8_t mydata[60] = {    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
-				 0x00, 0x01, 0x08, 0x06, 0x00, 0x01, 0x08, 0x00, 0x06, 0x04,
-				 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0xc0, 0xa8,
-				 0x02, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0xa8,
-				 0x02, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	while(!init_eth(DP83848_PHY_ADDRESS, MyMacAddr)){
+		for(uint32_t i=0;i<0x00000FFF;i++)
+			;
+	}
+	printf("init_eth success\r\n");
+
+	uint8_t mydata[60] = {	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
+							 0x00, 0x01, 0x08, 0x06, 0x00, 0x01, 0x08, 0x00, 0x06, 0x04,
+							 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0xc0, 0xa8,
+							 0x02, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0xa8,
+							 0x02, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+							 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
+	/*
+	 uint8_t mydata[60] = {	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01, 0x02, 0x03, 0x04,
+							 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+							 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+							 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22,
+							 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c,
+							 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36};
+	*/
 	uint8_t green_led = 0;
+	uint8_t send_count = 0;
 	while(1){
 		uint32_t clock = 8400000;
 		while(clock--);
-		DP83848Send(mydata, 60);
+		mydata[59] = send_count;
+		while(!DP83848Send(mydata, 60)){
+			;
+		}
+		printf("DP83848Send: %d\r\n", send_count);
+		//printf("DP83848Recv: %d\r\n", send_count);
+		send_count++;
+		if (send_count>255)
+			send_count = 0;
 
 		if (green_led==0){
 			SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BSy_BIT(LED_GREEN));

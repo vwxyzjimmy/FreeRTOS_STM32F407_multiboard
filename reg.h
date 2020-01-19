@@ -90,6 +90,7 @@
 #define RA 31
 #define HPF 10
 #define SAF 9
+#define SAIF 8
 #define PCF_1_BIT 7
 #define PCF_0_BIT 6
 #define BFD 5
@@ -116,11 +117,6 @@
 #define MD_15_BIT 15
 #define MD_0_BIT 0
 
-#define ETH_MACVLANTR_OFFSET 0x001C
-#define VLANTC 16
-#define VLANTI_15_BIT 15
-#define VLANTI_0_BIT 0
-
 #define ETH_MACFCR_OFFSET 0x0018
 #define PT_15_BIT 31
 #define PT_0_BIT 16
@@ -130,6 +126,11 @@
 #define UPFD 3
 #define RFCE 2
 #define TFCE 1
+
+#define ETH_MACVLANTR_OFFSET 0x001C
+#define VLANTC 16
+#define VLANTI_15_BIT 15
+#define VLANTI_0_BIT 0
 
 #define ETH_MAC_ADDRESS0 0x0
 #define ETH_MAC_ADDRESS1 0x8
@@ -155,7 +156,7 @@
 #define PM_0_BIT 14
 #define PBL_5_BIT 13
 #define PBL_0_BIT 8
-#define DSL_5_BIT 6
+#define DSL_4_BIT 6
 #define DSL_0_BIT 2
 #define DA 1
 #define DMABMR_SR 0

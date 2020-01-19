@@ -72,12 +72,6 @@ typedef struct  {
 	uint32_t   ControlBufferSize;
 	uint32_t   Buffer1Addr;
 	uint32_t   Buffer2NextDescAddr;
-#ifdef USE_ENHANCED_DMA_DESCRIPTORS
-	uint32_t   ExtendedStatus;
-	uint32_t   Reserved1;
-	uint32_t   TimeStampLow;
-	uint32_t   TimeStampHigh;
-#endif
 } ETH_DMADESCTypeDef;
 
 typedef struct  {
@@ -107,3 +101,7 @@ ETH_DMA_Rx_Frame_infos RX_Frame_Descriptor;
 volatile ETH_DMA_Rx_Frame_infos *DMA_RX_FRAME_infos;
 
 #define     DP83848_PHY_ADDRESS     0x01
+#define 	ETH_SPEED_10M   0x00000000
+#define 	ETH_SPEED_100M   0x00004000
+#define 	ETH_MODE_FULLDUPLEX   0x00000800
+#define 	ETH_MODE_HALFDUPLEX   0x00000000
