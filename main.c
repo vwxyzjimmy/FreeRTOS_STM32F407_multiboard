@@ -1183,7 +1183,7 @@ uint8_t DP83848Send(uint8_t* data, uint16_t length){
 		SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, TBUS);
 		/* Resume DMA transmission*/
 		REG(ETHERNET_MAC_BASE + ETH_DMATPDR_OFFSET) = 0;
-		return 0;
+		//return 0;
 	}
 	printf("TBUS: %X\r\n", READ_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, TBUS));
 
@@ -1194,7 +1194,6 @@ uint8_t DP83848Send(uint8_t* data, uint16_t length){
 void eth_handler(void){
 	/* Handles all the received frames */
 	/* check if any packet received */
-	printf("god cha\r\n");
 	  while(ETH_CheckFrameReceived()){
 	    /* process received ethernet packet */
 	    Pkt_Handle();
@@ -1263,15 +1262,7 @@ void Pkt_Handle(void) {
     /* Obtain the size of the packet and put it into the "len" variable. */
     uint32_t receiveLen = frame.length;
     uint8_t *receiveBuffer = (uint8_t*)frame.buffer;
-    printf("ReceiveLen: 0x%X\r\n", receiveLen);
-
-    if(receiveBuffer[41] == 201){
-        for (uint32_t i = 0; i < receiveLen; i++) {
-            printf("%c", receiveBuffer[i]);
-        }
-		printf("\r\n");
-    }
-
+    printf("ReceiveLen: 0x%X, %dth\r\n", receiveLen, receiveBuffer[receiveLen-1]);
     /* Check if frame with multiple DMA buffer segments */
     if (DMA_RX_FRAME_infos->Seg_Count > 1) {
         DMARxNextDesc = DMA_RX_FRAME_infos->FS_Rx_Desc;
@@ -1362,22 +1353,22 @@ void task3(){
 	}
 }
 void test_eth_send(void){
-	uint8_t MyMacAddr[6] = {0x08, 0x00, 0x06, 0x00, 0x00, 0x09};
+	uint8_t MyMacAddr[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 	while(!init_eth(DP83848_PHY_ADDRESS, MyMacAddr)){
+		printf("Reset eth\r\n");
 		for(uint32_t i=0;i<0x00000FFF;i++)
 			;
 	}
-	printf("init_eth success\r\n");
 
+	printf("init_eth success\r\n");
 	uint8_t mydata[60] = {	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
 							 0x00, 0x01, 0x08, 0x06, 0x00, 0x01, 0x08, 0x00, 0x06, 0x04,
 							 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0xc0, 0xa8,
 							 0x02, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0xa8,
 							 0x02, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 							 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-
 	/*
-	 uint8_t mydata[60] = {	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01, 0x02, 0x03, 0x04,
+	uint8_t mydata[60] = {	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01, 0x02, 0x03, 0x04,
 							 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
 							 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
 							 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22,
@@ -1390,11 +1381,22 @@ void test_eth_send(void){
 		uint32_t clock = 8400000;
 		while(clock--);
 		mydata[59] = send_count;
-		while(!DP83848Send(mydata, 60)){
-			;
+		
+		uint8_t Send_success_flag = 0;
+		while(!Send_success_flag){
+			Send_success_flag = DP83848Send(mydata, 60);
+			if (!Send_success_flag){
+				while(!init_eth(DP83848_PHY_ADDRESS, MyMacAddr)){
+					printf("Reset eth\r\n");
+					for(uint32_t i=0;i<0x00000FFF;i++)
+						;
+				}
+				send_count = 0;
+			}
 		}
+
 		printf("DP83848Send: %d\r\n", send_count);
-		//printf("DP83848Recv: %d\r\n", send_count);
+
 		send_count++;
 		if (send_count>255)
 			send_count = 0;
