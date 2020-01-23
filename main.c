@@ -1185,8 +1185,6 @@ uint8_t DP83848Send(uint8_t* data, uint16_t length){
 		REG(ETHERNET_MAC_BASE + ETH_DMATPDR_OFFSET) = 0;
 		//return 0;
 	}
-	printf("TBUS: %X\r\n", READ_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, TBUS));
-
 	/* Return SUCCESS */
 	return 1;
 }
@@ -1340,6 +1338,7 @@ void Distributed_task(void *S){
 }
 
 void task3(){
+	printf("task3\r\n");
 	led_init(LED_BLUE);
 	while(1){
 		for(uint32_t i=0;i<500000;i++){
@@ -1353,6 +1352,7 @@ void task3(){
 	}
 }
 void test_eth_send(void){
+	printf("test_eth_send\r\n");
 	uint8_t MyMacAddr[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 	while(!init_eth(DP83848_PHY_ADDRESS, MyMacAddr)){
 		printf("Reset eth\r\n");
@@ -1381,7 +1381,7 @@ void test_eth_send(void){
 		uint32_t clock = 8400000;
 		while(clock--);
 		mydata[59] = send_count;
-		
+
 		uint8_t Send_success_flag = 0;
 		while(!Send_success_flag){
 			Send_success_flag = DP83848Send(mydata, 60);
@@ -1394,7 +1394,6 @@ void test_eth_send(void){
 				send_count = 0;
 			}
 		}
-
 		printf("DP83848Send: %d\r\n", send_count);
 
 		send_count++;
