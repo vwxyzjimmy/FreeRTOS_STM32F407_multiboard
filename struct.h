@@ -25,6 +25,7 @@ typedef struct Distributed_Data
 {
     uint32_t* Data_addr;
     uint32_t Data_size;
+	uint32_t Split_size;
 	QueueHandle_t* xQueue;
 	struct Distributed_Data* Next_Distributed_Data;
 }Distributed_Data_t;
