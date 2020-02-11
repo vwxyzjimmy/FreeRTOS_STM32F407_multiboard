@@ -4,25 +4,7 @@ do {                			 									\
 	Distributed_Check(s, addr, size);								\
 } while (0)
 
-/*
-typedef struct Distributed_TaskHandle_List
-{
-    struct Distributed_TaskHandle_List *Next_TaskHandle_List;
-    uint32_t Processor_id;
-    uint32_t DTask_id;
-	uint32_t DSubTask_id;
-    uint32_t *Instruction_addr;
-	uint32_t *Instruction_addr_end;
-    uint32_t *Data_addr;
-    uint32_t Data_size;
-	uint32_t Data_Max_size;
-    uint32_t Finish_Flag;
-    TaskHandle_t *TaskHandlex;
-	QueueHandle_t* xQueue;
-}Distributed_TaskHandle_List_t;
-*/
-typedef struct Distributed_Data
-{
+typedef struct Distributed_Data {
     uint32_t* Data_addr;
     uint32_t Data_size;
 	uint32_t Split_size;
@@ -30,8 +12,7 @@ typedef struct Distributed_Data
 	struct Distributed_Data* Next_Distributed_Data;
 }Distributed_Data_t;
 
-typedef struct Distributed_TaskHandle_List
-{
+typedef struct Distributed_TaskHandle_List {
     struct Distributed_TaskHandle_List *Next_TaskHandle_List;
     uint32_t Processor_id;
     uint32_t DTask_id;
@@ -49,8 +30,7 @@ typedef struct Distributed_TaskHandle_List
 	Distributed_Data_t* Distributed_Data_List;
 }Distributed_TaskHandle_List_t;
 
-typedef struct A_BLOCK_LINK
-{
+typedef struct A_BLOCK_LINK {
 	struct A_BLOCK_LINK *pxNextFreeBlock;
 	size_t xBlockSize;
 } BlockLink_t;
@@ -68,20 +48,20 @@ typedef struct A_BLOCK_LINK
 })
 
 
-typedef struct  {
+typedef struct {
 	volatile uint32_t   Status;
 	uint32_t   ControlBufferSize;
 	uint32_t   Buffer1Addr;
 	uint32_t   Buffer2NextDescAddr;
 } ETH_DMADESCTypeDef;
 
-typedef struct  {
+typedef struct {
   volatile ETH_DMADESCTypeDef *FS_Rx_Desc;          /*!< First Segment Rx Desc */
   volatile ETH_DMADESCTypeDef *LS_Rx_Desc;          /*!< Last Segment Rx Desc */
   volatile uint32_t  Seg_Count;                     /*!< Segment count */
 } ETH_DMA_Rx_Frame_infos;
 
-typedef struct{
+typedef struct {
   uint32_t length;
   uint32_t buffer;
   volatile ETH_DMADESCTypeDef *descriptor;

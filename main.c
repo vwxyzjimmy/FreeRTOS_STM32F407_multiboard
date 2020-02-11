@@ -48,7 +48,7 @@ FrameTypeDef Pkt_Handle(void);
 void DistributedNodeGetID();
 void DistributedNodeGetIDAgain();
 void DistributedNodeResponseID();
-void DistributedNodeCheck(uint32_t Target_Node_id);
+uint8_t DistributedNodeCheck(uint32_t Target_Node_id);
 void DistributedNodeCheckback(uint32_t Target_Node_id);
 void DistributedNodeBackupMaster(uint32_t Target_Node_id);
 void DistributedNodeInvalid(uint32_t Target_Node_id);
@@ -69,13 +69,14 @@ volatile TaskHandle_t TaskHandle_2;
 volatile TaskHandle_t TaskHandle_3;
 extern BlockLink_t xStart;
 Distributed_TaskHandle_List_t* DStart;
+uint8_t Msg_event = 0;
 uint32_t Global_Node_id = 0;
 uint32_t Global_Node_count = 0;
 uint32_t Global_Node_Master = 0;
 uint32_t Global_Node_Backup_Master = 0;
 uint32_t Global_Task_id = 0;
-
-
+volatile uint32_t DisrtibutedNodeCheckIDflag = 0;
+volatile uint8_t CheckMasterNodeFlag = 0;
 Distributed_Data_t* Distributed_Set_Traget_Data(uint32_t* data_addr, uint32_t data_size, uint32_t split_size){
 	Distributed_Data_t* s = pvPortMalloc(sizeof(Distributed_Data_t));
 	s->Data_addr = data_addr;
@@ -884,8 +885,6 @@ uint8_t init_eth(uint16_t PHYAddress, uint8_t *Addr){
 	CLEAR_BIT(GPIO_BASE(GPIO_PORTC) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(5));
 	WRITE_BITS(GPIO_BASE(GPIO_PORTC) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(5), AFRLy_0_BIT(5), 11);
 
-	printf("eth gpio done\r\n");
-
 	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, ETHMACEN);
 	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, ETHMACRXEN);
 	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, ETHMACTXEN);
@@ -994,24 +993,25 @@ uint8_t init_eth(uint16_t PHYAddress, uint8_t *Addr){
 	//Auto Negotiation-----------------------------------------------------------------------------------------------------------------------------------------------------------
 	*/
 	//ETH_MACCR
+	uint8_t ETH_Speed_Value = 0;
 	if (ETH_Speed==0x00004000){
 		SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, FES);
-		printf("ETH_Speed_100M\r\n");
+		ETH_Speed_Value = 100;
 	}
 	else{
 		CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, FES);
-		printf("ETH_Speed_10M\r\n");
+		ETH_Speed_Value = 10;
 	}
 
 	CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, LM);
 
 	if (ETH_Mode==0x00000800){
 		SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, DM);
-		printf("ETH_Mode_FullDuplex\r\n");
+		printf("ETH_Speed_%dM, ETH_Mode_FullDuplex\r\n", ETH_Speed_Value);
 	}
 	else{
 		CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, DM);
-		printf("ETH_Mode_HalfDuplex\r\n");
+		printf("ETH_Speed_%dM, ETH_Mode_HalfDuplex\r\n", ETH_Speed_Value);
 	}
 	SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, IPCO);
 	SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, RD);
@@ -1235,29 +1235,58 @@ void eth_handler(void){
 	/* Handles all the received frames */
 	/* check if any packet received */
 	FrameTypeDef frame;
+
 	while(ETH_CheckFrameReceived()){
 	    /* process received ethernet packet */
 	    frame = Pkt_Handle();
 	}
 	uint32_t Dest = *((uint32_t*)((uint8_t*)frame.buffer+2));
+	uint32_t Sour = *((uint32_t*)((uint8_t*)frame.buffer+8));
 	if ((Dest == 0xffffffff) || (Dest == Global_Node_id)){
-		printf("Dest: 0x%X\r\n", Dest);
-		printf("Msg from 0x%X Node, frame.buffer: 0x%X, frame.length: 0x%X\r\n", *((uint32_t*)((uint8_t*)frame.buffer+8)), frame.buffer, frame.length);
-		uint8_t Msg_event = *((uint8_t*)frame.buffer+12);
-		if (Msg_event==0)
-			printf("DistributedNodeGetID\r\n");
-		else if (Msg_event == 1)
-			printf("DistributedNodeGetIDAgain\r\n");
-		else if (Msg_event == 2)
-			printf("DistributedNodeResponseID\r\n");
-		else if (Msg_event == 3)
-			printf("DistributedNodeCheck\r\n");
-		else if (Msg_event == 4)
-			printf("DistributedNodeCheckback\r\n");
-		else if (Msg_event == 5)
-			printf("DistributedNodeBackupMaster\r\n");
-		else if (Msg_event == 6)
+		Msg_event = *((uint8_t*)frame.buffer+12);
+		if (Msg_event == 1){
+			if((Global_Node_Master == Global_Node_id) && (Global_Node_Master != 0)){
+				printf("Get DistributedNodeGetID\r\n");
+				DistributedNodeResponseID();
+			}
+		}
+		else if (Msg_event == 2){
+			if((Global_Node_Backup_Master == Global_Node_id) && (Global_Node_Backup_Master != 0)){
+				printf("Get DistributedNodeGetIDAgain\r\n");
+				CheckMasterNodeFlag = 1;
+			}
+		}
+		else if (Msg_event == 3){
+			printf("Get DistributedNodeResponseID\r\n");
+			Global_Node_Master = Sour;
+			Global_Node_count = *((uint32_t*)((uint8_t*)frame.buffer+13));
+			printf("Global_Node_count: 0x%X\r\n", Global_Node_count);
+			if(Global_Node_id == 0){
+				Global_Node_id = Global_Node_count;
+				printf("Global_Node_id: 0x%X\r\n", Global_Node_id);
+			}
+		}
+		else if (Msg_event == 4){
+			printf("Get DistributedNodeCheck\r\n");
+			DistributedNodeCheckback(Sour);
+		}
+		else if (Msg_event == 5){
+			if(DisrtibutedNodeCheckIDflag == Sour){
+				printf("Get DistributedNodeCheckback\r\n");
+				DisrtibutedNodeCheckIDflag = 0;
+			}
+		}
+		else if (Msg_event == 6){
+			printf("Get DistributedNodeBackupMaster\r\n");
+			Global_Node_Backup_Master = Global_Node_id;
+			printf("Global_Node_Backup_Master: 0x%X\r\n", Global_Node_Backup_Master);
+		}
+		else if (Msg_event == 7){
 			printf("DistributedNodeInvalid\r\n");
+			Global_Node_Master = Sour;
+			printf("Global_Node_Master: 0x%X\r\n", Global_Node_Master);
+		}
+		printf("Node_id: 0x%X, Node_count: 0x%X, Node_Master: 0x%X, Node_Backup_Master: 0x%X, Dest: 0x%X, Sour: 0x%X\r\n", Global_Node_id, Global_Node_count, Global_Node_Master, Global_Node_Backup_Master, Dest, Sour);
 	}
 	/* Clear the Eth DMA Rx IT pending bits */
 	SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, RS);
@@ -1394,54 +1423,83 @@ void task1(){
 			}
 			*/
 			if (rec_cmd == 'c'){
-				uint32_t Target_Node_id = 0;
-				uint8_t* tmp_Target_Node_id = &Target_Node_id;
+				Msg_event = 0;
+				Global_Node_id = 0;
+				Global_Node_count = 0;
+				Global_Node_Master = 0;
+				Global_Node_Backup_Master = 0;
+				Global_Task_id = 0;
+				DisrtibutedNodeCheckIDflag = 0;
+				CheckMasterNodeFlag = 0;
+
 				uint32_t TO_COUNT = 0;
 				DistributedNodeGetID();
-				/*
-				while((TO_COUNT<50000) && (Global_Node_id!=0)){
+				while((TO_COUNT < 1680000) && (Global_Node_id == 0)){
 					TO_COUNT++;
 				}
-				if(TO_COUNT>=50000){
+				if(TO_COUNT>=1680000){
 					TO_COUNT = 0;
 					DistributedNodeGetIDAgain();
-					while((TO_COUNT<50000) && (Global_Node_id!=0)){
+					while((TO_COUNT < 1680000) && (Global_Node_id == 0)){
 						TO_COUNT++;
 					}
 				}
 				else{
 					TO_COUNT = 0;
 				}
-				if(TO_COUNT>=50000){
+				if(TO_COUNT >= 1680000){
 					TO_COUNT = 0;
 					Global_Node_id = 1;
 					Global_Node_count++;
-					Global_Node_Master = 1;
+					Global_Node_Master = Global_Node_id;
 				}
+				TO_COUNT = 0;
 				printf("Global_Node_id: 0x%X\r\n", Global_Node_id);
-				*/
-				/*
-				for(uint32_t i=0;i<50000;i++)
-					;
-				DistributedNodeGetIDAgain();
-				for(uint32_t i=0;i<50000;i++)
-					;
-				DistributedNodeResponseID();
-				for(uint32_t i=0;i<50000;i++)
-					;
-				DistributedNodeCheck(Target_Node_id);
-				for(uint32_t i=0;i<50000;i++)
-					;
-				DistributedNodeCheckback(Target_Node_id);
-				for(uint32_t i=0;i<50000;i++)
-					;
-				DistributedNodeBackupMaster(Target_Node_id);
-				for(uint32_t i=0;i<50000;i++)
-					;
-				DistributedNodeInvalid(Target_Node_id);
-				for(uint32_t i=0;i<50000;i++)
-					;
-				*/
+				while(1){
+					if(CheckMasterNodeFlag == 1){
+						CheckMasterNodeFlag = 0;
+						while(!(DistributedNodeCheck(Global_Node_Master)));
+						TO_COUNT = 0;
+						while((TO_COUNT < 840000) && (DisrtibutedNodeCheckIDflag != 0)){
+							TO_COUNT++;
+						}
+						if(TO_COUNT>=840000){
+							portDISABLE_INTERRUPTS();
+							DistributedNodeInvalid(Global_Node_Master);
+							DisrtibutedNodeCheckIDflag = 0;
+							Global_Node_Master = Global_Node_id;
+							DistributedNodeResponseID();
+							portENABLE_INTERRUPTS();
+						}
+						else{
+							DistributedNodeGetID();		//bug if DistributedNodeGetID() Fail??
+						}
+					}
+
+					if((Global_Node_Master == Global_Node_id) && (Global_Node_count > Global_Node_id) && (Global_Node_Backup_Master <= Global_Node_id)){
+						printf("Find Global_Node_Backup_Master\r\n");
+						for(uint32_t i=(Global_Node_id+1);i<=Global_Node_count;i++){
+							while(!(DistributedNodeCheck(i)));
+							printf("Send DistributedNodeCheck %d\r\n", i);
+							TO_COUNT = 0;
+							while((TO_COUNT < 1680000) && (DisrtibutedNodeCheckIDflag != 0)){
+								TO_COUNT++;
+							}
+							if (TO_COUNT < 1680000){
+								printf("Dispatch BackupMaster to %dth Node\r\n", i);
+								DistributedNodeBackupMaster(i);
+								Global_Node_Backup_Master = i;
+								break;
+							}
+							else{
+								portDISABLE_INTERRUPTS();
+								DisrtibutedNodeCheckIDflag = 0;
+								portENABLE_INTERRUPTS();
+								printf("Timeout, %dth Node not exist\r\n", i);
+							}
+						}
+					}
+				}
 				rec_cmd = '\0';
 			}
 		}
@@ -1540,78 +1598,58 @@ void eth_send(void){
 
 void DistributedNodeGetID(){
 	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[13] = {  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-							0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-							0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-							0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-							0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-							0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-							0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-							0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-							0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-							0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-							0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-							0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-							0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-							0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-							0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-							0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	uint8_t mydata[13] = {  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
 	for(uint8_t i=0;i<4;i++){
 		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
 		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
 	}
 	DistributedSendMsg(MyMacAddr, mydata, 13);
-	printf("1 Send DistributedNodeGetID\r\n");
+	printf("Broadcast DistributedNodeGetID\r\n");
 }
 
 void DistributedNodeGetIDAgain(){
 	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02};
 	for(uint8_t i=0;i<4;i++){
 		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
 		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
 	}
 	DistributedSendMsg(MyMacAddr, mydata, 13);
-	printf("2 Send DistributedNodeGetIDAgain\r\n");
+	printf("Broadcast DistributedNodeGetIDAgain\r\n");
 }
 
 void DistributedNodeResponseID(){
 	Global_Node_count++;
 	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, Global_Node_count};
+	uint8_t mydata[17] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00};
 	for(uint8_t i=0;i<4;i++){
 		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+13] = *((uint8_t*)&Global_Node_count+i);
 		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
 	}
-	DistributedSendMsg(MyMacAddr, mydata, 14);
-	printf("3 Send DistributedNodeResponseID\r\n");
+	DistributedSendMsg(MyMacAddr, mydata, 17);
+	printf("Send DistributedNodeResponseID, Global_Node_count: 0x%X\r\n", Global_Node_count);
 }
 
-void DistributedNodeCheck(uint32_t Target_Node_id){
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[13] = { 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+uint8_t DistributedNodeCheck(uint32_t Target_Node_id){
+	if (DisrtibutedNodeCheckIDflag == 0){
+		DisrtibutedNodeCheckIDflag = Target_Node_id;
+		uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+		uint8_t mydata[13] = { 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04};
+		for(uint8_t i=0;i<4;i++){
+			MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+			mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+			mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+		}
+		DistributedSendMsg(MyMacAddr, mydata, 13);
+		printf("Send DistributedNodeCheck to Node 0x%X\r\n", Target_Node_id);
+		return 1;
 	}
-	DistributedSendMsg(MyMacAddr, mydata, 13);
-	printf("4 Send DistributedNodeCheck\r\n");
+	else
+		return 0;
 }
 
 void DistributedNodeCheckback(uint32_t Target_Node_id){
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[13] = { 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-	}
-	DistributedSendMsg(MyMacAddr, mydata, 13);
-	printf("5 Send DistributedNodeCheckback\r\n");
-}
-
-void DistributedNodeBackupMaster(uint32_t Target_Node_id){
 	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
 	uint8_t mydata[13] = { 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05};
 	for(uint8_t i=0;i<4;i++){
@@ -1620,11 +1658,10 @@ void DistributedNodeBackupMaster(uint32_t Target_Node_id){
 		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
 	}
 	DistributedSendMsg(MyMacAddr, mydata, 13);
-
-	printf("6 Send DistributedNodeBackupMaster\r\n");
+	printf("Send DistributedNodeCheckback to Node 0x%X\r\n", Target_Node_id);
 }
 
-void DistributedNodeInvalid(uint32_t Target_Node_id){
+void DistributedNodeBackupMaster(uint32_t Target_Node_id){
 	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
 	uint8_t mydata[13] = { 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06};
 	for(uint8_t i=0;i<4;i++){
@@ -1633,12 +1670,47 @@ void DistributedNodeInvalid(uint32_t Target_Node_id){
 		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
 	}
 	DistributedSendMsg(MyMacAddr, mydata, 13);
-	printf("7 Send DistributedNodeInvalid\r\n");
+	printf("Send DistributedNodeBackupMaster to Node 0x%X\r\n", Target_Node_id);
 }
-//void DistributedNodeFreespace(){}
+
+void DistributedNodeInvalid(uint32_t Target_Node_id){
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[17] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00, 0x00};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+13] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	DistributedSendMsg(MyMacAddr, mydata, 17);
+	printf("Broadcast DistributedNodeInvalid Node 0x%X\r\n", Target_Node_id);
+}
+
+void DistributedNodeFreespace(uint32_t Target_Node_id, BlockLink_t* FreespaceStart){
+	uint32_t block_number = 0;
+	BlockLink_t* tmp_block = FreespaceStart;
+	printf("------------------------------------------------------------\r\n");
+	while((tmp_block->pxNextFreeBlock)!= NULL){
+		tmp_block = tmp_block->pxNextFreeBlock;
+		block_number++;
+		printf(" BlockAddr	0x%X, BlockSize:	0x%X\r\n", tmp_block, tmp_block->xBlockSize);
+	}
+	printf("------------------------------------------------------------\r\n");
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[(block_number*sizeof(BlockLink_t))+13];
+	mydata[0] = 0xff;
+	mydata[1] = 0xff;
+	mydata[12] = 0x08;
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+
+	DistributedSendMsg(MyMacAddr, mydata, 13);
+	printf("Send DistributedNodeFreespace to Node 0x%X\r\n", Target_Node_id);
+}
 
 void DistributedSendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t size){
-
 	while(!init_eth(DP83848_PHY_ADDRESS, MyMacAddr)){
 		printf("Reset eth\r\n");
 		for(uint32_t i=0;i<0x00000FFF;i++)
@@ -1670,7 +1742,7 @@ int main(void){
 	//xTaskCreate(eth_send, "eth_send", 1000, NULL, 1, &TaskHandle_1);
 	xTaskCreate(task3, "task3", 1000, NULL, 1, &TaskHandle_3);
 	vTaskStartScheduler();
-	while (1)
+	while(1)
 		;
 }
 
@@ -1691,7 +1763,6 @@ void *_sbrk(int incr){
 }
 
 int _write(int file, char *ptr, int len){
-
 	for (unsigned int i = 0; i < len; i++)
 		usart1_send_char(*ptr++);
 
