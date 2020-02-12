@@ -77,6 +77,7 @@ uint32_t Global_Node_Backup_Master = 0;
 uint32_t Global_Task_id = 0;
 volatile uint32_t DisrtibutedNodeCheckIDflag = 0;
 volatile uint8_t CheckMasterNodeFlag = 0;
+
 Distributed_Data_t* Distributed_Set_Traget_Data(uint32_t* data_addr, uint32_t data_size, uint32_t split_size){
 	Distributed_Data_t* s = pvPortMalloc(sizeof(Distributed_Data_t));
 	s->Data_addr = data_addr;
@@ -1007,11 +1008,11 @@ uint8_t init_eth(uint16_t PHYAddress, uint8_t *Addr){
 
 	if (ETH_Mode==0x00000800){
 		SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, DM);
-		printf("ETH_Speed_%dM, ETH_Mode_FullDuplex\r\n", ETH_Speed_Value);
+		//printf("ETH_Speed_%dM, ETH_Mode_FullDuplex\r\n", ETH_Speed_Value);
 	}
 	else{
 		CLEAR_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, DM);
-		printf("ETH_Speed_%dM, ETH_Mode_HalfDuplex\r\n", ETH_Speed_Value);
+		//printf("ETH_Speed_%dM, ETH_Mode_HalfDuplex\r\n", ETH_Speed_Value);
 	}
 	SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, IPCO);
 	SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, RD);
@@ -1295,7 +1296,6 @@ void eth_handler(void){
 				printf(" BlockAddr	0x%X, BlockSize:	0x%X\r\n", (uint32_t)tmp_block->pxNextFreeBlock, tmp_block->xBlockSize);
 			}
 		}
-
 		printf("Node_id: 0x%X, Node_count: 0x%X, Node_Master: 0x%X, Node_Backup_Master: 0x%X, Dest: 0x%X, Sour: 0x%X\r\n", Global_Node_id, Global_Node_count, Global_Node_Master, Global_Node_Backup_Master, Dest, Sour);
 	}
 	/* Clear the Eth DMA Rx IT pending bits */
@@ -1392,19 +1392,6 @@ FrameTypeDef Pkt_Handle(void){
 }
 
 void task1(){
-	uint8_t MyMacAddr[] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	/*
-	for(uint32_t i=0;i<4;i++){
-		MyMacAddr[i+2] = *((uint8_t*)Global_Node_id+i);
-		printf("MyMacAddr[%d]: 0x%X\r\n", i+2, MyMacAddr[i+2]);
-	}
-	*/
-	while(!init_eth(DP83848_PHY_ADDRESS, MyMacAddr)){
-		printf("Reset eth\r\n");
-		for(uint32_t i=0;i<0x00000FFF;i++)
-			;
-	}
-
 	uint32_t count = 0;
 	while(1){
 		if ((READ_BIT(USART1_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART1_BASE + USART_SR_OFFSET, ORE_BIT))){
@@ -1442,12 +1429,19 @@ void task1(){
 				DisrtibutedNodeCheckIDflag = 0;
 				CheckMasterNodeFlag = 0;
 
+				uint8_t MyMacAddr[] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+				while(!init_eth(DP83848_PHY_ADDRESS, MyMacAddr)){
+					printf("Reset eth\r\n");
+					for(uint32_t i=0;i<0x00000FFF;i++)
+						;
+				}
+
 				uint32_t TO_COUNT = 0;
 				DistributedNodeGetID();
 				while((TO_COUNT < 1680000) && (Global_Node_id == 0)){
 					TO_COUNT++;
 				}
-				if(TO_COUNT>=1680000){
+				if(TO_COUNT >= 1680000){
 					TO_COUNT = 0;
 					DistributedNodeGetIDAgain();
 					while((TO_COUNT < 1680000) && (Global_Node_id == 0)){
@@ -1473,7 +1467,7 @@ void task1(){
 						while((TO_COUNT < 840000) && (DisrtibutedNodeCheckIDflag != 0)){
 							TO_COUNT++;
 						}
-						if(TO_COUNT>=840000){
+						if(TO_COUNT >= 840000){
 							portDISABLE_INTERRUPTS();
 							DistributedNodeInvalid(Global_Node_Master);
 							DisrtibutedNodeCheckIDflag = 0;
@@ -1758,9 +1752,10 @@ int main(void){
 	led_init(LED_RED);
 
 	REG(AIRCR_BASE) = NVIC_AIRCR_RESET_VALUE | NVIC_PRIORITYGROUP_4;
+
 	xTaskCreate(task1, "task1", 1000, NULL, 1, &TaskHandle_1);
-	//xTaskCreate(eth_send, "eth_send", 1000, NULL, 1, &TaskHandle_1);
 	xTaskCreate(task3, "task3", 1000, NULL, 1, &TaskHandle_3);
+	//xTaskCreate(eth_send, "eth_send", 1000, NULL, 1, &TaskHandle_1);
 	vTaskStartScheduler();
 	while(1)
 		;

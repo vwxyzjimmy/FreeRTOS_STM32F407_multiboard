@@ -10,7 +10,14 @@ typedef struct Distributed_Data {
 	uint32_t Split_size;
 	QueueHandle_t* xQueue;
 	struct Distributed_Data* Next_Distributed_Data;
-}Distributed_Data_t;
+} Distributed_Data_t;
+
+typedef struct Distributed_FreeBlock {
+    uint32_t Node_id;
+	uint32_t Block_number;
+    uint32_t* Block_size_array;
+	struct Distributed_FreeBlock* Next_Distributed_FreeBlock;
+} Distributed_FreeBlock;
 
 typedef struct Distributed_TaskHandle_List {
     struct Distributed_TaskHandle_List *Next_TaskHandle_List;
@@ -28,7 +35,7 @@ typedef struct Distributed_TaskHandle_List {
     TaskHandle_t *TaskHandlex;
 	QueueHandle_t* xQueue;
 	Distributed_Data_t* Distributed_Data_List;
-}Distributed_TaskHandle_List_t;
+} Distributed_TaskHandle_List_t;
 
 typedef struct A_BLOCK_LINK {
 	struct A_BLOCK_LINK *pxNextFreeBlock;
@@ -65,7 +72,7 @@ typedef struct {
   uint32_t length;
   uint32_t buffer;
   volatile ETH_DMADESCTypeDef *descriptor;
-}FrameTypeDef;
+} FrameTypeDef;
 
 #define ETH_TXBUFNB   5
 #define ETH_RXBUFNB   5
