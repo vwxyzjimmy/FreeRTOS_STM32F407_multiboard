@@ -54,7 +54,6 @@ typedef struct A_BLOCK_LINK {
 	tmp_array;																						\
 })
 
-
 typedef struct {
 	volatile uint32_t   Status;
 	uint32_t   ControlBufferSize;

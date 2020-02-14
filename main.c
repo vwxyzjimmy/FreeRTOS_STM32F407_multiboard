@@ -52,9 +52,9 @@ uint8_t DistributedNodeCheck(uint32_t Target_Node_id);
 void DistributedNodeCheckback(uint32_t Target_Node_id);
 void DistributedNodeBackupMaster(uint32_t Target_Node_id);
 void DistributedNodeInvalid(uint32_t Target_Node_id);
-void DistributedNodeFreespace(uint32_t Target_Node_id, BlockLink_t* FreespaceStart);
+void DistributedNodeFreespace(uint32_t Target_Node_id, uint32_t Node_id);;
 void DistributedSendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t size);
-
+void UpdateLocalFreeBlock();
 void task1();
 void Distributed_task();
 void task3();
@@ -77,6 +77,7 @@ uint32_t Global_Node_Backup_Master = 0;
 uint32_t Global_Task_id = 0;
 volatile uint32_t DisrtibutedNodeCheckIDflag = 0;
 volatile uint8_t CheckMasterNodeFlag = 0;
+Distributed_FreeBlock* DF_Start;
 
 Distributed_Data_t* Distributed_Set_Traget_Data(uint32_t* data_addr, uint32_t data_size, uint32_t split_size){
 	Distributed_Data_t* s = pvPortMalloc(sizeof(Distributed_Data_t));
@@ -100,12 +101,12 @@ void Distributed_Add_Traget_Data(Distributed_Data_t* S, uint32_t* data_addr, uin
 }
 
 Distributed_TaskHandle_List_t* Distributed_GetNode(uint32_t Return_addr){
-	Distributed_TaskHandle_List_t* Lastnode = &DStart;
-	while(Lastnode->Next_TaskHandle_List != NULL){
-		Lastnode = Lastnode->Next_TaskHandle_List;
+	Distributed_TaskHandle_List_t* Lastnode = DStart;
+	while(Lastnode != NULL){
 		if ((Lastnode->Instruction_addr<=Return_addr) && (Return_addr<=Lastnode->Instruction_addr_end)){
 			break;
 		}
+		Lastnode = Lastnode->Next_TaskHandle_List;
 	}
 	return Lastnode;
 }
@@ -1249,7 +1250,9 @@ void eth_handler(void){
 			if((Global_Node_Master == Global_Node_id) && (Global_Node_Master != 0)){
 				printf("Get DistributedNodeGetID\r\n");
 				DistributedNodeResponseID();
-				DistributedNodeFreespace(0xffffffff, &xStart);
+				for(uint32_t i=0;i<5000;i++)
+					;
+				DistributedNodeFreespace(0xffffffff, 0);
 			}
 		}
 		else if (Msg_event == 2){
@@ -1289,12 +1292,21 @@ void eth_handler(void){
 			printf("Global_Node_Master: 0x%X\r\n", Global_Node_Master);
 		}
 		else if (Msg_event == 8){
+			//rebuild
+			//-----------------------------------------------------------------------------------------------
 			uint8_t block_number = *((uint8_t*)frame.buffer+13);
 			printf("DistributedNodeFreespace: 0x%X\r\n", block_number);
+			uint32_t tmp_node_data_count = 0;
 			for(uint8_t i=0;i<block_number;i++){
-				BlockLink_t* tmp_block = (BlockLink_t*)((uint8_t*)frame.buffer+14 + i*sizeof(BlockLink_t));
-				printf(" BlockAddr	0x%X, BlockSize:	0x%X\r\n", (uint32_t)tmp_block->pxNextFreeBlock, tmp_block->xBlockSize);
+				Distributed_FreeBlock* tmp_block = (Distributed_FreeBlock*)((uint8_t*)frame.buffer+14+i*sizeof(Distributed_FreeBlock));
+				printf("Destinate: tmp_block: 0x%X, Node_id: 0x%X, Block_number: 0x%X, Block_size_array: 0x%X, Next_Distributed_FreeBlock: 0x%X\r\n", tmp_block, tmp_block->Node_id, tmp_block->Block_number, tmp_block->Block_size_array, tmp_block->Next_Distributed_FreeBlock);
+				printf("BLock: ");
+				for(uint32_t i=0;i<tmp_block->Block_number;i++){
+					printf("0x%X, ", *((uint32_t*)((uint8_t*)frame.buffer+14+block_number*sizeof(Distributed_FreeBlock)+tmp_node_data_count)) );
+				}
+				printf("\r\n");
 			}
+			//-----------------------------------------------------------------------------------------------
 		}
 		printf("Node_id: 0x%X, Node_count: 0x%X, Node_Master: 0x%X, Node_Backup_Master: 0x%X, Dest: 0x%X, Sour: 0x%X\r\n", Global_Node_id, Global_Node_count, Global_Node_Master, Global_Node_Backup_Master, Dest, Sour);
 	}
@@ -1473,7 +1485,6 @@ void task1(){
 							DisrtibutedNodeCheckIDflag = 0;
 							Global_Node_Master = Global_Node_id;
 							DistributedNodeResponseID();
-							DistributedNodeFreespace(0xffffffff, &xStart);
 							portENABLE_INTERRUPTS();
 						}
 						else{
@@ -1690,37 +1701,57 @@ void DistributedNodeInvalid(uint32_t Target_Node_id){
 	printf("Broadcast DistributedNodeInvalid Node 0x%X\r\n", Target_Node_id);
 }
 
-void DistributedNodeFreespace(uint32_t Target_Node_id, BlockLink_t* FreespaceStart){
-	uint8_t block_number = 0;
-	BlockLink_t* tmp_block = FreespaceStart;
-	printf("------------------------------------------------------------\r\n");
-	while((tmp_block->pxNextFreeBlock)!= NULL){
-		tmp_block = tmp_block->pxNextFreeBlock;
-		block_number++;
-		printf(" BlockAddr	0x%X, BlockSize:	0x%X\r\n", tmp_block, tmp_block->xBlockSize);
+void DistributedNodeFreespace(uint32_t Target_Node_id, uint32_t Node_id){
+	printf("DistributedNodeFreespace\r\n");
+	UpdateLocalFreeBlock();
+	uint32_t node_number = 0;
+	uint32_t block_number = 0;
+	Distributed_FreeBlock* FreespaceStart = DF_Start;
+	Distributed_FreeBlock* tmp_block = FreespaceStart;
+
+	while(tmp_block != NULL){
+		node_number++;
+		block_number += tmp_block->Block_number;
+		tmp_block = tmp_block->Next_Distributed_FreeBlock;
 	}
-	printf("------------------------------------------------------------\r\n");
 	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[(block_number*sizeof(BlockLink_t))+14];
+	uint32_t Send_size = 14+(node_number*sizeof(Distributed_FreeBlock))+block_number*sizeof(uint32_t);
+	uint8_t mydata[Send_size];
 	mydata[0] = 0xff;
 	mydata[1] = 0xff;
 	mydata[12] = 0x08;
-	mydata[13] = block_number;
+	mydata[13] = node_number;
 	for(uint8_t i=0;i<4;i++){
 		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
 		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
 		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
 	}
-	block_number = 0;
+	//rebuild
+	//-----------------------------------------------------------------------------------------------
+	uint32_t tmp_node_number = 0;
+	uint32_t tmp_node_data_count = 0;
 	tmp_block = FreespaceStart;
-	while((tmp_block->pxNextFreeBlock)!= NULL){
-		tmp_block = tmp_block->pxNextFreeBlock;
-		for(uint8_t i=0;i<sizeof(BlockLink_t);i++){
-			*((uint8_t*)(mydata+14+block_number*sizeof(BlockLink_t)+i)) = *((uint8_t*)tmp_block+i);
+	while(tmp_block != NULL){
+		printf("Source:    tmp_block: 0x%X, Node_id: 0x%X, Block_number: 0x%X, Block_size_array: 0x%X, Next_Distributed_FreeBlock: 0x%X\r\n", tmp_block, tmp_block->Node_id, tmp_block->Block_number, tmp_block->Block_size_array, tmp_block->Next_Distributed_FreeBlock);
+		printf("BLock: ");
+		for(uint32_t i=0;i<tmp_block->Block_number;i++)
+			printf("0x%X, ", *(tmp_block->Block_size_array+i));
+		printf("\r\n");
+		for(uint8_t i=0;i<sizeof(Distributed_FreeBlock);i++){
+			*((uint8_t*)(mydata+14+tmp_node_number*sizeof(Distributed_FreeBlock)+i)) = *((uint8_t*)tmp_block+i);
 		}
-		block_number++;
+
+		for(uint32_t i=0;i<tmp_block->Block_number;i++){
+			for(uint32_t j=0;j<sizeof(uint32_t);j++){
+				*((uint8_t*)(mydata+14+node_number*sizeof(Distributed_FreeBlock)+tmp_node_data_count)) = *((uint8_t*)(tmp_block->Block_size_array+i)+j);
+				tmp_node_data_count++;
+			}
+		}
+		tmp_node_number++;
+		tmp_block = tmp_block->Next_Distributed_FreeBlock;
 	}
-	DistributedSendMsg(MyMacAddr, mydata, ((block_number*sizeof(BlockLink_t))+14));
+	//-----------------------------------------------------------------------------------------------
+	DistributedSendMsg(MyMacAddr, mydata, Send_size);
 	printf("Send DistributedNodeFreespace to Node 0x%X\r\n", Target_Node_id);
 }
 
@@ -1742,6 +1773,77 @@ void DistributedSendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t size)
 			}
 		}
 	}
+}
+
+void UpdateLocalFreeBlock(){
+	Distributed_FreeBlock* local_free_block = DF_Start;
+	while(local_free_block != NULL){
+		if(local_free_block->Node_id == Global_Node_id)
+			break;
+		local_free_block = local_free_block->Next_Distributed_FreeBlock;
+	}
+	if(local_free_block == NULL){
+		local_free_block = pvPortMalloc(sizeof(Distributed_FreeBlock));
+		local_free_block->Node_id = Global_Node_id;
+		Distributed_FreeBlock* tmp_free_block = DF_Start;
+		while(tmp_free_block->Next_Distributed_FreeBlock != NULL){
+			if ((tmp_free_block->Next_Distributed_FreeBlock)->Node_id > Global_Node_id){
+				break;
+			}
+			tmp_free_block = tmp_free_block->Next_Distributed_FreeBlock;
+		}
+		if(tmp_free_block != DF_Start){
+			local_free_block->Next_Distributed_FreeBlock = tmp_free_block->Next_Distributed_FreeBlock;
+			tmp_free_block->Next_Distributed_FreeBlock = local_free_block;
+		}
+		else{
+			if (DF_Start == NULL){
+				DF_Start = local_free_block;
+			}
+			else{
+				if (DF_Start->Node_id > Global_Node_id){
+					local_free_block->Next_Distributed_FreeBlock = DF_Start;
+					DF_Start = local_free_block;
+				}
+				else{
+					DF_Start->Next_Distributed_FreeBlock = local_free_block;
+				}
+			}
+		}
+	}
+
+	uint32_t block_number = 0;
+	BlockLink_t* tmp_block = &xStart;
+	while(tmp_block != NULL){
+		if(tmp_block->xBlockSize > 0){
+			block_number++;
+		}
+		tmp_block = tmp_block->pxNextFreeBlock;
+	}
+	local_free_block->Block_number = block_number;
+	local_free_block->Block_size_array = pvPortMalloc(block_number*sizeof(uint32_t));
+
+	block_number = 0;
+	tmp_block = &xStart;
+	while(tmp_block != NULL){
+		if(tmp_block->xBlockSize > 0){
+			*(local_free_block->Block_size_array+block_number) = tmp_block->xBlockSize;
+			block_number++;
+		}
+		tmp_block = tmp_block->pxNextFreeBlock;
+	}
+	/*
+	Distributed_FreeBlock* tmp_local_free_block = DF_Start;
+	while(tmp_local_free_block != NULL){
+		printf("tmp_local_free_block: 0x%X, Node_id: 0x%X, Block_number: 0x%X, Block_size_array: 0x%X, Next_Distributed_FreeBlock: 0x%X\r\n", tmp_local_free_block, tmp_local_free_block->Node_id, tmp_local_free_block->Block_number, tmp_local_free_block->Block_size_array, tmp_local_free_block->Next_Distributed_FreeBlock);
+		printf("Block: ");
+		for(uint32_t i=0;i<tmp_local_free_block->Block_number;i++){
+			printf("0x%X, ", *(tmp_local_free_block->Block_size_array+i));
+		}
+		printf("\r\n");
+		tmp_local_free_block = tmp_local_free_block->Next_Distributed_FreeBlock;
+	}
+	*/
 }
 
 int main(void){
