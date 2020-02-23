@@ -1439,6 +1439,10 @@ void task1(){
 			}
 			*/
 			if (rec_cmd == 'c'){
+				uint32_t* tmp1 = pvPortMalloc(100*sizeof(uint32_t));
+				uint32_t* tmp2 = pvPortMalloc(100*sizeof(uint32_t));
+				uint32_t* tmp3 = pvPortMalloc(100*sizeof(uint32_t));
+				vPortFree(tmp2);
 				Msg_event = 0;
 				Global_Node_id = 0;
 				Global_Node_count = 0;
@@ -1532,10 +1536,13 @@ void task1(){
 									Local_Node->Block_size_array = pvPortMalloc(Local_Node->Block_number*sizeof(uint32_t));
 								}
 								printf("BLock: ");
-								for(uint32_t i=0;i<tmp_block->Block_number;i++){
-									*(Local_Node->Block_size_array+i) = *((uint32_t*)((uint8_t*)frame.buffer+14+block_number*sizeof(Distributed_FreeBlock))+tmp_node_data_count+i);
+								for(uint32_t j=0;j<tmp_block->Block_number;j++){
+									uint32_t* tmp_addr = ((uint32_t*)((uint8_t*)frame.buffer+14+block_number*sizeof(Distributed_FreeBlock))+tmp_node_data_count);
+									*(Local_Node->Block_size_array+tmp_node_data_count) = *tmp_addr;
 									tmp_node_data_count++;
-									printf("0x%X, ",  *((uint32_t*)(Local_Node->Block_size_array+i)));
+									printf("Addr: 0x%X, ", tmp_addr);
+									printf("0x%X, ",  *tmp_addr);
+
 								}
 								printf("\r\n");
 							}
@@ -1563,7 +1570,7 @@ void task1(){
 						portENABLE_INTERRUPTS();
 						Distributed_Show_FreeBlock();
 					}
-					/*
+
 					if((Global_Node_Master == Global_Node_id) && (Global_Node_count > Global_Node_id) && (Global_Node_Backup_Master <= Global_Node_id)){
 						for(uint32_t i=(Global_Node_id+1);i<=Global_Node_count;i++){
 							while(!(DistributedNodeCheck(i)));
@@ -1585,7 +1592,7 @@ void task1(){
 							}
 						}
 					}
-					*/
+
 					if(BlockChangeFlag > 0){
 						uint8_t bool_send_flag = 0;
 						uint32_t tickcount = xTaskGetTickCount();
@@ -1802,6 +1809,8 @@ void DistributedNodeInvalid(uint32_t Target_Node_id){
 }
 
 void DistributedNodeFreespace(uint32_t Target_Node_id, uint32_t Node_id){
+	if(Target_Node_id == 0)
+		Target_Node_id = 0xFFFFFFFF;
 	UpdateLocalFreeBlock();
 	uint32_t node_number = 0;
 	uint32_t block_number = 0;
