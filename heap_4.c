@@ -110,9 +110,10 @@ space. */
 static size_t xBlockAllocatedBit = 0;
 
 /*-----------------------------------------------------------*/
-
+uint8_t BlockChangeFlag = 0;
 void *pvPortMalloc( size_t xWantedSize )
 {
+BlockChangeFlag = 1;
 BlockLink_t *pxBlock, *pxPreviousBlock, *pxNewBlockLink;
 void *pvReturn = NULL;
 	vTaskSuspendAll();
@@ -265,6 +266,7 @@ void *pvReturn = NULL;
 
 void vPortFree( void *pv )
 {
+BlockChangeFlag = 1;
 uint8_t *puc = ( uint8_t * ) pv;
 BlockLink_t *pxLink;
 
