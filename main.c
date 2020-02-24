@@ -1257,9 +1257,9 @@ void eth_handler(void){
 		if ((Dest == 0xFFFFFFFF) && (Sour <= Global_Node_count) && (Sour != 0)){
 			tickcount_lo_bound = xTaskGetTickCount();
 			if(Sour >= Global_Node_id)
-				tickcount_hi_bound = tickcount_lo_bound + 100000*(Sour-Global_Node_id+1);
+				tickcount_hi_bound = tickcount_lo_bound + 30000*(Sour-Global_Node_id+1);
 			else
-				tickcount_hi_bound = tickcount_lo_bound + 100000*(Global_Node_count-Global_Node_id+Sour+1);
+				tickcount_hi_bound = tickcount_lo_bound + 30000*(Global_Node_count-Global_Node_id+Sour+1);
 		}
 		//-------------------------------------------------------------------------------------------------------------------------------
 		Msg_event = *((uint8_t*)frame.buffer+12);
@@ -1550,6 +1550,7 @@ void task1(){
 								tmp_node_data_count += tmp_block->Block_number;
 							}
 						}
+						Distributed_Show_FreeBlock();
 						printf("Destinate End-------------------------------------------------------\r\n");
 						uint32_t total_count = tmp_node_data_count*4;
 						uint32_t tmp_count = 0;
@@ -1916,6 +1917,7 @@ void DistributedSendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t size)
 }
 
 void UpdateLocalFreeBlock(){
+	printf("  UpdateLocalFreeBlock Start\r\n");
 	Distributed_FreeBlock* local_free_block = DF_Start;
 	while((local_free_block != NULL) && (local_free_block->Node_id != Global_Node_id)){
 		local_free_block = local_free_block->Next_Distributed_FreeBlock;
@@ -1941,11 +1943,13 @@ void UpdateLocalFreeBlock(){
 					DF_Start = local_free_block;
 				}
 				else{
+					local_free_block->Next_Distributed_FreeBlock = DF_Start->Next_Distributed_FreeBlock;
 					DF_Start->Next_Distributed_FreeBlock = local_free_block;
 				}
 			}
 		}
 	}
+
 	uint32_t block_number = 0;
 	BlockLink_t* tmp_block = &xStart;
 	while(tmp_block != NULL){
@@ -1954,23 +1958,27 @@ void UpdateLocalFreeBlock(){
 		}
 		tmp_block = tmp_block->pxNextFreeBlock;
 	}
-	if(block_number > local_free_block->Block_number){
+	if(block_number != local_free_block->Block_number){
 		if(local_free_block->Block_number > 0)
 			vPortFree(local_free_block->Block_size_array);
 		local_free_block->Block_size_array = pvPortMalloc(block_number*sizeof(uint32_t));
 	}
 	local_free_block->Block_number = block_number;
 
+	//List_FreeBlock();
+
 	block_number = 0;
 	tmp_block = &xStart;
 	while(tmp_block != NULL){
 		if(tmp_block->xBlockSize > 0){
-			*(local_free_block->Block_size_array+block_number) = tmp_block->xBlockSize;
+			uint32_t* tmp_ptr = local_free_block->Block_size_array+block_number;
+			*tmp_ptr = tmp_block->xBlockSize;
 			block_number++;
+			printf("  block_number: 0x%X, tmp_ptr: 0x%X, xBlockSize: 0x%X\r\n", block_number, tmp_ptr, *tmp_ptr);
 		}
 		tmp_block = tmp_block->pxNextFreeBlock;
 	}
-	printf("UpdateLocalFreeBlock\r\n");
+	printf("  UpdateLocalFreeBlock\r\n");
 }
 
 Distributed_FreeBlock* GetFreeBlockNode(uint32_t Node_id){
