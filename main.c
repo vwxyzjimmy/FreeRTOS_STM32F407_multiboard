@@ -81,12 +81,11 @@ uint32_t Global_Task_id = 0;
 volatile uint32_t DisrtibutedNodeCheckIDFlag = 0;
 volatile uint8_t CheckMasterNodeFlag = 0;
 volatile uint8_t SendFreespaceFlag = 0;
-volatile uint32_t* RecvFreespaceFlag = 0;
+volatile uint32_t RecvFreespaceFlag = 0;
 Distributed_FreeBlock* DF_Start;
 extern uint8_t BlockChangeFlag;
 volatile uint32_t tickcount_lo_bound = 0;
 volatile uint32_t tickcount_hi_bound = 0xFFFFFFFF;
-uint32_t recv_count = 0;
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Distributed_Data_t* Distributed_Set_Traget_Data(uint32_t* data_addr, uint32_t data_size, uint32_t split_size){
 	Distributed_Data_t* s = pvPortMalloc(sizeof(Distributed_Data_t));
@@ -521,6 +520,7 @@ void svc_handler_c(uint32_t LR, uint32_t MSP){
 		Lastnode->Finish_Flag = 1;
 	}
 }
+
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 void init_dac(void){
 	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTA));
@@ -1220,20 +1220,18 @@ void eth_handler(void){
 	uint32_t Dest = *((uint32_t*)((uint8_t*)frame.buffer+2));
 	uint32_t Sour = *((uint32_t*)((uint8_t*)frame.buffer+8));
 	if ((Dest == 0xffffffff) || (Dest == Global_Node_id)){
-		printf("recv count: 0x%X\r\n", recv_count);
-		recv_count++;
 		//-------------------------------------------------------------------------------------------------------------------------------
 		if (Dest == 0xFFFFFFFF){
 			tickcount_lo_bound = xTaskGetTickCount();
 			uint32_t multi = 0;
 			if( (Sour <= Global_Node_id) && (Sour > 0))
-				multi = (Global_Node_id-Sour);
+				multi = (Global_Node_id-Sour-1);
 			else if((Sour > Global_Node_id) && (Sour <= Global_Node_count))
-				multi = (Global_Node_id+(Global_Node_count-Sour));
+				multi = (Global_Node_id+(Global_Node_count-Sour)-1);
 			else
-				multi = (Global_Node_id);
-			printf("--- multi: 0x%X, Sour: 0x%X, Global_Node_id: 0x%X, Global_Node_count: 0x%X\r\n", multi, Sour, Global_Node_id, Global_Node_count);
-			tickcount_hi_bound = tickcount_lo_bound + 100*multi;
+				multi = (Global_Node_id-1);
+			printf("	multi: 0x%X, Sour: 0x%X, Global_Node_id: 0x%X, Global_Node_count: 0x%X\r\n", multi, Sour, Global_Node_id, Global_Node_count);
+			tickcount_hi_bound = tickcount_lo_bound + 100000*multi + 10;
 		}
 		//-------------------------------------------------------------------------------------------------------------------------------
 		Msg_event = *((uint8_t*)frame.buffer+12);
@@ -1288,8 +1286,6 @@ void eth_handler(void){
 			printf("Get DistributedNodeFreespace\r\n");
 			if ((Sour <= Global_Node_count) || (Global_Node_id == Global_Node_Master)){
 				RecvFreespaceFlag = Sour;
-				CLEAR_BIT(ETHERNET_MAC_BASE + ETH_DMAIER_OFFSET, NISE);
-				CLEAR_BIT(ETHERNET_MAC_BASE + ETH_DMAIER_OFFSET, RIE);
 			}
 		}
 		printf("Node_id: 0x%X, Node_count: 0x%X, Node_Master: 0x%X, Node_Backup_Master: 0x%X, Dest: 0x%X, Sour: 0x%X\r\n", Global_Node_id, Global_Node_count, Global_Node_Master, Global_Node_Backup_Master, Dest, Sour);
@@ -1486,14 +1482,12 @@ void task1(){
 						}
 						portDISABLE_INTERRUPTS();
 						CheckMasterNodeFlag = 0;
-							portENABLE_INTERRUPTS();
+						portENABLE_INTERRUPTS();
 					}
 
 					if(SendFreespaceFlag == 1){
 						portDISABLE_INTERRUPTS();
-						//printf("mtfk++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\r\n");
 						DistributedNodeFreespace(0xffffffff, 0);
-						//printf("mtfk++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\r\n");
 						BlockChangeFlag = 0;// important!!!
 						SendFreespaceFlag = 0;
 						portENABLE_INTERRUPTS();
@@ -1501,13 +1495,13 @@ void task1(){
 
 					if(RecvFreespaceFlag > 0){
 						portDISABLE_INTERRUPTS();
-						FrameTypeDef frame;
-						frame.buffer =(DMA_RX_FRAME_infos->FS_Rx_Desc)->Buffer1Addr;
-						uint8_t block_number = *((uint8_t*)frame.buffer+13);
+						volatile uint32_t tmp_RecvFreespaceFlag = RecvFreespaceFlag;
+						uint8_t* frame_addr = (DMA_RX_FRAME_infos->FS_Rx_Desc)->Buffer1Addr;
+						uint8_t block_number = *((uint8_t*)frame_addr+13);
 						uint32_t tmp_node_data_count = 0;
 						printf("\r\nDestinate, block_number: 0x%X, --------------------------------------\r\n", block_number);
 						for(uint8_t i=0;i<block_number;i++){
-							Distributed_FreeBlock* tmp_block = (Distributed_FreeBlock*)((uint8_t*)frame.buffer+14+i*sizeof(Distributed_FreeBlock));
+							Distributed_FreeBlock* tmp_block = (Distributed_FreeBlock*)((uint8_t*)frame_addr+14+i*sizeof(Distributed_FreeBlock));
 							if(tmp_block->Node_id != Global_Node_id){
 								if((tmp_block->Node_id > Global_Node_count) && (Global_Node_id != Global_Node_Master))
 									Global_Node_count = tmp_block->Node_id;
@@ -1521,7 +1515,7 @@ void task1(){
 								}
 								printf("BLock: ");
 								for(uint32_t j=0;j<tmp_block->Block_number;j++){
-									uint32_t* tmp_addr = ((uint32_t*)((uint8_t*)frame.buffer+14+block_number*sizeof(Distributed_FreeBlock))+tmp_node_data_count);
+									uint32_t* tmp_addr = ((uint32_t*)((uint8_t*)frame_addr+14+block_number*sizeof(Distributed_FreeBlock))+tmp_node_data_count);
 									tmp_node_data_count++;
 									*(Local_Node->Block_size_array+j) = *tmp_addr;
 									printf("0x%X, ",  *tmp_addr);
@@ -1533,9 +1527,8 @@ void task1(){
 								tmp_node_data_count += tmp_block->Block_number;
 							}
 						}
-						SET_BIT(ETHERNET_MAC_BASE + ETH_DMAIER_OFFSET, NISE);
-						SET_BIT(ETHERNET_MAC_BASE + ETH_DMAIER_OFFSET, RIE);
 						portENABLE_INTERRUPTS();
+
 						printf("Destinate End-------------------------------------------------------\r\n");
 						uint32_t total_count = tmp_node_data_count*4;
 						uint32_t tmp_count = 0;
@@ -1556,7 +1549,9 @@ void task1(){
 								BlockChangeFlag = 0;// important!!!
 							}
 						}
-						RecvFreespaceFlag = 0;
+						if (tmp_RecvFreespaceFlag == RecvFreespaceFlag)
+							RecvFreespaceFlag = 0;
+
 						Distributed_Show_FreeBlock();
 					}
 
@@ -1583,6 +1578,7 @@ void task1(){
 						}
 					}
 					*/
+
 					if(BlockChangeFlag > 0){
 						uint8_t bool_send_flag = 0;
 						uint32_t tickcount = xTaskGetTickCount();
@@ -1597,11 +1593,9 @@ void task1(){
 							}
 						}
 						if(bool_send_flag != 0){
-							printf("BlockChangeFlag	================================\r\n");
 							DistributedNodeFreespace(0xffffffff, Global_Node_id);
 							BlockChangeFlag = 0;
 							Distributed_Show_FreeBlock();
-							printf("BlockChangeFlag	End ============================\r\n");
 						}
 					}
 				}
