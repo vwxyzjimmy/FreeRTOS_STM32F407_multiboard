@@ -62,6 +62,11 @@ void Distributed_task();
 void task3();
 void eth_send(void);
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+void swap(int *a, int *b);
+int Partition(int *arr, int front, int end);
+void QuickSort(int *arr, int front, int end);
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 volatile uint8_t rec_play_buf_fir[200], rec_play_buf_sec[200];
 volatile uint8_t *rece_ptr;
 volatile uint8_t *play_ptr;
@@ -76,7 +81,7 @@ uint32_t Global_Node_id = 0;
 uint32_t Global_Node_count = 0;
 uint32_t Global_Node_Master = 0;
 uint32_t Global_Node_Backup_Master = 0;
-uint32_t Global_Node_Master_Key = 0;
+uint32_t Global_Node_Master_Token = 0;
 uint32_t Global_Task_id = 0;
 volatile uint32_t DisrtibutedNodeCheckIDFlag = 0;
 volatile uint8_t CheckMasterNodeFlag = 0;
@@ -268,7 +273,7 @@ uint32_t Got_sp_minus_immediate(uint32_t addr){
 	return immediate;
 }
 
-Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_t sp, uint32_t lr){
+Distributed_TaskHandle_List_t* Distributed_manager_task_ori(void* data_info, uint32_t sp, uint32_t lr){
 	Global_Task_id++;
 	uint32_t Data_number = 1;
 	Distributed_Data_t* tmp_Distributed_Data = ((Distributed_Data_t*)data_info);
@@ -289,12 +294,12 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 		tmp_Distributed_Data = tmp_Distributed_Data->Next_Distributed_Data;
 	}
 
-	uint32_t slit_num = 7;
-	static uint32_t *sp_start = 0;
-	static uint32_t *sp_end = 0;
-	static uint32_t *pc_start = 0;
-	static uint32_t *pc_end = 0;
-	static uint32_t *lr_addr = 0;
+	uint32_t split_num = 7;
+	uint32_t *sp_start = 0;
+	uint32_t *sp_end = 0;
+	uint32_t *pc_start = 0;
+	uint32_t *pc_end = 0;
+	uint32_t *lr_addr = 0;
 
 	uint32_t stack_size = 0;
 	lr_addr = (uint32_t *)((lr & 0xFFFFFFFE)-4);
@@ -315,7 +320,7 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 	uint32_t instruction_size = ((uint32_t)pc_end-(uint32_t)pc_start);
 	Distributed_TaskHandle_List_t *Subscriber_task;
 
-	for(uint32_t slit_num_th=0;slit_num_th<slit_num;slit_num_th++){
+	for(uint32_t split_num_th=0;split_num_th<split_num;split_num_th++){
 		uint32_t Data_size_split = 0;
 		uint32_t* Data_Max_size_split_record = pvPortMalloc(Data_number*sizeof(uint32_t));
 		uint32_t* Data_size_split_record = pvPortMalloc(Data_number*sizeof(uint32_t));
@@ -326,28 +331,28 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 			if(Data_split_size_array[Data_number_th] > 1){
 				split_base_data_size = Data_size_array[Data_number_th]/Data_split_size_array[Data_number_th];
 			}
-			if ((split_base_data_size%slit_num) == 0){
-				tmp_data_size = (split_base_data_size/slit_num)*Data_split_size_array[Data_number_th];
+			if ((split_base_data_size%split_num) == 0){
+				tmp_data_size = (split_base_data_size/split_num)*Data_split_size_array[Data_number_th];
 				*(Data_Max_size_split_record+Data_number_th)= tmp_data_size;
 			}
 			else{
-				tmp_data_size = ((split_base_data_size/slit_num) + 1)*Data_split_size_array[Data_number_th];
+				tmp_data_size = ((split_base_data_size/split_num) + 1)*Data_split_size_array[Data_number_th];
 				*(Data_Max_size_split_record+Data_number_th) = tmp_data_size;
 
-				if (((slit_num_th+1)*tmp_data_size) <= Data_size_array[Data_number_th]){
-					//printf("Case1 %Xth Porcessor, tmp_data_size: 0x%X, Data_size_array[Data_number_th], : 0x%X\r\n", slit_num_th, tmp_data_size, Data_size_array[Data_number_th]);
+				if (((split_num_th+1)*tmp_data_size) <= Data_size_array[Data_number_th]){
+					//printf("Case1 %Xth Porcessor, tmp_data_size: 0x%X, Data_size_array[Data_number_th], : 0x%X\r\n", split_num_th, tmp_data_size, Data_size_array[Data_number_th]);
 					;
 				}
-				else if ((((slit_num_th+1)*tmp_data_size) > Data_size_array[Data_number_th]) &&  ((slit_num_th*tmp_data_size) <= (Data_size_array[Data_number_th]+tmp_data_size))){
-					//printf("Case2 %Xth Porcessor, tmp_data_size: 0x%X, Data_size_array[Data_number_th], : 0x%X\r\n", slit_num_th, tmp_data_size, Data_size_array[Data_number_th]);
+				else if ((((split_num_th+1)*tmp_data_size) > Data_size_array[Data_number_th]) &&  ((split_num_th*tmp_data_size) <= (Data_size_array[Data_number_th]+tmp_data_size))){
+					//printf("Case2 %Xth Porcessor, tmp_data_size: 0x%X, Data_size_array[Data_number_th], : 0x%X\r\n", split_num_th, tmp_data_size, Data_size_array[Data_number_th]);
 					tmp_data_size = (split_base_data_size % tmp_data_size)*Data_split_size_array[Data_number_th];
 				}
 				else{
-					//printf("Case3 %Xth Porcessor, tmp_data_size: 0x%X, Data_size_array[Data_number_th], : 0x%X\r\n", slit_num_th, tmp_data_size, Data_size_array[Data_number_th]);
+					//printf("Case3 %Xth Porcessor, tmp_data_size: 0x%X, Data_size_array[Data_number_th], : 0x%X\r\n", split_num_th, tmp_data_size, Data_size_array[Data_number_th]);
 					tmp_data_size = 0;
 				}
 				/*
-				if (slit_num_th == (slit_num-1))
+				if (split_num_th == (split_num-1))
 					tmp_data_size = (split_base_data_size %tmp_data_size)*Data_split_size_array[Data_number_th];
 				*/
 			}
@@ -356,7 +361,7 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 			Data_size_split = Data_size_split + tmp_data_size;
 		}
 
-		if (slit_num_th == 0){
+		if (split_num_th == 0){
 			uint32_t malloc_size = 4*Data_size_split;
 			uint32_t* Data_addr = pvPortMalloc(malloc_size);
 			Distributed_Data_t* tmp_Distributed_Data = ((Distributed_Data_t*)data_info);
@@ -367,8 +372,8 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 
 			for(uint32_t Data_number_i=0;Data_number_i<Data_number;Data_number_i++){
 				for(uint32_t i=0;i<Data_size_split_record[Data_number_i];i++){
-					*(tmp_Data_addr+i) = *(tmp_Distributed_Data->Data_addr + slit_num_th*Data_Max_size_split_record[Data_number_i] + i);
-					printf("slit_num_th: 0x%X, Data_number_i: 0x%X, Data_addr: 0x%X	0x%X\r\n", slit_num_th, Data_number_i, (tmp_Data_addr+i), *(tmp_Data_addr+i));
+					*(tmp_Data_addr+i) = *(tmp_Distributed_Data->Data_addr + split_num_th*Data_Max_size_split_record[Data_number_i] + i);
+					printf("split_num_th: 0x%X, Data_number_i: 0x%X, Data_addr: 0x%X	0x%X\r\n", split_num_th, Data_number_i, (tmp_Data_addr+i), *(tmp_Data_addr+i));
 				}
 				Distributed_Data_t* tmp_Distributed_Data_List = pvPortMalloc(sizeof(Distributed_Data_t));
 				tmp_Distributed_Data_List->Next_Distributed_Data = NULL;
@@ -391,7 +396,351 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 			NewDTaskControlBlock->Next_TaskHandle_List = NULL;
 			NewDTaskControlBlock->Processor_id = 1;
 		    NewDTaskControlBlock->DTask_id = Global_Task_id;
-			NewDTaskControlBlock->DSubTask_id = slit_num_th;
+			NewDTaskControlBlock->DSubTask_id = split_num_th;
+			NewDTaskControlBlock->Instruction_addr = pc_start;
+			NewDTaskControlBlock->Instruction_addr_end = pc_end;
+			NewDTaskControlBlock->Data_addr = Data_addr;
+			NewDTaskControlBlock->Data_size = Data_size_split_record;
+			NewDTaskControlBlock->Data_Max_size  = Data_Max_size_split_record;
+			NewDTaskControlBlock->Data_number = Data_number;
+			NewDTaskControlBlock->Remaind_Data_number = 0;
+			NewDTaskControlBlock->Finish_Flag = 0;
+			NewDTaskControlBlock->xQueue = ((Distributed_Data_t*)data_info)->xQueue;
+			NewDTaskControlBlock->Distributed_Data_List = Start_Distributed_Data_List;
+			Distributed_TaskHandle_List_t* Lastnode = DStart;
+
+			if(Lastnode == NULL)
+				DStart = NewDTaskControlBlock;
+			else{
+				while(Lastnode->Next_TaskHandle_List != NULL)
+					Lastnode = Lastnode->Next_TaskHandle_List;
+				Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
+			}
+			Subscriber_task = NewDTaskControlBlock;
+		}
+		else{
+			uint32_t malloc_size = instruction_size + Data_size_split*sizeof(uint32_t);
+			uint32_t *instruction = pvPortMalloc(malloc_size);
+
+			for(uint32_t i=0;i<(instruction_size/2);i++){
+				if((lr_addr<((uint16_t*)pc_start+i)) && ((lr_addr+1)>((uint16_t*)pc_start+i))){
+					*((uint16_t*)instruction+i) = 0xbf00;		//	push (r7, lr)
+				}
+				else if (lr_addr == ((uint16_t*)pc_start+i)){
+					*((uint16_t*)instruction+i) = 0xdf01;		//	bx	here in thumb instruction
+				}
+				else
+					*((uint16_t*)instruction+i) = *((uint16_t*)pc_start+i);
+			}
+
+			uint32_t* Data_addr = instruction+(instruction_size/4);
+			Distributed_Data_t* tmp_Distributed_Data = ((Distributed_Data_t*)data_info);
+			uint32_t* tmp_Data_addr = Data_addr;
+
+			Distributed_Data_t* Start_Distributed_Data_List;
+			Distributed_Data_t* Stop_Distributed_Data_List;
+			for(uint32_t Data_number_i=0;Data_number_i<Data_number;Data_number_i++){
+				for(uint32_t i=0;i<Data_size_split_record[Data_number_i];i++){
+					*(tmp_Data_addr+i) = *(tmp_Distributed_Data->Data_addr + split_num_th*Data_Max_size_split_record[Data_number_i] + i);
+					printf("split_num_th: 0x%X, Data_number_i: 0x%X, Data_addr: 0x%X	0x%X\r\n", split_num_th, Data_number_i, (tmp_Data_addr+i), *(tmp_Data_addr+i));
+				}
+
+				Distributed_Data_t* tmp_Distributed_Data_List = pvPortMalloc(sizeof(Distributed_Data_t));
+				tmp_Distributed_Data_List->Next_Distributed_Data = NULL;
+				if(Data_number_i == 0){
+					Start_Distributed_Data_List = tmp_Distributed_Data_List;
+					Stop_Distributed_Data_List = Start_Distributed_Data_List;
+				}
+				else{
+					Stop_Distributed_Data_List->Next_Distributed_Data = tmp_Distributed_Data_List;
+					Stop_Distributed_Data_List = Stop_Distributed_Data_List->Next_Distributed_Data;
+				}
+				tmp_Distributed_Data_List->Data_addr = tmp_Data_addr;
+				tmp_Distributed_Data_List->Data_size = Data_size_split_record[Data_number_i];
+				tmp_Data_addr = tmp_Data_addr + Data_size_split_record[Data_number_i];
+				tmp_Distributed_Data = tmp_Distributed_Data->Next_Distributed_Data;
+			}
+
+			Distributed_TaskHandle_List_t *NewDTaskControlBlock = pvPortMalloc(sizeof(Distributed_TaskHandle_List_t));
+			NewDTaskControlBlock->Next_TaskHandle_List = NULL;
+			NewDTaskControlBlock->Processor_id = 1;
+		    NewDTaskControlBlock->DTask_id = Global_Task_id;
+			NewDTaskControlBlock->DSubTask_id = split_num_th;
+			NewDTaskControlBlock->Instruction_addr = instruction;
+			NewDTaskControlBlock->Instruction_addr_end = instruction + (instruction_size/4);
+			NewDTaskControlBlock->Data_addr = Data_addr;
+			NewDTaskControlBlock->Data_size = Data_size_split_record;
+			NewDTaskControlBlock->Data_Max_size  = Data_Max_size_split_record;
+			NewDTaskControlBlock->Data_number = Data_number;
+			NewDTaskControlBlock->Remaind_Data_number = 0;
+			NewDTaskControlBlock->Finish_Flag = 0;
+			NewDTaskControlBlock->TaskHandlex = pvPortMalloc(sizeof(TaskHandle_t));
+			NewDTaskControlBlock->Distributed_Data_List = Start_Distributed_Data_List;
+			NewDTaskControlBlock->Next_TaskHandle_List = NULL;
+			Distributed_TaskHandle_List_t* Lastnode = DStart;
+
+			if(Lastnode == NULL)
+				DStart = NewDTaskControlBlock;
+			else{
+				while(Lastnode->Next_TaskHandle_List != NULL){
+					Lastnode = Lastnode->Next_TaskHandle_List;
+				}
+				Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
+			}
+			void (*func_ptr)() = ((uint32_t)instruction)+1;
+			xTaskCreate((uint16_t*)func_ptr, "task", (stack_size*4), NULL, 1, NewDTaskControlBlock->TaskHandlex);
+		}
+	}
+
+	Distributed_Data_t* reomve_s = data_info;
+	while(reomve_s != NULL){
+		Distributed_Data_t* s_delete = reomve_s;
+		reomve_s = reomve_s->Next_Distributed_Data;
+		vPortFree(s_delete);
+	}
+	return Subscriber_task;
+}
+
+Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_t sp, uint32_t lr){
+	Global_Task_id++;
+	uint32_t Data_number = 1;
+	Distributed_Data_t* tmp_Distributed_Data = ((Distributed_Data_t*)data_info);
+	while(tmp_Distributed_Data->Next_Distributed_Data != NULL){					//	Count the number of data
+		tmp_Distributed_Data = tmp_Distributed_Data->Next_Distributed_Data;
+		Data_number++;
+	}
+
+	uint32_t Data_addr_array[Data_number];
+	uint32_t Data_size_array[Data_number];
+	uint32_t Data_split_size_array[Data_number];
+
+	tmp_Distributed_Data = ((Distributed_Data_t*)data_info);					//	Put the datas info into array, make it more convenience
+	for(uint32_t i=0;i<Data_number;i++){
+		Data_addr_array[i] = tmp_Distributed_Data->Data_addr;
+		Data_size_array[i] = tmp_Distributed_Data->Data_size;
+		Data_split_size_array[i] = tmp_Distributed_Data->Split_size;
+		tmp_Distributed_Data = tmp_Distributed_Data->Next_Distributed_Data;
+	}
+
+	uint32_t *sp_start = 0;
+	uint32_t *sp_end = 0;
+	uint32_t *pc_start = 0;
+	uint32_t *pc_end = 0;
+	uint32_t *lr_addr = 0;
+
+	uint32_t stack_size = 0;
+	lr_addr = (uint32_t *)((lr & 0xFFFFFFFE)-4);
+
+	uint32_t tmp_lr = lr & 0xFFFFFFFE;
+	while(*((uint16_t *)tmp_lr)!=0xb580){										//	To find the first push	{r7, sp} instruction	as the begin of distributed task text section
+		stack_size = stack_size + Got_sp_minus_immediate(tmp_lr);				//decode to find sp_minus_immediate instruction and accumulate the stack_size
+		tmp_lr = ((uint16_t *)tmp_lr-1);
+	}
+	sp_end = (uint32_t*)sp;
+	sp_start =(uint32_t*)(sp_end+stack_size);
+	pc_start = (((uint32_t*)tmp_lr));											//	To find the secnod push	{r7, sp} instruction 	as the end of distributed task text section
+	tmp_lr = lr & 0xFFFFFFFE;
+	while(*((uint16_t *)tmp_lr)!= 0xb580){
+		tmp_lr = ((uint16_t *)tmp_lr+1);
+	}
+	pc_end = ((uint16_t *)tmp_lr);
+	uint32_t instruction_size = ((uint32_t)pc_end-(uint32_t)pc_start);			//	Get the size of distributed task text section
+//==============================================================================================================================================
+
+	uint32_t Distributed_subtask_size = 104;									//	xTaskCreate need at least 104 bytes
+	Distributed_subtask_size += stack_size;										//	D_Task Stack size
+	Distributed_subtask_size += instruction_size;								// 	D_Task_Instruction_size
+	Distributed_subtask_size += Data_number*sizeof(uint32_t);					//	D_Task_Data_Max_size_split_record
+	Distributed_subtask_size += Data_number*sizeof(uint32_t);					//	D_Task_Data_size_split_record
+	Distributed_subtask_size += sizeof(Distributed_Data_t);						//	D_Task_Distributed_Data_List
+	Distributed_subtask_size += sizeof(Distributed_TaskHandle_List_t);			//	D_Task_NewDTaskControlBlock
+	Distributed_subtask_size += sizeof(TaskHandle_t);							//	D_Task_TaskHandle_t
+
+	uint32_t split_num = 0;
+	Distributed_FreeBlock* free_block = DF_Start;
+	while(free_block != NULL){
+		split_num++;
+		free_block = free_block->Next_Distributed_FreeBlock;
+	}
+
+	uint32_t free_block_Max[2][split_num];										//	[1]Node_id	[2]Max_block_size
+	uint32_t free_block_sort[split_num];
+	uint32_t split_num_index = 0;
+	free_block = DF_Start;
+	while(free_block != NULL){													//	Find the largest block in every node
+		free_block_Max[0][split_num_index] = free_block->Node_id;
+		free_block_Max[1][split_num_index] = 0;
+		free_block_sort[split_num_index] = 0;
+		for(uint32_t i=0;i<free_block->Block_number;i++){
+			if(*(free_block->Block_size_array+i) > free_block_Max[1][split_num_index]){
+					free_block_Max[1][split_num_index] = *(free_block->Block_size_array+i);
+					free_block_sort[split_num_index] = free_block_Max[1][split_num_index];
+				}
+		}
+		split_num_index++;
+		free_block = free_block->Next_Distributed_FreeBlock;
+	}
+	QuickSort(free_block_sort, 0, split_num-1);									//	Sort the block list
+	for(uint32_t i=0;i<split_num;i++){											// Update 2-D array free_block_Max as sorted order
+		for(uint32_t j=0;j<split_num;j++){
+			if(free_block_sort[i] == free_block_Max[2][j]) {
+				if(i != j){
+					swap(&free_block_Max[1][i], &free_block_Max[1][j]);
+					swap(&free_block_Max[2][i], &free_block_Max[2][j]);
+				}
+				break;
+			}
+		}
+	}
+
+	uint32_t decrease_node_num = 0
+	uint8_t success_dispatch_flag = 1;
+	while(act_split_num > decrease_node_num){
+		success_dispatch_flag = 1;
+		uint32_t act_split_num = split_num-decrease_node_num;
+		uint32_t Distributed_data_need_size[act_split_num];
+		uint32_t Distributed_dispatch_node[act_split_num];
+
+		for(uint32_t split_num_th=0;split_num_th<act_split_num;split_num_th++){
+			uint32_t Data_size_split = 0;
+			uint32_t Data_Max_size_split_record[Data_number];
+			uint32_t Data_size_split_record[Data_number];
+			for(uint32_t Data_number_th=0;Data_number_th<Data_number;Data_number_th++){
+				uint32_t tmp_data_size = 0;
+				uint32_t split_base_data_size = Data_size_array[Data_number_th];
+				if(Data_split_size_array[Data_number_th] > 1){
+					split_base_data_size = Data_size_array[Data_number_th]/Data_split_size_array[Data_number_th];
+				}
+				else{
+					Data_split_size_array[Data_number_th] = 1;
+				}
+				if ((split_base_data_size%act_split_num) == 0){
+					tmp_data_size = (split_base_data_size/act_split_num)*Data_split_size_array[Data_number_th];
+					Data_Max_size_split_record[Data_number_th] = tmp_data_size;
+				}
+				else{
+					tmp_data_size = ((split_base_data_size/act_split_num) + 1)*Data_split_size_array[Data_number_th];
+					Data_Max_size_split_record[Data_number_th] = tmp_data_size;
+
+					if (((split_num_th+1)*tmp_data_size) <= Data_size_array[Data_number_th]){
+						;
+					}
+					else if ((((split_num_th+1)*tmp_data_size) > Data_size_array[Data_number_th]) &&  ((split_num_th*tmp_data_size) <= (Data_size_array[Data_number_th]+tmp_data_size))){
+						tmp_data_size = (split_base_data_size % tmp_data_size)*Data_split_size_array[Data_number_th];
+					}
+					else{
+						tmp_data_size = 0;
+					}
+				}
+				Data_size_split_record[Data_number_th] = tmp_data_size;
+				Data_size_split = Data_size_split + tmp_data_size;
+			}
+			Distributed_data_need_size[split_num_th] = Data_size_split + Distributed_subtask_size;
+		}
+		for(uint32_t i=0;i<act_split_num;i++){
+			for(uint32_t j=0;j<act_split_num;j++){
+				uint8_t node_dispatch_flag = 0;
+				for(uint32_t k=0;k<act_split_num;k++){
+					if(Distributed_dispatch_node[k] == free_block_Max[1][decrease_node_num+j]){
+						node_dispatch_flag = free_block_Max[1][decrease_node_num+j];
+						break;
+					}
+				}
+				if(node_dispatch_flag != 0)
+					break;
+				if(Distributed_data_need_size[i] < free_block_Max[2][decrease_node_num+j]){
+					Distributed_dispatch_node[i] = free_block_Max[1][decrease_node_num+j];
+					break;
+				}
+			}
+		}
+		for(uint32_t i=0;i<act_split_num;i++){
+			if(Distributed_dispatch_node[i] == 0){
+				success_dispatch_flag = 0;
+			}
+		}
+		if(success_dispatch_flag > 0)
+			break;
+		decrease_node_num++;
+	}
+//==============================================================================================================================================
+	Distributed_TaskHandle_List_t* Subscriber_task;
+	for(uint32_t split_num_th=0;split_num_th<split_num;split_num_th++){
+		uint32_t Data_size_split = 0;
+		uint32_t* Data_Max_size_split_record = pvPortMalloc(Data_number*sizeof(uint32_t));
+		uint32_t* Data_size_split_record = pvPortMalloc(Data_number*sizeof(uint32_t));
+
+		for(uint32_t Data_number_th=0;Data_number_th<Data_number;Data_number_th++){
+			uint32_t tmp_data_size = 0;
+			uint32_t split_base_data_size = Data_size_array[Data_number_th];
+			if(Data_split_size_array[Data_number_th] > 1){
+				split_base_data_size = Data_size_array[Data_number_th]/Data_split_size_array[Data_number_th];
+			}
+			if ((split_base_data_size%split_num) == 0){
+				tmp_data_size = (split_base_data_size/split_num)*Data_split_size_array[Data_number_th];
+				*(Data_Max_size_split_record+Data_number_th)= tmp_data_size;
+			}
+			else{
+				tmp_data_size = ((split_base_data_size/split_num) + 1)*Data_split_size_array[Data_number_th];
+				*(Data_Max_size_split_record+Data_number_th) = tmp_data_size;
+
+				if (((split_num_th+1)*tmp_data_size) <= Data_size_array[Data_number_th]){
+					//printf("Case1 %Xth Porcessor, tmp_data_size: 0x%X, Data_size_array[Data_number_th], : 0x%X\r\n", split_num_th, tmp_data_size, Data_size_array[Data_number_th]);
+					;
+				}
+				else if ((((split_num_th+1)*tmp_data_size) > Data_size_array[Data_number_th]) &&  ((split_num_th*tmp_data_size) <= (Data_size_array[Data_number_th]+tmp_data_size))){
+					//printf("Case2 %Xth Porcessor, tmp_data_size: 0x%X, Data_size_array[Data_number_th], : 0x%X\r\n", split_num_th, tmp_data_size, Data_size_array[Data_number_th]);
+					tmp_data_size = (split_base_data_size % tmp_data_size)*Data_split_size_array[Data_number_th];
+				}
+				else{
+					//printf("Case3 %Xth Porcessor, tmp_data_size: 0x%X, Data_size_array[Data_number_th], : 0x%X\r\n", split_num_th, tmp_data_size, Data_size_array[Data_number_th]);
+					tmp_data_size = 0;
+				}
+				/*
+				if (split_num_th == (split_num-1))
+					tmp_data_size = (split_base_data_size %tmp_data_size)*Data_split_size_array[Data_number_th];
+				*/
+			}
+
+			*(Data_size_split_record+Data_number_th) = tmp_data_size;
+			Data_size_split = Data_size_split + tmp_data_size;
+		}
+
+		if (split_num_th == 0){
+			uint32_t malloc_size = Data_size_split*sizeof(uint32_t);
+			uint32_t* Data_addr = pvPortMalloc(malloc_size);
+			Distributed_Data_t* tmp_Distributed_Data = ((Distributed_Data_t*)data_info);
+			uint32_t* tmp_Data_addr = Data_addr;
+			Distributed_Data_t* Start_Distributed_Data_List;
+			Distributed_Data_t* Stop_Distributed_Data_List;
+
+			for(uint32_t Data_number_i=0;Data_number_i<Data_number;Data_number_i++){
+				for(uint32_t i=0;i<Data_size_split_record[Data_number_i];i++){
+					*(tmp_Data_addr+i) = *(tmp_Distributed_Data->Data_addr + split_num_th*Data_Max_size_split_record[Data_number_i] + i);
+					printf("split_num_th: 0x%X, Data_number_i: 0x%X, Data_addr: 0x%X	0x%X\r\n", split_num_th, Data_number_i, (tmp_Data_addr+i), *(tmp_Data_addr+i));
+				}
+				Distributed_Data_t* tmp_Distributed_Data_List = pvPortMalloc(sizeof(Distributed_Data_t));
+				tmp_Distributed_Data_List->Next_Distributed_Data = NULL;
+				if(Data_number_i == 0){
+					Start_Distributed_Data_List = tmp_Distributed_Data_List;
+					Stop_Distributed_Data_List = Start_Distributed_Data_List;
+				}
+				else{
+					Stop_Distributed_Data_List->Next_Distributed_Data = tmp_Distributed_Data_List;
+					Stop_Distributed_Data_List = Stop_Distributed_Data_List->Next_Distributed_Data;
+				}
+				tmp_Distributed_Data_List->Data_addr = tmp_Data_addr;
+				tmp_Distributed_Data_List->Data_size = Data_size_split_record[Data_number_i];
+
+				tmp_Data_addr = tmp_Data_addr + Data_size_split_record[Data_number_i];
+				tmp_Distributed_Data = tmp_Distributed_Data->Next_Distributed_Data;
+			}
+
+			Distributed_TaskHandle_List_t *NewDTaskControlBlock = pvPortMalloc(sizeof(Distributed_TaskHandle_List_t));
+			NewDTaskControlBlock->Next_TaskHandle_List = NULL;
+			NewDTaskControlBlock->Processor_id = Global_Node_id;
+		    NewDTaskControlBlock->DTask_id = Global_Task_id;
+			NewDTaskControlBlock->DSubTask_id = split_num_th;
 			NewDTaskControlBlock->Instruction_addr = pc_start;
 			NewDTaskControlBlock->Instruction_addr_end = pc_end;
 			NewDTaskControlBlock->Data_addr = Data_addr;
@@ -436,8 +785,8 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 			Distributed_Data_t* Stop_Distributed_Data_List;
 			for(uint32_t Data_number_i=0;Data_number_i<Data_number;Data_number_i++){
 				for(uint32_t i=0;i<Data_size_split_record[Data_number_i];i++){
-					*(tmp_Data_addr+i) = *(tmp_Distributed_Data->Data_addr + slit_num_th*Data_Max_size_split_record[Data_number_i] + i);
-					printf("slit_num_th: 0x%X, Data_number_i: 0x%X, Data_addr: 0x%X	0x%X\r\n", slit_num_th, Data_number_i, (tmp_Data_addr+i), *(tmp_Data_addr+i));
+					*(tmp_Data_addr+i) = *(tmp_Distributed_Data->Data_addr + split_num_th*Data_Max_size_split_record[Data_number_i] + i);
+					printf("split_num_th: 0x%X, Data_number_i: 0x%X, Data_addr: 0x%X	0x%X\r\n", split_num_th, Data_number_i, (tmp_Data_addr+i), *(tmp_Data_addr+i));
 				}
 
 				Distributed_Data_t* tmp_Distributed_Data_List = pvPortMalloc(sizeof(Distributed_Data_t));
@@ -458,9 +807,9 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 
 			Distributed_TaskHandle_List_t *NewDTaskControlBlock = pvPortMalloc(sizeof(Distributed_TaskHandle_List_t));
 			NewDTaskControlBlock->Next_TaskHandle_List = NULL;
-			NewDTaskControlBlock->Processor_id = 1;
+			NewDTaskControlBlock->Processor_id = Global_Node_id;
 		    NewDTaskControlBlock->DTask_id = Global_Task_id;
-			NewDTaskControlBlock->DSubTask_id = slit_num_th;
+			NewDTaskControlBlock->DSubTask_id = split_num_th;
 			NewDTaskControlBlock->Instruction_addr = instruction;
 			NewDTaskControlBlock->Instruction_addr_end = instruction + (instruction_size/4);
 			NewDTaskControlBlock->Data_addr = Data_addr;
@@ -1258,7 +1607,7 @@ void eth_handler(void){
 				Global_Node_count = *((uint32_t*)((uint8_t*)frame.buffer+13));
 				Global_Node_id = Global_Node_count;
 				printf("Global_Node_id: 0x%X, Global_Node_count: 0x%X\r\n", Global_Node_id, Global_Node_count);
-				SendFreespaceFlag = 1;
+				SendFreespaceFlag = 1;								// New Node to Master Node
 			}
 		}
 		else if (Msg_event == 4){
@@ -1411,10 +1760,12 @@ void task1(){
 			}
 			*/
 			if (rec_cmd == 'c'){
+
 				uint32_t* tmp1 = pvPortMalloc(100*sizeof(uint32_t));
 				uint32_t* tmp2 = pvPortMalloc(100*sizeof(uint32_t));
 				uint32_t* tmp3 = pvPortMalloc(100*sizeof(uint32_t));
 				vPortFree(tmp2);
+
 				Msg_event = 0;
 				Global_Node_id = 0;
 				Global_Node_count = 0;
@@ -1485,7 +1836,7 @@ void task1(){
 						portENABLE_INTERRUPTS();
 					}
 
-					if(SendFreespaceFlag == 1){
+					if(SendFreespaceFlag == 1){				//	New Node to Master Node or Master Node to New Node
 						portDISABLE_INTERRUPTS();
 						DistributedNodeFreespace(0xffffffff, 0);
 						BlockChangeFlag = 0;// important!!!
@@ -2016,7 +2367,6 @@ int main(void){
 	led_init(LED_RED);
 
 	REG(AIRCR_BASE) = NVIC_AIRCR_RESET_VALUE | NVIC_PRIORITYGROUP_4;
-
 	xTaskCreate(task1, "task1", 1000, NULL, 1, &TaskHandle_1);
 	xTaskCreate(task3, "task3", 1000, NULL, 1, &TaskHandle_3);
 	//xTaskCreate(eth_send, "eth_send", 1000, NULL, 1, &TaskHandle_1);
@@ -2024,7 +2374,33 @@ int main(void){
 	while(1)
 		;
 }
-//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+void swap(int *a, int *b){
+    int temp = *a;
+    *a = *b;
+    *b = temp;
+}
+int Partition(int *arr, int front, int end){
+    int pivot = arr[end];
+    int i = front -1;
+    for (int j = front; j < end; j++) {
+        if (arr[j] < pivot) {
+            i++;
+            swap(&arr[i], &arr[j]);
+        }
+    }
+    i++;
+    swap(&arr[i], &arr[end]);
+    return i;
+}
+void QuickSort(int *arr, int front, int end){
+    if (front < end) {
+        int pivot = Partition(arr, front, end);
+        QuickSort(arr, front, pivot - 1);
+        QuickSort(arr, pivot + 1, end);
+    }
+}
+//-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 void *_sbrk(int incr){
 	extern uint8_t _mybss_vma_end; //Defined by the linker script
 	static uint8_t *heap_end = NULL;
