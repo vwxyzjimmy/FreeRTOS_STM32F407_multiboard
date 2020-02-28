@@ -558,8 +558,9 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 
 	uint32_t split_num = 0;
 	Distributed_FreeBlock* free_block = DF_Start;
-	while(free_block != NULL){
-		split_num++;
+	while(free_block != NULL){													//	Calculate the number of node may be dispatched
+		if(free_block->Node_id != Global_Node_id)								//	Except itself	(Must dispatch one of subtask to itself)
+			split_num++;
 		free_block = free_block->Next_Distributed_FreeBlock;
 	}
 
@@ -568,20 +569,22 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 	uint32_t split_num_index = 0;
 	free_block = DF_Start;
 	while(free_block != NULL){													//	Find the largest block in every node
-		free_block_Max[0][split_num_index] = free_block->Node_id;
-		free_block_Max[1][split_num_index] = 0;
-		free_block_sort[split_num_index] = 0;
-		for(uint32_t i=0;i<free_block->Block_number;i++){
-			if(*(free_block->Block_size_array+i) > free_block_Max[1][split_num_index]){
-					free_block_Max[1][split_num_index] = *(free_block->Block_size_array+i);
-					free_block_sort[split_num_index] = free_block_Max[1][split_num_index];
-				}
+		if(free_block->Node_id != Global_Node_id){								//	Except itself	(Must dispatch one of subtask to itself)
+			free_block_Max[0][split_num_index] = free_block->Node_id;
+			free_block_Max[1][split_num_index] = 0;
+			free_block_sort[split_num_index] = 0;
+			for(uint32_t i=0;i<free_block->Block_number;i++){
+				if(*(free_block->Block_size_array+i) > free_block_Max[1][split_num_index]){
+						free_block_Max[1][split_num_index] = *(free_block->Block_size_array+i);
+						free_block_sort[split_num_index] = free_block_Max[1][split_num_index];
+					}
+			}
+			split_num_index++;
 		}
-		split_num_index++;
 		free_block = free_block->Next_Distributed_FreeBlock;
 	}
 	QuickSort(free_block_sort, 0, split_num-1);									//	Sort the block list
-	for(uint32_t i=0;i<split_num;i++){											// Update 2-D array free_block_Max as sorted order
+	for(uint32_t i=0;i<split_num;i++){											//	Update 2-D array free_block_Max as sorted order
 		for(uint32_t j=0;j<split_num;j++){
 			if(free_block_sort[i] == free_block_Max[2][j]) {
 				if(i != j){
@@ -593,11 +596,13 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 		}
 	}
 
-	uint32_t decrease_node_num = 0
-	uint8_t success_dispatch_flag = 1;
-	while(act_split_num > decrease_node_num){
-		success_dispatch_flag = 1;
-		uint32_t act_split_num = split_num-decrease_node_num;
+	uint32_t decrease_node_num = 0;
+	uint32_t satisfy_split_num = 0;
+	uint32_t* satisfy_Distributed_dispatch_node = 0;
+	uint32_t split_num += 1;													//	Plus 1 is the local subtask	(Must dispatch one of subtask to itself)
+	while(split_num > decrease_node_num){										//	If success_dispatch_flag == 0, abandon the least size node
+		uint8_t success_dispatch_flag = 1;
+		uint32_t act_split_num = split_num - decrease_node_num;
 		uint32_t Distributed_data_need_size[act_split_num];
 		uint32_t Distributed_dispatch_node[act_split_num];
 
@@ -637,18 +642,34 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 			}
 			Distributed_data_need_size[split_num_th] = Data_size_split + Distributed_subtask_size;
 		}
-		for(uint32_t i=0;i<act_split_num;i++){
-			for(uint32_t j=0;j<act_split_num;j++){
+
+		uint8_t Local_satisfy_subtask = 0;
+		BlockLink_t* tmp_block = &xStart;
+		while(tmp_block != NULL){
+			if(tmp_block->xBlockSize > Distributed_data_need_size[0]){
+				Local_satisfy_subtask = 1;
+				break;
+			}
+			tmp_block = tmp_block->pxNextFreeBlock;
+		}
+		if(Local_satisfy_subtask == 0){
+			printf("Local Freeblock not satisfy the minimum subtask size, dame it.\r\n");
+			break;
+		}
+		else{
+			Distributed_dispatch_node[0] = Global_Node_id;
+		}
+
+		for(uint32_t i=1;i<act_split_num;i++){														//	i=0, dispatch to local subtask, i mean the need block size
+			for(uint32_t j=0;j<act_split_num-1;j++){												//	j mean the Free block and Node id
 				uint8_t node_dispatch_flag = 0;
-				for(uint32_t k=0;k<act_split_num;k++){
+				for(uint32_t k=1;k<act_split_num;k++){												//	k used to check the j node id has not been dispatch
 					if(Distributed_dispatch_node[k] == free_block_Max[1][decrease_node_num+j]){
 						node_dispatch_flag = free_block_Max[1][decrease_node_num+j];
 						break;
 					}
 				}
-				if(node_dispatch_flag != 0)
-					break;
-				if(Distributed_data_need_size[i] < free_block_Max[2][decrease_node_num+j]){
+				if((Distributed_data_need_size[i] < free_block_Max[2][decrease_node_num+j]) && (node_dispatch_flag == 0)){
 					Distributed_dispatch_node[i] = free_block_Max[1][decrease_node_num+j];
 					break;
 				}
@@ -659,8 +680,13 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 				success_dispatch_flag = 0;
 			}
 		}
-		if(success_dispatch_flag > 0)
+		if(success_dispatch_flag > 0){
+			satisfy_split_num = act_split_num;
+			satisfy_Distributed_dispatch_node = pvPortMalloc(act_split_num*sizeof(uint32_t));
+			for(uint32_t i=0;i<act_split_num;i++)
+				*(satisfy_Distributed_dispatch_node+i) = Distributed_dispatch_node[i];
 			break;
+		}
 		decrease_node_num++;
 	}
 //==============================================================================================================================================
