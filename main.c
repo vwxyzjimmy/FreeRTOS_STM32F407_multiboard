@@ -793,15 +793,15 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 				Distributed_TaskHandle_List_t *NewDTaskControlBlock = Distributed_Send_Addr + 13;
 				uint32_t* Data_size_split_record = (uint8_t*)NewDTaskControlBlock + sizeof(Distributed_TaskHandle_List_t);
 				uint32_t* Data_Max_size_split_record = (uint8_t*)Data_size_split_record + Data_number*sizeof(uint32_t);
-				Distributed_Data_t* tmp_Distributed_Data = (uint8_t*)Data_Max_size_split_record + Data_number*sizeof(uint32_t);
-				uint16_t* dest_instruction_addr = (uint8_t*)tmp_Distributed_Data + Data_number*sizeof(Distributed_Data_t);
-				uint16_t* dest_data_addr = (uint8_t*)dest_instruction_addr + instruction_size;
+				Distributed_Data_t* Start_Distributed_Data_List = (uint8_t*)Data_Max_size_split_record + Data_number*sizeof(uint32_t);
+				uint16_t* dest_instruction_addr = (uint8_t*)Start_Distributed_Data_List + Data_number*sizeof(Distributed_Data_t);
+				uint32_t* dest_data_addr = (uint8_t*)dest_instruction_addr + instruction_size;
 
 				for(uint32_t i=0;i<Data_number;i++){
 					Data_size_split_record[i] = 2D_Data_size_split_record[split_num_th][i];
 					Data_Max_size_split_record[i] = 2D_Data_Max_size_split_record[split_num_th][i];
 				}
-
+				Distributed_Data_t* tmp_Distributed_Data_List;
 				Distributed_Data_t* tmp_Distributed_Data = ((Distributed_Data_t*)data_info);
 				uint32_t* tmp_Data_addr = dest_data_addr;
 				for(uint32_t Data_number_i=0;Data_number_i<Data_number;Data_number_i++){
@@ -809,6 +809,15 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 						*(tmp_Data_addr+i) = *(tmp_Distributed_Data->Data_addr + split_num_th*Data_Max_size_split_record[Data_number_i] + i);
 						printf("split_num_th: 0x%X, Data_number_i: 0x%X, Data_addr: 0x%X	0x%X\r\n", split_num_th, Data_number_i, (tmp_Data_addr+i), *(tmp_Data_addr+i));
 					}
+					tmp_Distributed_Data_List = (uint8_t*)Start_Distributed_Data_List + Data_number_i*sizeof(Distributed_TaskHandle_List_t);
+					if(Data_number_i == (Data_number-1))
+						tmp_Distributed_Data_List->Next_Distributed_Data = NULL;
+					else
+						tmp_Distributed_Data_List->Next_Distributed_Data = (uint8_t*)tmp_Distributed_Data_List + sizeof(Distributed_TaskHandle_List_t);
+
+					tmp_Distributed_Data_List->Data_addr = tmp_Data_addr;
+					tmp_Distributed_Data_List->Data_size = Data_size_split_record[Data_number_i];
+					tmp_Data_addr += Data_size_split_record[Data_number_i];
 				}
 
 				for(uint32_t i=0;i<(instruction_size/2);i++){
@@ -822,55 +831,26 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 						*((uint16_t*)dest_instruction_addr+i) = *((uint16_t*)pc_start+i);
 				}
 
-
-
-
-				uint32_t* Data_addr = dest_instruction_addr+(instruction_size/4);
-				Distributed_Data_t* tmp_Distributed_Data = ((Distributed_Data_t*)data_info);
-				uint32_t* tmp_Data_addr = Data_addr;
-
-				Distributed_Data_t* Start_Distributed_Data_List;
-				Distributed_Data_t* Stop_Distributed_Data_List;
-				for(uint32_t Data_number_i=0;Data_number_i<Data_number;Data_number_i++){
-					for(uint32_t i=0;i<Data_size_split_record[Data_number_i];i++){
-						*(tmp_Data_addr+i) = *(tmp_Distributed_Data->Data_addr + split_num_th*Data_Max_size_split_record[Data_number_i] + i);
-						printf("split_num_th: 0x%X, Data_number_i: 0x%X, Data_addr: 0x%X	0x%X\r\n", split_num_th, Data_number_i, (tmp_Data_addr+i), *(tmp_Data_addr+i));
-					}
-
-					Distributed_Data_t* tmp_Distributed_Data_List = pvPortMalloc(sizeof(Distributed_Data_t));
-					tmp_Distributed_Data_List->Next_Distributed_Data = NULL;
-					if(Data_number_i == 0){
-						Start_Distributed_Data_List = tmp_Distributed_Data_List;
-						Stop_Distributed_Data_List = Start_Distributed_Data_List;
-					}
-					else{
-						Stop_Distributed_Data_List->Next_Distributed_Data = tmp_Distributed_Data_List;
-						Stop_Distributed_Data_List = Stop_Distributed_Data_List->Next_Distributed_Data;
-					}
-					tmp_Distributed_Data_List->Data_addr = tmp_Data_addr;
-					tmp_Distributed_Data_List->Data_size = Data_size_split_record[Data_number_i];
-					tmp_Data_addr = tmp_Data_addr + Data_size_split_record[Data_number_i];
-					tmp_Distributed_Data = tmp_Distributed_Data->Next_Distributed_Data;
-				}
-
-				Distributed_TaskHandle_List_t *NewDTaskControlBlock = pvPortMalloc(sizeof(Distributed_TaskHandle_List_t));
 				NewDTaskControlBlock->Next_TaskHandle_List = NULL;
 				NewDTaskControlBlock->Processor_id = Global_Node_id;
 			    NewDTaskControlBlock->DTask_id = Global_Task_id;
 				NewDTaskControlBlock->DSubTask_id = split_num_th;
-				NewDTaskControlBlock->Instruction_addr = instruction;
-				NewDTaskControlBlock->Instruction_addr_end = instruction + (instruction_size/4);
-				NewDTaskControlBlock->Data_addr = Data_addr;
+				NewDTaskControlBlock->Instruction_addr = dest_instruction_addr;
+				NewDTaskControlBlock->Instruction_addr_end = (uint8_t*)dest_instruction_addr + instruction_size;
+				NewDTaskControlBlock->Data_addr = dest_data_addr;
 				NewDTaskControlBlock->Data_size = Data_size_split_record;
 				NewDTaskControlBlock->Data_Max_size  = Data_Max_size_split_record;
 				NewDTaskControlBlock->Data_number = Data_number;
 				NewDTaskControlBlock->Remaind_Data_number = 0;
 				NewDTaskControlBlock->Finish_Flag = 0;
-				NewDTaskControlBlock->TaskHandlex = pvPortMalloc(sizeof(TaskHandle_t));
+				NewDTaskControlBlock->TaskHandlex = NULL;
 				NewDTaskControlBlock->Distributed_Data_List = Start_Distributed_Data_List;
 				NewDTaskControlBlock->Next_TaskHandle_List = NULL;
-				Distributed_TaskHandle_List_t* Lastnode = DStart;
 
+				//	Next, Send all of Distributed_Send_Addr = pvPortMalloc(Distributed_Send_Size);,
+				//	Decode on the other side, then insert NewDTaskControlBlock to the Distributed_TaskHandle_List_t and xTaskCreate
+				/*
+				Distributed_TaskHandle_List_t* Lastnode = DStart;
 				if(Lastnode == NULL)
 					DStart = NewDTaskControlBlock;
 				else{
@@ -881,6 +861,7 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 				}
 				void (*func_ptr)() = ((uint32_t)instruction)+1;
 				xTaskCreate((uint16_t*)func_ptr, "task", (stack_size*4), NULL, 1, NewDTaskControlBlock->TaskHandlex);
+				*/
 			}
 		}
 	}
