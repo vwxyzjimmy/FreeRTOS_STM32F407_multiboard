@@ -1,7 +1,9 @@
-#define Distributed_End(s, addr, size)		 						\
+#define Distributed_End(s, target_addr, target_size)		 		\
 do {                			 									\
+	s->Data_addr = target_addr;										\
+	s->Data_size = target_size;										\
 	__asm volatile ("svc	#0x2	\n");							\
-	Distributed_Check(s, addr, size);								\
+	Distributed_Check(s, target_addr, target_size);					\
 } while (0)
 
 typedef struct Distributed_Data {
@@ -21,7 +23,8 @@ typedef struct Distributed_FreeBlock {
 
 typedef struct Distributed_TaskHandle_List {
     struct Distributed_TaskHandle_List *Next_TaskHandle_List;
-    uint32_t Processor_id;
+    uint32_t Source_Processor_id;
+	uint32_t Destinate_Processor_id;
     uint32_t DTask_id;
 	uint32_t DSubTask_id;
     uint32_t* Instruction_addr;
