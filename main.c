@@ -282,6 +282,15 @@ void Distributed_Check_tmp_ver(Distributed_TaskHandle_List_t* s, uint32_t* Resul
 	vPortFree(s);
 
 	Distributed_Insert_Finish_Node(tmp_NewDTaskControlBlock);
+	//	need to wait for and merge all data
+	/*
+	Distributed_Data_t* Send_S = pvPortMalloc(sizeof(Distributed_Data_t));
+	Send_S->Data_addr = Data_addr;
+	Send_S->Data_size = Total_Data_Size;
+	Send_S->xQueue = s->xQueue;
+	xQueueSendToBack(Send_S->xQueue, Send_S, 0);
+	while(1);
+	*/
 	vTaskDelete(*(tmp_NewDTaskControlBlock->TaskHandlex));
 	/*
 	Distributed_TaskHandle_List_t* Lastnode = DStart;
@@ -372,18 +381,20 @@ void Distributed_Check_tmp_ver(Distributed_TaskHandle_List_t* s, uint32_t* Resul
 	for(uint32_t i=0;i<Total_Data_Size;i++)
 		printf("0x%X	0x%X\r\n", (Data_addr+i), *(Data_addr+i));
 	*/
+	/*
 	Distributed_Data_t* Send_S = pvPortMalloc(sizeof(Distributed_Data_t));
 	Send_S->Data_addr = Data_addr;
 	Send_S->Data_size = Total_Data_Size;
 	Send_S->xQueue = s->xQueue;
 	xQueueSendToBack(Send_S->xQueue, Send_S, 0);
 	while(1);
+	*/
 }
 
 void Distributed_Insert_Finish_Node(Distributed_TaskHandle_List_t* NewDTaskControlBlock){
 	Distributed_TaskHandle_List_t* Lastnode = DFinish;
 	Distributed_TaskHandle_List_t* pre_Lastnode = Lastnode;
-	while(Lastnode != NULL) && (Lastnode->Source_Processor_id != NewDTaskControlBlock->Source_Processor_id) && (Lastnode->DTask_id != NewDTaskControlBlock->DTask_id){
+	while((Lastnode != NULL) && (Lastnode->Source_Processor_id != NewDTaskControlBlock->Source_Processor_id) && (Lastnode->DTask_id != NewDTaskControlBlock->DTask_id)){
 		pre_Lastnode = Lastnode;
 		Lastnode = Lastnode->Next_TaskHandle_List;
 	}
@@ -2097,8 +2108,10 @@ void task1(){
 						Distributed_Show_FreeBlock();
 					}
 					if (unmerge_finish_distributed_task > 0){
-						Distributed_TaskHandle_List* Lastnode = DFinish;
+						Distributed_TaskHandle_List_t* Lastnode = DFinish;
+						Distributed_TaskHandle_List_t* pre_Lastnode = DFinish;
 						while((Lastnode != NULL) && (Lastnode->Finish_Flag != 0)){
+							pre_Lastnode = Lastnode;
 							Lastnode = Lastnode->Next_TaskHandle_List;
 						}
 						if(Lastnode != NULL){
@@ -2111,10 +2124,13 @@ void task1(){
 							for(uint32_t i=0;i<Lastnode->Data_number;i++)
 								*(tmp_NewDTaskControlBlock->Data_addr+i) = *(Lastnode->Data_addr+i);
 							tmp_NewDTaskControlBlock->Finish_Flag = 1;
-							vPortFree(s);
+							pre_Lastnode->Next_TaskHandle_List = tmp_NewDTaskControlBlock;
+							vPortFree(Lastnode);
 							portDISABLE_INTERRUPTS();
 							unmerge_finish_distributed_task--;
 							portENABLE_INTERRUPTS();
+							//Ready to send subtask finish flag
+							//	??????
 						}
 					}
 					/*
