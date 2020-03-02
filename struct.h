@@ -1,7 +1,7 @@
 #define Distributed_End(s, target_addr, target_size)		 		\
 do {                			 									\
 	s->Data_addr = target_addr;										\
-	s->Data_size = target_size;										\
+	s->Data_number = target_size;										\
 	__asm volatile ("svc	#0x2	\n");							\
 	Distributed_Check(s, target_addr, target_size);					\
 } while (0)

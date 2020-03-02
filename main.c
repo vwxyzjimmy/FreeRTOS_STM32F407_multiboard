@@ -30,6 +30,7 @@ void Distributed_Check(Distributed_TaskHandle_List_t* s, uint32_t* Result_Data_a
 void Distributed_Insert_Finish_Node(Distributed_TaskHandle_List_t* NewDTaskControlBlock);
 void Distributed_TaskCreate(void* task, Distributed_Data_t *s, uint32_t Stack_size);
 Distributed_TaskHandle_List_t* Distributed_GetNode(uint32_t Return_addr);
+Distributed_TaskHandle_List_t* Distributed_GetNode_tmp_ver(uint32_t Return_addr, Distributed_TaskHandle_List_t* Lastnode);
 Distributed_Data_t* Distributed_Set_Traget_Data(uint32_t* data_addr, uint32_t data_size, uint32_t split_size);
 void Distributed_Add_Traget_Data(Distributed_Data_t* S, uint32_t* data_addr, uint32_t data_size, uint32_t split_size);
 void List_FreeBlock();
@@ -93,6 +94,7 @@ Distributed_FreeBlock* DF_Start;
 extern uint8_t BlockChangeFlag;
 volatile uint32_t tickcount_lo_bound = 0;
 volatile uint32_t tickcount_hi_bound = 0xFFFFFFFF;
+uint32_t unmerge_finish_distributed_task = 0;
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Distributed_Data_t* Distributed_Set_Traget_Data(uint32_t* data_addr, uint32_t data_size, uint32_t split_size){
 	Distributed_Data_t* s = pvPortMalloc(sizeof(Distributed_Data_t));
@@ -117,6 +119,16 @@ void Distributed_Add_Traget_Data(Distributed_Data_t* S, uint32_t* data_addr, uin
 
 Distributed_TaskHandle_List_t* Distributed_GetNode(uint32_t Return_addr){
 	Distributed_TaskHandle_List_t* Lastnode = DStart;
+	while(Lastnode != NULL){
+		if ((Lastnode->Instruction_addr<=Return_addr) && (Return_addr<=Lastnode->Instruction_addr_end)){
+			break;
+		}
+		Lastnode = Lastnode->Next_TaskHandle_List;
+	}
+	return Lastnode;
+}
+
+Distributed_TaskHandle_List_t* Distributed_GetNode_tmp_ver(uint32_t Return_addr, Distributed_TaskHandle_List_t* Lastnode){
 	while(Lastnode != NULL){
 		if ((Lastnode->Instruction_addr<=Return_addr) && (Return_addr<=Lastnode->Instruction_addr_end)){
 			break;
@@ -266,6 +278,7 @@ void Distributed_Check_tmp_ver(Distributed_TaskHandle_List_t* s, uint32_t* Resul
 	tmp_NewDTaskControlBlock->Data_number = Result_Data_size;
 	for(uint32_t i=0;i<Result_Data_size;i++)
 		*(tmp_NewDTaskControlBlock->Data_addr+i) = *(Result_Data_addr+i);
+	tmp_NewDTaskControlBlock->Finish_Flag = 1;
 	vPortFree(s);
 
 	Distributed_Insert_Finish_Node(tmp_NewDTaskControlBlock);
@@ -393,6 +406,7 @@ void Distributed_Insert_Finish_Node(Distributed_TaskHandle_List_t* NewDTaskContr
 	}
 
 }
+
 uint32_t Got_sp_minus_immediate(uint32_t addr){
 
 	uint32_t sp_T1_bit_mask = 0xB080;
@@ -954,7 +968,7 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 			NewDTaskControlBlock->Data_number = Data_number;
 			NewDTaskControlBlock->Remaind_Data_number = 0;
 			NewDTaskControlBlock->Finish_Flag = 0;
-			NewDTaskControlBlock->TaskHandlex = NULL;
+			NewDTaskControlBlock->TaskHandlex = Subtask_handler;
 			NewDTaskControlBlock->Distributed_Data_List = Start_Distributed_Data_List;
 			NewDTaskControlBlock->Next_TaskHandle_List = NULL;
 
@@ -970,16 +984,19 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 
 				//	???????
 
-				uint32_t subtask_Distributed_TaskHandle_List_size = sizeof(Distributed_TaskHandle_List_t) + Data_number*sizeof(uint32_t) + Data_number*sizeof(uint32_t);
+				//uint32_t subtask_Distributed_TaskHandle_List_size = sizeof(Distributed_TaskHandle_List_t) + Data_number*sizeof(uint32_t) + Data_number*sizeof(uint32_t);
+				uint32_t subtask_Distributed_TaskHandle_List_size = sizeof(Distributed_TaskHandle_List_t);
 				Distributed_TaskHandle_List_t *tmp_NewDTaskControlBlock = pvPortMalloc(subtask_Distributed_TaskHandle_List_size);
 				for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++)
 					*((uint8_t*)tmp_NewDTaskControlBlock+i) = *((uint8_t*)NewDTaskControlBlock+i);
+				/*
 				uint32_t* tmp_NewDTaskControlBlock_Data_size = tmp_NewDTaskControlBlock + sizeof(Distributed_TaskHandle_List_t);
 				uint32_t* tmp_NewDTaskControlBlock_Data_Max_size = tmp_NewDTaskControlBlock_Data_size + Data_number*sizeof(uint32_t);
 				for(uint32_t i=0;i<Data_number;i++){
 					*(tmp_NewDTaskControlBlock_Data_size+i) = *(NewDTaskControlBlock->Data_size+i);
 					*(tmp_NewDTaskControlBlock_Data_Max_size+i) = *(NewDTaskControlBlock->Data_Max_size+i);
 				}
+				*/
 				NewDTaskControlBlock = tmp_NewDTaskControlBlock;
 				vPortFree(Distributed_Send_Addr);
 			}
@@ -1021,21 +1038,26 @@ void svc_handler_c(uint32_t LR, uint32_t MSP){
 		 *(stack_frame_ptr) = Distributed_GetNode(stacked_return_addr);
 	}
 	else if (svc_num == 2){
-		Distributed_TaskHandle_List_t* Lastnode = Distributed_GetNode(stacked_return_addr);
+
+		//Distributed_TaskHandle_List_t* Lastnode = Distributed_GetNode(stacked_return_addr);
+		Distributed_TaskHandle_List_t* Lastnode = Distributed_GetNode_tmp_ver(stacked_return_addr, DStart);
 		if (Lastnode->DSubTask_id != 0){
 			*((uint32_t*)(stacked_return_addr&0xFFFFFFFE)) = 0xe7fe;
 		}
+
 		Distributed_TaskHandle_List_t* tmp_Lastnode = DStart;
-		if(tmp_Lastnode != Lastnode){
-			while(tmp_Lastnode->Next_TaskHandle_List != Lastnode){
-				tmp_Lastnode = tmp_Lastnode->Next_TaskHandle_List;
-			}
+		Distributed_TaskHandle_List_t* pre_tmp_Lastnode = tmp_Lastnode;
+		if((tmp_Lastnode != Lastnode) && (tmp_Lastnode != NULL)){
+			pre_tmp_Lastnode = tmp_Lastnode;
+			tmp_Lastnode = tmp_Lastnode->Next_TaskHandle_List;
 		}
+		if(tmp_Lastnode != NULL)
+			pre_tmp_Lastnode->Next_TaskHandle_List = tmp_Lastnode->Next_TaskHandle_List;
+
 		tmp_Lastnode->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
-		Distributed_Insert_Finish_Node(Lastnode);
-		/*
-		Lastnode->Finish_Flag = 1;
-		*/
+		Lastnode->Finish_Flag = 0;												//	Finish_Flag = 0 mean that the data has not merge yet
+		Distributed_Insert_Finish_Node(Lastnode);								//	Insert to Finish list
+		unmerge_finish_distributed_task++;
 	}
 }
 
@@ -2074,7 +2096,27 @@ void task1(){
 
 						Distributed_Show_FreeBlock();
 					}
-
+					if (unmerge_finish_distributed_task > 0){
+						Distributed_TaskHandle_List* Lastnode = DFinish;
+						while((Lastnode != NULL) && (Lastnode->Finish_Flag != 0)){
+							Lastnode = Lastnode->Next_TaskHandle_List;
+						}
+						if(Lastnode != NULL){
+							uint32_t Total_malloc_size = sizeof(Distributed_TaskHandle_List_t) + (uint32_t)(Lastnode->Data_size)*sizeof(uint32_t);
+							Distributed_TaskHandle_List_t *tmp_NewDTaskControlBlock = pvPortMalloc(sizeof(Total_malloc_size));
+							for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++)
+								*((uint8_t*)tmp_NewDTaskControlBlock+i) = *((uint8_t*)Lastnode+i);
+							tmp_NewDTaskControlBlock->Data_addr = tmp_NewDTaskControlBlock + sizeof(Distributed_TaskHandle_List_t);
+							tmp_NewDTaskControlBlock->Data_number = Lastnode->Data_number;
+							for(uint32_t i=0;i<Lastnode->Data_number;i++)
+								*(tmp_NewDTaskControlBlock->Data_addr+i) = *(Lastnode->Data_addr+i);
+							tmp_NewDTaskControlBlock->Finish_Flag = 1;
+							vPortFree(s);
+							portDISABLE_INTERRUPTS();
+							unmerge_finish_distributed_task--;
+							portENABLE_INTERRUPTS();
+						}
+					}
 					/*
 					if((Global_Node_Master == Global_Node_id) && (Global_Node_count > Global_Node_id) && (Global_Node_Backup_Master <= Global_Node_id) && (SendFreespaceFlag == 0)){
 						for(uint32_t i=(Global_Node_id+1);i<=Global_Node_count;i++){
