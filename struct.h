@@ -1,9 +1,9 @@
 #define Distributed_End(s, target_addr, target_size)		 		\
 do {                			 									\
 	s->Data_addr = target_addr;										\
-	s->Data_number = target_size;										\
+	s->Data_number = target_size;									\
 	__asm volatile ("svc	#0x2	\n");							\
-	Distributed_Check(s, target_addr, target_size);					\
+	Distributed_Check_tmp_ver(s, target_addr, target_size);			\
 } while (0)
 
 typedef struct Distributed_Data {
@@ -34,6 +34,7 @@ typedef struct Distributed_TaskHandle_List {
 	uint32_t* Data_Max_size;
 	uint32_t Data_number;
 	uint32_t Remaind_Data_number;
+	uint32_t Stack_size;
     uint32_t Finish_Flag;
     TaskHandle_t *TaskHandlex;
 	QueueHandle_t* xQueue;
