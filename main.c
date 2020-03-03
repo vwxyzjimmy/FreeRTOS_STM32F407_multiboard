@@ -784,15 +784,20 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 	printf("\r\n");
 	for(uint32_t i=0;i<split_num;i++){											//	Update 2-D array free_block_Max as sorted order
 		for(uint32_t j=0;j<split_num;j++){
-			if(free_block_sort[i] == free_block_Max[2][j]) {
+			if(free_block_sort[i] == free_block_Max[1][j]) {
 				if(i != j){
+					swap(&free_block_Max[0][i], &free_block_Max[0][j]);
 					swap(&free_block_Max[1][i], &free_block_Max[1][j]);
-					swap(&free_block_Max[2][i], &free_block_Max[2][j]);
 				}
 				break;
 			}
 		}
 	}
+	printf("free_block_Max:\r\n");
+	for(uint32_t i=0;i<split_num;i++)
+		printf("0x%X, 0x%X\r\n", free_block_Max[0][i], free_block_Max[1][i]);
+	printf("\r\n");
+
 	uint32_t satisfy_split_num = 0;
 	uint32_t* Distributed_dispatch_node;
 	uint32_t** TwoD_Data_Max_size_split_record;
@@ -850,12 +855,13 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 			}
 			Distributed_data_need_size[split_num_th] = Data_size_split*sizeof(uint32_t) + Distributed_subtask_size;
 		}
-
+		/*
 		printf("act_split_num: 0x%X, Distributed_data_need_size: \r\n", act_split_num);
 		for(uint32_t i=0;i<act_split_num;i++)
 			printf("0x%X, 0x%X\r\n", Distributed_data_need_size[i]-Distributed_subtask_size, Distributed_data_need_size[i]);
 		printf("\r\n");
 		printf("xx\r\n");
+		*/
 		uint8_t Local_satisfy_subtask_flag = 0;
 		BlockLink_t* tmp_block = &xStart;										//	Check local freespace to satisfy Distributed_data_need_size[0]
 		while(tmp_block != NULL){
@@ -878,13 +884,13 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 			for(uint32_t j=0;j<act_split_num-1;j++){												//	j mean the Free block and Node id
 				uint8_t node_dispatch_flag = 0;
 				for(uint32_t k=1;k<act_split_num;k++){												//	k used to check the j node id has not been dispatch
-					if(Distributed_dispatch_node[k] == free_block_Max[1][decrease_node_num+j]){
-						node_dispatch_flag = free_block_Max[1][decrease_node_num+j];
+					if(Distributed_dispatch_node[k] == free_block_Max[0][decrease_node_num+j]){
+						node_dispatch_flag = free_block_Max[0][decrease_node_num+j];
 						break;
 					}
 				}
-				if((Distributed_data_need_size[i] < free_block_Max[2][decrease_node_num+j]) && (node_dispatch_flag == 0)){		//	free_block_Max[decrease_node_num+j] satisfy Distributed_data_need_size[i]
-					Distributed_dispatch_node[i] = free_block_Max[1][decrease_node_num+j];
+				if((Distributed_data_need_size[i] < free_block_Max[1][decrease_node_num+j]) && (node_dispatch_flag == 0)){		//	free_block_Max[decrease_node_num+j] satisfy Distributed_data_need_size[i]
+					Distributed_dispatch_node[i] = free_block_Max[0][decrease_node_num+j];
 					break;
 				}
 			}
