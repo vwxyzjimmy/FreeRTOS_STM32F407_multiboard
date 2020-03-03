@@ -266,8 +266,11 @@ void Distributed_Check_tmp_ver(Distributed_TaskHandle_List_t* s, uint32_t* Resul
 		pre_Lastnode = Lastnode;
 		Lastnode = Lastnode->Next_TaskHandle_List;
 	}
-	if(Lastnode != NULL){
-		pre_Lastnode->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
+	if(Lastnode == s){
+		if(Lastnode == DStart)
+			DStart = NULL;
+		else
+			pre_Lastnode->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
 	}
 
 	Distributed_TaskHandle_List_t *tmp_NewDTaskControlBlock = pvPortMalloc(sizeof(Distributed_TaskHandle_List_t));
@@ -394,7 +397,8 @@ void Distributed_Check_tmp_ver(Distributed_TaskHandle_List_t* s, uint32_t* Resul
 void Distributed_Insert_Finish_Node(Distributed_TaskHandle_List_t* NewDTaskControlBlock){
 	Distributed_TaskHandle_List_t* Lastnode = DFinish;
 	Distributed_TaskHandle_List_t* pre_Lastnode = Lastnode;
-	while((Lastnode != NULL) && (Lastnode->Source_Processor_id != NewDTaskControlBlock->Source_Processor_id) && (Lastnode->DTask_id != NewDTaskControlBlock->DTask_id)){
+	NewDTaskControlBlock->Next_TaskHandle_List = NULL;
+	while((Lastnode != NULL) && ((Lastnode->Source_Processor_id != NewDTaskControlBlock->Source_Processor_id) || (Lastnode->DTask_id != NewDTaskControlBlock->DTask_id))){
 		pre_Lastnode = Lastnode;
 		Lastnode = Lastnode->Next_TaskHandle_List;
 	}
@@ -412,10 +416,15 @@ void Distributed_Insert_Finish_Node(Distributed_TaskHandle_List_t* NewDTaskContr
 			pre_Lastnode = Lastnode;
 			Lastnode = Lastnode->Next_TaskHandle_List;
 		}
-		NewDTaskControlBlock->Next_TaskHandle_List = pre_Lastnode->Next_TaskHandle_List;
-		pre_Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
+		if((Lastnode == DFinish) && (Lastnode->DSubTask_id >= NewDTaskControlBlock->DSubTask_id)){
+			NewDTaskControlBlock->Next_TaskHandle_List = Lastnode;
+			DFinish = NewDTaskControlBlock;
+		}
+		else{
+			NewDTaskControlBlock->Next_TaskHandle_List = pre_Lastnode->Next_TaskHandle_List;
+			pre_Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
+		}
 	}
-
 }
 
 uint32_t Got_sp_minus_immediate(uint32_t addr){
@@ -739,7 +748,7 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 		free_block = free_block->Next_Distributed_FreeBlock;
 	}
 
-	uint32_t free_block_Max[2][split_num];										//	[1]Node_id	[2]Max_block_size
+	uint32_t free_block_Max[2][split_num];										//	free_block_Max[1]: Node_id, free_block_Max[2]: Max_block_size
 	uint32_t free_block_sort[split_num];
 	uint32_t split_num_index = 0;
 	free_block = DF_Start;
@@ -781,6 +790,8 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 		uint32_t act_split_num = split_num - decrease_node_num;
 		uint32_t Distributed_data_need_size[act_split_num];
 		Distributed_dispatch_node = pvPortMalloc(act_split_num*sizeof(uint32_t));
+		for(uint32_t i=0;i<act_split_num;i++)
+			Distributed_dispatch_node[i] = 0;
 		TwoD_Data_Max_size_split_record = (uint32_t**)pvPortMalloc(act_split_num*sizeof(uint32_t*));
 		TwoD_Data_size_split_record = (uint32_t**)pvPortMalloc(act_split_num*sizeof(uint32_t*));
 		for(uint32_t i=0;i<act_split_num;i++){
@@ -793,8 +804,8 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 			for(uint32_t Data_number_th=0;Data_number_th<Data_number;Data_number_th++){
 				uint32_t tmp_data_size = 0;
 				uint32_t split_base_data_size = Data_size_array[Data_number_th];
-				if(Data_split_size_array[Data_number_th] > 1){
-					split_base_data_size = Data_size_array[Data_number_th]/Data_split_size_array[Data_number_th];
+				if(Data_split_size_array[Data_number_th] > 1){														//	If indicate minimum split size
+					split_base_data_size = Data_size_array[Data_number_th]/Data_split_size_array[Data_number_th];	//	split_base_data_size = Total data / minimum split size
 				}
 				else{
 					Data_split_size_array[Data_number_th] = 1;
@@ -874,8 +885,8 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 			}
 			vPortFree(TwoD_Data_Max_size_split_record);
 			vPortFree(TwoD_Data_size_split_record);
+			decrease_node_num++;
 		}
-		decrease_node_num++;
 	}
 
 	if(satisfy_split_num == 0){
@@ -927,7 +938,7 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 			}
 			else{
 				dest_instruction_addr = pc_start;
-				dest_data_addr = (uint8_t*)dest_instruction_addr + sizeof(TaskHandle_t);
+				dest_data_addr = (uint8_t*)Subtask_handler + sizeof(TaskHandle_t);
 			}
 
 			for(uint32_t i=0;i<Data_number;i++){																//	Copy Data_size_split_record and Data_Max_size_split_record
@@ -1018,9 +1029,19 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 			else{
 				while(Lastnode->Next_TaskHandle_List != NULL)
 					Lastnode = Lastnode->Next_TaskHandle_List;
+				NewDTaskControlBlock->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
 				Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
 			}
 		}
+
+		vPortFree(Distributed_dispatch_node);
+		for(uint32_t i=0;i<satisfy_split_num;i++){
+			vPortFree(TwoD_Data_Max_size_split_record[i]);
+			vPortFree(TwoD_Data_size_split_record[i]);
+		}
+		vPortFree(TwoD_Data_Max_size_split_record);
+		vPortFree(TwoD_Data_size_split_record);
+
 		Distributed_Data_t* reomve_s = data_info;
 		while(reomve_s != NULL){
 			Distributed_Data_t* s_delete = reomve_s;
@@ -1046,26 +1067,30 @@ void svc_handler_c(uint32_t LR, uint32_t MSP){
 	if(svc_num == 0)
 		vPortSVCHandler();
 	else if (svc_num == 1){
-		 *(stack_frame_ptr) = Distributed_GetNode(stacked_return_addr);
+		 //*(stack_frame_ptr) = Distributed_GetNode(stacked_return_addr);
+		 *(stack_frame_ptr) = Distributed_GetNode_tmp_ver(stacked_return_addr, DStart);
 	}
 	else if (svc_num == 2){
-
 		//Distributed_TaskHandle_List_t* Lastnode = Distributed_GetNode(stacked_return_addr);
 		Distributed_TaskHandle_List_t* Lastnode = Distributed_GetNode_tmp_ver(stacked_return_addr, DStart);
 		if (Lastnode->DSubTask_id != 0){
-			*((uint32_t*)(stacked_return_addr&0xFFFFFFFE)) = 0xe7fe;
+			*((uint16_t*)(stacked_return_addr&0xFFFFFFFE)) = 0xe7fe;			//	modify return addr instruction to bx here
 		}
 
-		Distributed_TaskHandle_List_t* tmp_Lastnode = DStart;
+		Distributed_TaskHandle_List_t* tmp_Lastnode = DStart;					//	Remove subtask from DStart list
 		Distributed_TaskHandle_List_t* pre_tmp_Lastnode = tmp_Lastnode;
-		if((tmp_Lastnode != Lastnode) && (tmp_Lastnode != NULL)){
+		while((tmp_Lastnode != Lastnode) && (tmp_Lastnode != NULL)){
 			pre_tmp_Lastnode = tmp_Lastnode;
 			tmp_Lastnode = tmp_Lastnode->Next_TaskHandle_List;
 		}
-		if(tmp_Lastnode != NULL)
-			pre_tmp_Lastnode->Next_TaskHandle_List = tmp_Lastnode->Next_TaskHandle_List;
+		if(tmp_Lastnode == Lastnode){
+			if(tmp_Lastnode == DStart)
+				DStart = NULL;
+			else
+				pre_tmp_Lastnode->Next_TaskHandle_List = tmp_Lastnode->Next_TaskHandle_List;
+		}
+		Lastnode->Next_TaskHandle_List = NULL;
 
-		tmp_Lastnode->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
 		Lastnode->Finish_Flag = 0;												//	Finish_Flag = 0 mean that the data has not merge yet
 		Distributed_Insert_Finish_Node(Lastnode);								//	Insert to Finish list
 		unmerge_finish_distributed_task++;
@@ -2115,7 +2140,7 @@ void task1(){
 							Lastnode = Lastnode->Next_TaskHandle_List;
 						}
 						if(Lastnode != NULL){
-							uint32_t Total_malloc_size = sizeof(Distributed_TaskHandle_List_t) + (uint32_t)(Lastnode->Data_size)*sizeof(uint32_t);
+							uint32_t Total_malloc_size = sizeof(Distributed_TaskHandle_List_t) + (uint32_t)(Lastnode->Data_number)*sizeof(uint32_t);
 							Distributed_TaskHandle_List_t *tmp_NewDTaskControlBlock = pvPortMalloc(sizeof(Total_malloc_size));
 							for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++)
 								*((uint8_t*)tmp_NewDTaskControlBlock+i) = *((uint8_t*)Lastnode+i);
@@ -2124,7 +2149,15 @@ void task1(){
 							for(uint32_t i=0;i<Lastnode->Data_number;i++)
 								*(tmp_NewDTaskControlBlock->Data_addr+i) = *(Lastnode->Data_addr+i);
 							tmp_NewDTaskControlBlock->Finish_Flag = 1;
-							pre_Lastnode->Next_TaskHandle_List = tmp_NewDTaskControlBlock;
+
+							tmp_NewDTaskControlBlock->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
+							if(Lastnode == DFinish){
+								DFinish = tmp_NewDTaskControlBlock;
+							}
+							else{
+								pre_Lastnode->Next_TaskHandle_List = tmp_NewDTaskControlBlock;
+							}
+
 							vPortFree(Lastnode);
 							portDISABLE_INTERRUPTS();
 							unmerge_finish_distributed_task--;
