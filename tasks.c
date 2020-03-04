@@ -1183,6 +1183,7 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 			{
 				mtCOVERAGE_TEST_MARKER();
 			}
+
 			/* Is the task waiting on an event also? */
 			if( listLIST_ITEM_CONTAINER( &( pxTCB->xEventListItem ) ) != NULL )
 			{
