@@ -1003,10 +1003,10 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 					}
 					else																						//	Copy instructions
 						*((uint16_t*)dest_instruction_addr+i) = *((uint16_t*)pc_start+i);
-					printf("0x%X, 0x%X\r\n", ((uint16_t*)dest_instruction_addr+i), *((uint16_t*)dest_instruction_addr+i));
+					//printf("0x%X, 0x%X\r\n", ((uint16_t*)dest_instruction_addr+i), *((uint16_t*)dest_instruction_addr+i));
 				}
 			}
-			printf("dest_instruction_addr from 0x%X to 0x%X\r\n", dest_instruction_addr, ((uint8_t*)dest_instruction_addr+instruction_size));
+			//printf("dest_instruction_addr from 0x%X to 0x%X\r\n", dest_instruction_addr, ((uint8_t*)dest_instruction_addr+instruction_size));
 
 			Distributed_Data_t* tmp_Distributed_Data_List;
 			Distributed_Data_t* tmp_Distributed_Data = ((Distributed_Data_t*)data_info);
@@ -1016,11 +1016,12 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 					*(tmp_dest_data_addr+i) = *(tmp_Distributed_Data->Data_addr + split_num_th*Data_Max_size_split_record[Data_number_i] + i);
 					//printf("split_num_th: 0x%X, Data_number_i: 0x%X, Data_addr: 0x%X	0x%X\r\n", split_num_th, Data_number_i, (tmp_dest_data_addr+i), *(tmp_dest_data_addr+i));
 				}
-				tmp_Distributed_Data_List = (uint8_t*)Start_Distributed_Data_List + Data_number_i*sizeof(Distributed_TaskHandle_List_t);
+				tmp_Distributed_Data = tmp_Distributed_Data->Next_Distributed_Data;
+				tmp_Distributed_Data_List = (uint8_t*)Start_Distributed_Data_List + Data_number_i*sizeof(Distributed_Data_t);
 				if(Data_number_i == (Data_number-1))
 					tmp_Distributed_Data_List->Next_Distributed_Data = NULL;
 				else
-					tmp_Distributed_Data_List->Next_Distributed_Data = (uint8_t*)tmp_Distributed_Data_List + sizeof(Distributed_TaskHandle_List_t);
+					tmp_Distributed_Data_List->Next_Distributed_Data = (uint8_t*)tmp_Distributed_Data_List + sizeof(Distributed_Data_t);
 
 				tmp_Distributed_Data_List->Data_addr = tmp_dest_data_addr;
 				tmp_Distributed_Data_List->Data_size = Data_size_split_record[Data_number_i];
@@ -1083,6 +1084,14 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 				for(uint32_t i=0;i<(Distributed_Send_Size-13);i++)
 					printf("0x%X, 0x%X\r\n", ((uint8_t*)NewDTaskControlBlock+i), *((uint8_t*)NewDTaskControlBlock+i));
 				*/
+				tmp_Distributed_Data_List = Start_Distributed_Data_List;
+				for(uint32_t i=0;i<Data_number;i++){
+					printf("Data_addr:	0x%X, Data_size_split_record[%d]: 0x%X\r\n", tmp_Distributed_Data_List->Data_addr, i, Data_size_split_record[i]);
+					for(uint32_t j=0;j<Data_size_split_record[i];j++)
+						printf("0x%X, 0x%X,\r\n", ((uint32_t*)tmp_Distributed_Data_List->Data_addr+j), *((uint32_t*)tmp_Distributed_Data_List->Data_addr+j));
+					tmp_Distributed_Data_List = tmp_Distributed_Data_List->Next_Distributed_Data;
+				}
+
 				printf("Distributed_Send_Addr from 0x%X to 0x%X\r\n", Distributed_Send_Addr, ((uint8_t*)Distributed_Send_Addr+Distributed_Send_Size));
 				DistributedNodeSendSubtask(Distributed_dispatch_node[split_num_th], Distributed_Send_Addr, Distributed_Send_Size);
 				//uint32_t subtask_Distributed_TaskHandle_List_size = sizeof(Distributed_TaskHandle_List_t) + Data_number*sizeof(uint32_t) + Data_number*sizeof(uint32_t);
@@ -1147,8 +1156,8 @@ void svc_handler_c(uint32_t LR, uint32_t MSP){
 		vPortSVCHandler();
 	else if (svc_num == 1){
 		 //*(stack_frame_ptr) = Distributed_GetNode(stacked_return_addr);
-		 printf("i think the program is runnung\r\n");
 		 *(stack_frame_ptr) = Distributed_GetNode_tmp_ver(stacked_return_addr, DStart);
+		 printf("i think the program is runnung: 0x%X\r\n", stack_frame_ptr);
 	}
 	else if (svc_num == 2){
 		//Distributed_TaskHandle_List_t* Lastnode = Distributed_GetNode(stacked_return_addr);
@@ -2136,8 +2145,8 @@ void task1(){
 						count++;
 						for(uint32_t i=0;i<16;i++){
 							*(((uint32_t*)0x10000000)+i) = i;
-							*(((uint32_t*)0x10000100)+i) = i;
-							*(((uint32_t*)0x10000200)+i) = i;
+							*(((uint32_t*)0x10000100)+i) = 2*i;
+							*(((uint32_t*)0x10000200)+i) = 3*i;
 						}
 						List_FreeBlock();
 						Distributed_Data_t* data_info = Distributed_Set_Traget_Data(0x10000000, 16, 4);
@@ -2379,7 +2388,17 @@ void task1(){
 						printf("Instruction\r\n");
 						for(uint32_t i=0;i<instruction_size/2;i++)
 							printf("0x%X, 0x%X\r\n", ((uint16_t*)NewDTaskControlBlock->Instruction_addr+i), *((uint16_t*)NewDTaskControlBlock->Instruction_addr+i));
+						printf("Data:\r\n");
+
+						tmp_Distributed_Data_List = Start_Distributed_Data_List;
+						for(uint32_t i=0;i<Data_number;i++){
+							printf("Data_addr:	0x%X, Data_size_split_record[%d]: 0x%X\r\n", tmp_Distributed_Data_List->Data_addr, i, Data_size_split_record[i]);
+							for(uint32_t j=0;j<Data_size_split_record[i];j++)
+								printf("0x%X, 0x%X,\r\n", ((uint32_t*)tmp_Distributed_Data_List->Data_addr+j), *((uint32_t*)tmp_Distributed_Data_List->Data_addr+j));
+							tmp_Distributed_Data_List = tmp_Distributed_Data_List->Next_Distributed_Data;
+						}
 						printf("In the malloc buffer	-------------------------------------------------------------------\r\n");
+						/*
 						printf("TmpDTaskControlBlock->Instruction_addr: 0x%X\r\n", NewDTaskControlBlock->Instruction_addr);
 						printf("TmpDTaskControlBlock->Instruction_addr_end: 0x%X\r\n", NewDTaskControlBlock->Instruction_addr_end);
 						printf("Distributed_Recv_Size: 0x%X\r\n", Distributed_Recv_Size);
@@ -2398,10 +2417,21 @@ void task1(){
 						printf("\r\n");
 						printf("Data_number: 0x%X\r\n", NewDTaskControlBlock->Data_number);
 						printf("Stack_size: 0x%X\r\n", NewDTaskControlBlock->Stack_size);
+						*/
 						/*
 						for(uint32_t i=0;i<instruction_size/2;i++)
 							printf("0x%X, 0x%X\r\n", ((uint16_t*)NewDTaskControlBlock->Instruction_addr+i), *((uint16_t*)NewDTaskControlBlock->Instruction_addr+i));
 						*/
+						Distributed_TaskHandle_List_t* Lastnode = DStart;														//	Insert to Local Distributed List
+						if(Lastnode == NULL)
+							DStart = NewDTaskControlBlock;
+						else{
+							while(Lastnode->Next_TaskHandle_List != NULL)
+								Lastnode = Lastnode->Next_TaskHandle_List;
+							NewDTaskControlBlock->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
+							Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
+						}
+
 						xTaskCreate(NewDTaskControlBlock->Instruction_addr, "Distributed task", NewDTaskControlBlock->Stack_size, NULL, 1, NewDTaskControlBlock->TaskHandlex);
 						portDISABLE_INTERRUPTS();
 						ReceiveTaskFlag = 0;
