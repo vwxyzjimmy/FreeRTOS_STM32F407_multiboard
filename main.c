@@ -1019,7 +1019,6 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 				Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
 			}
 		}
-		//DistributedNodeEnablePublish();
 		vPortFree(Distributed_dispatch_node);
 		for(uint32_t i=0;i<satisfy_split_num;i++){
 			vPortFree(TwoD_Data_Max_size_split_record[i]);
@@ -1034,6 +1033,9 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 			reomve_s = reomve_s->Next_Distributed_Data;
 			vPortFree(s_delete);
 		}
+		DistributedNodeSendFreespace(0xffffffff, Global_Node_id);
+		BlockChangeFlag = 0;
+		DistributedNodeEnablePublish();
 	}
 	return Subscriber_task;
 }
@@ -1979,14 +1981,14 @@ void task1(){
 			}
 			*/
 			if (rec_cmd == 'c'){
-
+				/*
 				uint32_t* tmp1 = pvPortMalloc(100*sizeof(uint32_t));
 				uint32_t* tmp2 = pvPortMalloc(100*sizeof(uint32_t));
 				uint32_t* tmp3 = pvPortMalloc(100*sizeof(uint32_t));
 				vPortFree(tmp2);
 				tmp1++;
 				tmp3++;
-
+				*/
 				Msg_event = 0;
 				Global_Node_id = 0;
 				Global_Node_count = 0;
@@ -2161,6 +2163,7 @@ void task1(){
 							uint32_t Total_malloc_size = sizeof(Distributed_TaskHandle_List_t) + (uint32_t)(Lastnode->Data_number)*sizeof(uint32_t);
 							printf("Total_malloc_size: 0x%lX\r\n", Total_malloc_size);
 							Distributed_TaskHandle_List_t* tmp_NewDTaskControlBlock = pvPortMalloc(Total_malloc_size);
+							printf("tmp_NewDTaskControlBlock: 0x%lX to 0x%lX\r\n", (uint32_t)tmp_NewDTaskControlBlock, ((uint32_t)tmp_NewDTaskControlBlock+Total_malloc_size));
 							for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++){
 								*((uint8_t*)tmp_NewDTaskControlBlock+i) = *((uint8_t*)Lastnode+i);
 							}
@@ -2187,6 +2190,9 @@ void task1(){
 							portDISABLE_INTERRUPTS();
 							unmerge_finish_distributed_task--;
 							portENABLE_INTERRUPTS();
+							printf("After allocate\r\n");
+							List_FreeBlock();
+
 							//Ready to send subtask finish flag
 							//	??????
 						}
@@ -2194,6 +2200,8 @@ void task1(){
 
 					if (ReceiveTaskFlag > 0){
 						portDISABLE_INTERRUPTS();
+						printf("Before allocate\r\n");
+						List_FreeBlock();
 						printf("ReceiveTaskFlag: 0x%lX\r\n", ReceiveTaskFlag);
 						uint8_t* frame_addr = (uint8_t*)((DMA_RX_FRAME_infos->FS_Rx_Desc)->Buffer1Addr);
 						Distributed_TaskHandle_List_t* TmpDTaskControlBlock = (Distributed_TaskHandle_List_t*)((uint8_t*)frame_addr+13);
