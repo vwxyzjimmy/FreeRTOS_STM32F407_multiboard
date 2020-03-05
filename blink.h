@@ -8,5 +8,6 @@
 
 void blink(unsigned int led);
 void blink_count(unsigned int led, unsigned int count);
+void led_init(unsigned int led);
 
 #endif

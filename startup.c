@@ -1,9 +1,10 @@
 #include <stdint.h>
+#include <stdio.h>
 #include "blink.h"
 #include "reg.h"
 
 extern int main(void);
-
+extern uint32_t read_psp();
 void set_sysclk_pll(void);
 
 void reset_handler(void)
@@ -56,7 +57,7 @@ void hardfault_handler_c(uint32_t LR, uint32_t MSP)
 		stack_frame_ptr = (uint32_t *)MSP;
 	}
 	uint32_t stacked_return_addr = *(stack_frame_ptr+6);
-	printf("stacked_return_addr: 0x%X\r\n", stacked_return_addr);
+	printf("stacked_return_addr: 0x%X\r\n", (unsigned int)stacked_return_addr);
 	blink(LED_RED);
 }
 
