@@ -60,6 +60,7 @@ uint32_t DistributedNodeSendFreespace(uint32_t Target_Node_id, uint32_t Node_id)
 void DistributedNodeSendSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size);
 void DistributedNodeDisablePublish();
 void DistributedNodeEnablePublish();
+uint8_t DistributedNodeCheck_Timeout(uint32_t tick);
 void DistributedSendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t size);
 void UpdateLocalFreeBlock();
 Distributed_FreeBlock* GetFreeBlockNode(uint32_t Node_id);
@@ -1010,10 +1011,6 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 			reomve_s = reomve_s->Next_Distributed_Data;
 			vPortFree(s_delete);
 		}
-		printf("Show List_FreeBlock	--------------------------------------------\r\n");
-		DistributedNodeSendFreespace(0xffffffff, Global_Node_id);
-		BlockChangeFlag = 0;
-		printf("Show List_FreeBlock	--------------------------------------------\r\n");
 		DistributedNodeEnablePublish();
 	}
 	return Subscriber_task;
@@ -2017,6 +2014,14 @@ void task1(){
 						rec_cmd = (char)REG(USART1_BASE + USART_DR_OFFSET);
 						printf("%c\r\n", rec_cmd);
 					}
+					if (rec_cmd == 's'){
+						Distributed_Show_FreeBlock();
+						rec_cmd = '\0';
+					}
+					if (rec_cmd == 'S'){
+						List_FreeBlock();
+						rec_cmd = '\0';
+					}
 					if (rec_cmd == 'd'){
 						DistributedNodeDisablePublish();
 						printf("distributed task test start\r\n");
@@ -2037,11 +2042,13 @@ void task1(){
 					}
 
 					if(CheckMasterNodeFlag == 1){
+						/*
 						while(!(DistributedNodeCheck(Global_Node_Master)));
 						TO_COUNT = 0;
 						while((TO_COUNT < 840000) && (DisrtibutedNodeCheckIDFlag != 0)){
 							TO_COUNT++;
 						}
+
 						if(TO_COUNT >= 840000){
 							portDISABLE_INTERRUPTS();
 							DistributedNodeInvalid(Global_Node_Master);
@@ -2050,8 +2057,23 @@ void task1(){
 							DistributedNodeResponseID();
 							portENABLE_INTERRUPTS();
 						}
+
 						else{
 							DistributedNodeGetID();		//bug if DistributedNodeGetID() Fail??
+						}
+						*/
+						uint8_t timeout_flag = DistributedNodeCheck_Timeout(105000);
+						if(timeout_flag == 0){
+							printf("time out\r\n");
+							portDISABLE_INTERRUPTS();
+							DistributedNodeInvalid(Global_Node_Master);
+							DisrtibutedNodeCheckIDFlag = 0;
+							Global_Node_Master = Global_Node_id;
+							DistributedNodeResponseID();
+							portENABLE_INTERRUPTS();
+						}
+						else{
+							DistributedNodeGetID();
 						}
 						portDISABLE_INTERRUPTS();
 						CheckMasterNodeFlag = 0;
@@ -2123,7 +2145,7 @@ void task1(){
 						if (tmp_RecvFreespaceFlag == RecvFreespaceFlag)
 							RecvFreespaceFlag = 0;
 						//List_FreeBlock();
-						Distributed_Show_FreeBlock();
+						//Distributed_Show_FreeBlock();
 					}
 
 					if (unmerge_finish_distributed_task > 0){
@@ -2135,11 +2157,6 @@ void task1(){
 						}
 						if(Lastnode != NULL){
 							printf("delete distributed task\r\n");
-							/*
-							vTaskDelete(*(Lastnode->TaskHandlex));
-							vPortFree(Lastnode);
-							printf("1 Target to delete Lastnode: 0x%lX\r\n", (uint32_t)Lastnode);
-							*/
 							uint32_t Total_malloc_size = sizeof(Distributed_TaskHandle_List_t) + (uint32_t)(Lastnode->Data_number)*sizeof(uint32_t);
 							printf("Total_malloc_size: 0x%lX\r\n", Total_malloc_size);
 							Distributed_TaskHandle_List_t* tmp_NewDTaskControlBlock = pvPortMalloc(Total_malloc_size);
@@ -2147,11 +2164,12 @@ void task1(){
 							for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++){
 								*((uint8_t*)tmp_NewDTaskControlBlock+i) = *((uint8_t*)Lastnode+i);
 							}
-
+							printf("Result:\r\n");
 							tmp_NewDTaskControlBlock->Data_addr = (uint32_t*)((uint8_t*)tmp_NewDTaskControlBlock + sizeof(Distributed_TaskHandle_List_t));
 							tmp_NewDTaskControlBlock->Data_number = Lastnode->Data_number;
 							for(uint32_t i=0;i<Lastnode->Data_number;i++){
 								*(tmp_NewDTaskControlBlock->Data_addr+i) = *(Lastnode->Data_addr+i);
+								printf("0x%lX, 0x%lX\r\n", (uint32_t)(tmp_NewDTaskControlBlock->Data_addr+i), *(tmp_NewDTaskControlBlock->Data_addr+i));
 							}
 							tmp_NewDTaskControlBlock->Finish_Flag = 1;
 							tmp_NewDTaskControlBlock->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
@@ -2212,8 +2230,6 @@ void task1(){
 						Distributed_Recv_Size += Data_size_split*sizeof(uint32_t);
 
 						Distributed_TaskHandle_List_t* NewDTaskControlBlock = pvPortMalloc(Distributed_Recv_Size);
-						for(uint32_t i=0;i<3;i++)
-							printf("0x%lX, 0x%lX\r\n", (uint32_t)((uint32_t*)NewDTaskControlBlock-i), *((uint32_t*)NewDTaskControlBlock-i));
 						for(uint32_t i=0;i<Distributed_Recv_Size;i++){
 							*((uint8_t*)NewDTaskControlBlock+i) = *((uint8_t*)TmpDTaskControlBlock+i);
 						}
@@ -2299,7 +2315,7 @@ void task1(){
 						if(bool_send_flag != 0){
 							DistributedNodeSendFreespace(0xffffffff, Global_Node_id);
 							BlockChangeFlag = 0;
-							Distributed_Show_FreeBlock();
+							//Distributed_Show_FreeBlock();
 						}
 					}
 				}
@@ -2637,6 +2653,34 @@ void DistributedSendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t size)
 			}
 		}
 	}
+}
+
+uint8_t DistributedNodeCheck_Timeout(uint32_t tick){
+	uint32_t base_tick = xTaskGetTickCount();
+	uint32_t timeout_tick = base_tick + tick;
+	while(!(DistributedNodeCheck(Global_Node_Master)));
+	uint32_t bool_timeout_flag = 0;
+	uint8_t success_flag = 0;
+	while((bool_timeout_flag == 0) && (DisrtibutedNodeCheckIDFlag != 0)){
+		uint32_t now_tick = xTaskGetTickCount();
+		if(timeout_tick > base_tick){
+			if((now_tick > timeout_tick) || (now_tick < base_tick))
+				bool_timeout_flag = 1;
+		}
+		else{
+			if((now_tick > timeout_tick) && (now_tick < base_tick))
+				bool_timeout_flag = 1;
+		}
+	}
+	if(DisrtibutedNodeCheckIDFlag == 0){
+		printf("Got check back!?\r\n");
+		success_flag = 1;
+	}
+	portDISABLE_INTERRUPTS();
+	CheckMasterNodeFlag = 0;
+	portENABLE_INTERRUPTS();
+
+	return success_flag;
 }
 
 void UpdateLocalFreeBlock(){													//	Bug in here	!!!!!!!!!!!!!	???????	--------------------------------
