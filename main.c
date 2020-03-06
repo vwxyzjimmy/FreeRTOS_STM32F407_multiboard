@@ -1010,11 +1010,11 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 			reomve_s = reomve_s->Next_Distributed_Data;
 			vPortFree(s_delete);
 		}
-		/*
+		printf("Show List_FreeBlock	--------------------------------------------\r\n");
 		DistributedNodeSendFreespace(0xffffffff, Global_Node_id);
 		BlockChangeFlag = 0;
-		*/
-		//DistributedNodeEnablePublish();
+		printf("Show List_FreeBlock	--------------------------------------------\r\n");
+		DistributedNodeEnablePublish();
 	}
 	return Subscriber_task;
 }
@@ -2026,13 +2026,13 @@ void task1(){
 							*(((uint32_t*)0x10000100)+i) = 2*i;
 							*(((uint32_t*)0x10000200)+i) = 3*i;
 						}
-						List_FreeBlock();
+						//List_FreeBlock();
 						Distributed_Data_t* data_info = Distributed_Set_Traget_Data((uint32_t*)0x10000000, 16, 4);
 						Distributed_Add_Traget_Data(data_info, (uint32_t*)0x10000100, 8, 2);
 						Distributed_Add_Traget_Data(data_info, (uint32_t*)0x10000200, 13, 1);
 
 						Distributed_TaskCreate(Distributed_task, data_info, 1000);
-						List_FreeBlock();
+						//List_FreeBlock();
 						rec_cmd = '\0';
 					}
 
@@ -2122,7 +2122,7 @@ void task1(){
 						}
 						if (tmp_RecvFreespaceFlag == RecvFreespaceFlag)
 							RecvFreespaceFlag = 0;
-
+						//List_FreeBlock();
 						Distributed_Show_FreeBlock();
 					}
 
@@ -2172,7 +2172,7 @@ void task1(){
 							unmerge_finish_distributed_task--;
 							portENABLE_INTERRUPTS();
 							printf("After allocate\r\n");
-							List_FreeBlock();
+							//List_FreeBlock();
 
 							//Ready to send subtask finish flag
 							//	??????
@@ -2182,7 +2182,7 @@ void task1(){
 					if (ReceiveTaskFlag > 0){
 						portDISABLE_INTERRUPTS();
 						printf("Before allocate\r\n");
-						List_FreeBlock();
+						//List_FreeBlock();
 						printf("ReceiveTaskFlag: 0x%lX\r\n", ReceiveTaskFlag);
 						uint8_t* frame_addr = (uint8_t*)((DMA_RX_FRAME_infos->FS_Rx_Desc)->Buffer1Addr);
 						Distributed_TaskHandle_List_t* TmpDTaskControlBlock = (Distributed_TaskHandle_List_t*)((uint8_t*)frame_addr+13);
@@ -2495,6 +2495,8 @@ uint32_t DistributedNodeSendFreespace(uint32_t Target_Node_id, uint32_t Node_id)
 	if(Target_Node_id == 0)
 		Target_Node_id = 0xFFFFFFFF;
 	UpdateLocalFreeBlock();
+	printf("List in DistributedNodeSendFreespace\r\n");
+	//List_FreeBlock();
 	uint32_t node_number = 0;
 	uint32_t block_number = 0;
 	Distributed_FreeBlock* FreespaceStart = DF_Start;
@@ -2637,7 +2639,7 @@ void DistributedSendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t size)
 	}
 }
 
-void UpdateLocalFreeBlock(){
+void UpdateLocalFreeBlock(){													//	Bug in here	!!!!!!!!!!!!!	???????	--------------------------------
 	//printf("  UpdateLocalFreeBlock Start\r\n");
 	Distributed_FreeBlock* local_free_block = DF_Start;
 	while((local_free_block != NULL) && (local_free_block->Node_id != Global_Node_id)){
@@ -2646,6 +2648,7 @@ void UpdateLocalFreeBlock(){
 	if(local_free_block == NULL){
 		local_free_block = pvPortMalloc(sizeof(Distributed_FreeBlock));
 		local_free_block->Node_id = Global_Node_id;
+		local_free_block->Block_number = 0;
 		Distributed_FreeBlock* tmp_free_block = DF_Start;
 		while((tmp_free_block->Next_Distributed_FreeBlock != NULL) && ((tmp_free_block->Next_Distributed_FreeBlock)->Node_id <= Global_Node_id)){
 			tmp_free_block = tmp_free_block->Next_Distributed_FreeBlock;
@@ -2680,26 +2683,30 @@ void UpdateLocalFreeBlock(){
 		tmp_block = tmp_block->pxNextFreeBlock;
 	}
 	if(block_number != local_free_block->Block_number){
-		if(local_free_block->Block_number > 0)
+		if(local_free_block->Block_number > 0){
 			vPortFree(local_free_block->Block_size_array);
+			block_number = 0;
+			tmp_block = &xStart;
+			while(tmp_block != NULL){
+				if(tmp_block->xBlockSize > 0){
+					block_number++;
+				}
+				tmp_block = tmp_block->pxNextFreeBlock;
+			}
+		}
 		local_free_block->Block_size_array = pvPortMalloc(block_number*sizeof(uint32_t));
 	}
-	local_free_block->Block_number = block_number;
-
-	//List_FreeBlock();
-
 	block_number = 0;
 	tmp_block = &xStart;
 	while(tmp_block != NULL){
 		if(tmp_block->xBlockSize > 0){
-			uint32_t* tmp_ptr = local_free_block->Block_size_array+block_number;
-			*tmp_ptr = tmp_block->xBlockSize;
+			*(local_free_block->Block_size_array+block_number) = tmp_block->xBlockSize;
 			block_number++;
-			//printf("  block_number: 0x%X, tmp_ptr: 0x%X, xBlockSize: 0x%X\r\n", block_number, tmp_ptr, *tmp_ptr);
 		}
 		tmp_block = tmp_block->pxNextFreeBlock;
 	}
-	//printf("  UpdateLocalFreeBlock\r\n");
+	local_free_block->Block_number = block_number;
+
 }
 
 Distributed_FreeBlock* GetFreeBlockNode(uint32_t Node_id){
