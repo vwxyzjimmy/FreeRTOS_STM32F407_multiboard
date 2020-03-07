@@ -52,15 +52,15 @@ FrameTypeDef Pkt_Handle(void);
 void DistributedNodeGetID();
 void DistributedNodeGetIDAgain();
 void DistributedNodeResponseID();
-uint8_t DistributedNodeCheck(uint32_t Target_Node_id);
-void DistributedNodeCheckback(uint32_t Target_Node_id);
+uint8_t DistributedNodeCheck(uint32_t Target_Node_id, uint32_t Needsize);
+void DistributedNodeCheckback(uint32_t Target_Node_id, uint8_t checkback_flag);
 void DistributedNodeBackupMaster(uint32_t Target_Node_id);
 void DistributedNodeInvalid(uint32_t Target_Node_id);
 uint32_t DistributedNodeSendFreespace(uint32_t Target_Node_id, uint32_t Node_id);
 void DistributedNodeSendSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size);
 void DistributedNodeDisablePublish();
 void DistributedNodeEnablePublish();
-uint8_t DistributedNodeCheck_Timeout(uint32_t tick);
+uint8_t DistributedNodeCheck_size_Timeout(uint32_t tick, uint32_t Target_Node_id, uint32_t Needsize);
 void DistributedSendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t size);
 void UpdateLocalFreeBlock();
 Distributed_FreeBlock* GetFreeBlockNode(uint32_t Node_id);
@@ -97,6 +97,7 @@ volatile uint32_t DisrtibutedNodeCheckIDFlag = 0;
 volatile uint8_t CheckMasterNodeFlag = 0;
 volatile uint8_t SendFreespaceFlag = 0;
 volatile uint32_t RecvFreespaceFlag = 0;
+uint32_t Checkback_flag = 0;
 Distributed_FreeBlock* DF_Start;
 extern uint8_t BlockChangeFlag;
 uint32_t ReceiveTaskFlag = 0;
@@ -172,7 +173,6 @@ void Distributed_TaskCreate(void* task, Distributed_Data_t *S, uint32_t Stack_si
 	*/
 }
 void Distributed_Check(Distributed_TaskHandle_List_t* s, uint32_t* Result_Data_addr, uint32_t Result_Data_size){
-
 	Distributed_TaskHandle_List_t* Lastnode = DStart;
 	Distributed_TaskHandle_List_t* pre_Lastnode = DStart;
 	uint32_t All_Subtask_Done = 0;
@@ -825,6 +825,21 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 		}
 	}
 
+	for(uint32_t split_num_th=0;split_num_th<satisfy_split_num;split_num_th++){
+		if(Distributed_dispatch_node[split_num_th] != Global_Node_id){
+			uint8_t timeout_flag = DistributedNodeCheck_size_Timeout(210000, Distributed_dispatch_node[split_num_th], 0x200000);
+			printf("Node id: 0x%lX checkback, ", Distributed_dispatch_node[split_num_th]);
+			if(timeout_flag == 0xFF)
+				printf("Dame without check back, can't DistributedNodeSendSubtask\r\n");
+			else if(timeout_flag == 0){
+				printf("Got check back but freespace not satisfy\r\n");
+			}
+			else{
+				printf("Got check back and ready to DistributedNodeSendSubtask\r\n");
+			}
+		}
+	}
+
 	printf("satisfy_split_num: 0x%lX\r\n", satisfy_split_num);
 	if(satisfy_split_num == 0){
 		printf("Dame it fail to dispatch\r\n");
@@ -976,6 +991,7 @@ Distributed_TaskHandle_List_t* Distributed_manager_task_tmp_ver(void* data_info,
 				}
 
 				printf("Distributed_Send_Addr from 0x%lX to 0x%lX\r\n", (uint32_t)Distributed_Send_Addr, (uint32_t)((uint8_t*)Distributed_Send_Addr+Distributed_Send_Size));
+				printf("Send to 0x%lX\r\n", Distributed_dispatch_node[split_num_th]);
 				DistributedNodeSendSubtask(Distributed_dispatch_node[split_num_th], Distributed_Send_Addr, Distributed_Send_Size);
 				//uint32_t subtask_Distributed_TaskHandle_List_size = sizeof(Distributed_TaskHandle_List_t) + Data_number*sizeof(uint32_t) + Data_number*sizeof(uint32_t);
 				uint32_t subtask_Distributed_TaskHandle_List_size = sizeof(Distributed_TaskHandle_List_t);
@@ -1799,11 +1815,25 @@ void eth_handler(void){
 		}
 		else if (Msg_event == 4){
 			printf("Get DistributedNodeCheck\r\n");
-			DistributedNodeCheckback(Sour);
+			uint32_t Needsize = *((uint32_t*)((uint8_t*)frame.buffer+13));
+			uint8_t freespace_satisfy_flag = 1;
+			if(Needsize > 0){
+				freespace_satisfy_flag = 0;
+				BlockLink_t* tmp_block = &xStart;
+				while(tmp_block != NULL){
+					if(tmp_block->xBlockSize >= Needsize){
+						freespace_satisfy_flag = 1;
+						break;
+					}
+					tmp_block = tmp_block->pxNextFreeBlock;
+				}
+			}
+			DistributedNodeCheckback(Sour, freespace_satisfy_flag);
 		}
 		else if (Msg_event == 5){
 			if(DisrtibutedNodeCheckIDFlag == Sour){
-				printf("Get DistributedNodeCheckback\r\n");
+				Checkback_flag = *((uint8_t*)frame.buffer+13);
+				printf("Get DistributedNodeCheckback, checkback_flag: 0x%lX\r\n",  (uint32_t)Checkback_flag);
 				DisrtibutedNodeCheckIDFlag = 0;
 			}
 		}
@@ -2022,6 +2052,35 @@ void task1(){
 						List_FreeBlock();
 						rec_cmd = '\0';
 					}
+					if (rec_cmd == 'f'){
+						uint32_t free_block_number = 0;
+						Distributed_FreeBlock* local_free_block = DF_Start;
+						while(local_free_block != NULL){
+							local_free_block = local_free_block->Next_Distributed_FreeBlock;
+							free_block_number++;
+						}
+						uint32_t Allfreeblocknode[free_block_number];
+						free_block_number = 0;
+						local_free_block = DF_Start;
+						while(local_free_block != NULL){
+							Allfreeblocknode[free_block_number] = local_free_block->Node_id;
+							free_block_number++;
+							local_free_block = local_free_block->Next_Distributed_FreeBlock;
+						}
+						for(uint32_t i=0;i<free_block_number;i++){
+							uint8_t timeout_flag = 0;
+							if(Allfreeblocknode[i] != Global_Node_id){
+								printf("Ready to send DistributedNodeCheck_size_Timeout to 0x%lX\r\n", Allfreeblocknode[i]);
+								timeout_flag = DistributedNodeCheck_size_Timeout(105000, Allfreeblocknode[i], 0);
+							}
+							if(timeout_flag != 0xff)
+								printf("Got response: 0x%lX\r\n",  (uint32_t)timeout_flag);
+							else
+								printf("MTFK no response: 0x%lX\r\n", (uint32_t)timeout_flag);
+						}
+						rec_cmd = '\0';
+						//	?????
+					}
 					if (rec_cmd == 'd'){
 						DistributedNodeDisablePublish();
 						printf("distributed task test start\r\n");
@@ -2062,8 +2121,9 @@ void task1(){
 							DistributedNodeGetID();		//bug if DistributedNodeGetID() Fail??
 						}
 						*/
-						uint8_t timeout_flag = DistributedNodeCheck_Timeout(105000);
-						if(timeout_flag == 0){
+
+						uint8_t timeout_flag = DistributedNodeCheck_size_Timeout(105000, Global_Node_Master, 0);
+						if(timeout_flag == 0xff){
 							printf("time out\r\n");
 							portDISABLE_INTERRUPTS();
 							DistributedNodeInvalid(Global_Node_Master);
@@ -2451,19 +2511,20 @@ void DistributedNodeResponseID(){
 	printf("Send DistributedNodeResponseID, Dispatch_id: 0x%lX\r\n", Dispatch_id);
 }
 
-uint8_t DistributedNodeCheck(uint32_t Target_Node_id){
+uint8_t DistributedNodeCheck(uint32_t Target_Node_id, uint32_t Needsize){
 	if (DisrtibutedNodeCheckIDFlag == 0){
 		portDISABLE_INTERRUPTS();
 		DisrtibutedNodeCheckIDFlag = Target_Node_id;
 		portENABLE_INTERRUPTS();
 		uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-		uint8_t mydata[13] = { 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04};
+		uint8_t mydata[17] = { 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00};
 		for(uint8_t i=0;i<4;i++){
 			MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
 			mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
 			mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+			mydata[i+13] = *((uint8_t*)&Needsize+i);
 		}
-		DistributedSendMsg(MyMacAddr, mydata, 13);
+		DistributedSendMsg(MyMacAddr, mydata, 17);
 		printf("Send DistributedNodeCheck to Node 0x%lX\r\n", Target_Node_id);
 		return 1;
 	}
@@ -2471,16 +2532,17 @@ uint8_t DistributedNodeCheck(uint32_t Target_Node_id){
 		return 0;
 }
 
-void DistributedNodeCheckback(uint32_t Target_Node_id){
+void DistributedNodeCheckback(uint32_t Target_Node_id, uint8_t checkback_flag){
 	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[13] = { 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05};
+	uint8_t mydata[14] = { 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x00};
 	for(uint8_t i=0;i<4;i++){
 		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
 		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
 		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
 	}
-	DistributedSendMsg(MyMacAddr, mydata, 13);
-	printf("Send DistributedNodeCheckback to Node 0x%lX\r\n", Target_Node_id);
+	mydata[13] = *((uint8_t*)&checkback_flag);
+	DistributedSendMsg(MyMacAddr, mydata, 14);
+	printf("Send DistributedNodeCheckback to Node 0x%lX, checkback_flag: 0x%X\r\n", Target_Node_id, checkback_flag);
 }
 
 void DistributedNodeBackupMaster(uint32_t Target_Node_id){
@@ -2653,37 +2715,42 @@ void DistributedSendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t size)
 			}
 		}
 	}
+	tickcount_lo_bound = xTaskGetTickCount();
+	tickcount_hi_bound = tickcount_lo_bound + 100000*Global_Node_count + 10;
 }
 
-uint8_t DistributedNodeCheck_Timeout(uint32_t tick){
-	uint32_t base_tick = xTaskGetTickCount();
-	uint32_t timeout_tick = base_tick + tick;
-	while(!(DistributedNodeCheck(Global_Node_Master)));
-	uint32_t bool_timeout_flag = 0;
-	uint8_t success_flag = 0;
-	while((bool_timeout_flag == 0) && (DisrtibutedNodeCheckIDFlag != 0)){
-		uint32_t now_tick = xTaskGetTickCount();
-		if(timeout_tick > base_tick){
-			if((now_tick > timeout_tick) || (now_tick < base_tick))
-				bool_timeout_flag = 1;
+uint8_t DistributedNodeCheck_size_Timeout(uint32_t tick, uint32_t Target_Node_id, uint32_t Needsize){
+	if(Target_Node_id != Global_Node_id){
+		uint32_t base_tick = xTaskGetTickCount();
+		uint32_t timeout_tick = base_tick + tick;
+		while(!(DistributedNodeCheck(Target_Node_id, Needsize)));
+		uint32_t bool_timeout_flag = 0;
+		uint8_t success_flag = 0xFF;
+		printf("In DistributedNodeCheck_size_Timeout DisrtibutedNodeCheckIDFlag: 0x%lX\r\n", DisrtibutedNodeCheckIDFlag);
+		while((bool_timeout_flag == 0) && (DisrtibutedNodeCheckIDFlag != 0)){
+			uint32_t now_tick = xTaskGetTickCount();
+			if(timeout_tick > base_tick){
+				if((now_tick > timeout_tick) || (now_tick < base_tick))
+					bool_timeout_flag = 1;
+			}
+			else{
+				if((now_tick > timeout_tick) && (now_tick < base_tick))
+					bool_timeout_flag = 1;
+			}
 		}
-		else{
-			if((now_tick > timeout_tick) && (now_tick < base_tick))
-				bool_timeout_flag = 1;
+		if(DisrtibutedNodeCheckIDFlag == 0){
+			printf("Got check back!?\r\n");
+			success_flag = Checkback_flag;
 		}
+		return success_flag;
 	}
-	if(DisrtibutedNodeCheckIDFlag == 0){
-		printf("Got check back!?\r\n");
-		success_flag = 1;
+	else{
+		printf("Dame you should not check yourself node id: 0x%lX\r\n", Target_Node_id);
+		return 0xff;
 	}
-	portDISABLE_INTERRUPTS();
-	CheckMasterNodeFlag = 0;
-	portENABLE_INTERRUPTS();
-
-	return success_flag;
 }
 
-void UpdateLocalFreeBlock(){													//	Bug in here	!!!!!!!!!!!!!	???????	--------------------------------
+void UpdateLocalFreeBlock(){
 	//printf("  UpdateLocalFreeBlock Start\r\n");
 	Distributed_FreeBlock* local_free_block = DF_Start;
 	while((local_free_block != NULL) && (local_free_block->Node_id != Global_Node_id)){
