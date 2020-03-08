@@ -1900,6 +1900,26 @@ void task1(){
 						rec_cmd = '\0';
 					}
 
+					if (rec_cmd == 'm'){
+						uint32_t Max_block_size = 0;
+						List_FreeBlock();
+						BlockLink_t* tmp_block = &xStart;
+						while((tmp_block->pxNextFreeBlock)!=NULL){
+							if(tmp_block->xBlockSize > Max_block_size)
+								Max_block_size = tmp_block->xBlockSize;
+							tmp_block = tmp_block->pxNextFreeBlock;
+						}
+						if(Max_block_size > 0xf0){
+							Max_block_size = Max_block_size - 0xf0;
+							uint32_t* max_malloc = pvPortMalloc(Max_block_size);
+							max_malloc[0]++;
+							printf("Malloc Max block: 0x%lX\r\n", Max_block_size);
+							BlockChangeFlag = 0;
+						}
+						List_FreeBlock();
+						rec_cmd = '\0';
+					}
+
 					if(CheckMasterNodeFlag == 1){
 						uint8_t timeout_flag = DistributedNodeCheck_size_Timeout(105000, Global_Node_Master, 0);
 						if(timeout_flag == 0xff){
