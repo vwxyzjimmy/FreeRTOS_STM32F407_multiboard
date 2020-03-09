@@ -269,22 +269,7 @@ void Distributed_Check(Distributed_TaskHandle_List_t* s, uint32_t* Result_Data_a
 	while(1);
 }
 
-
 void Distributed_Check_tmp_ver(Distributed_TaskHandle_List_t* s, uint32_t* Result_Data_addr, uint32_t Result_Data_size){
-	/*
-	Distributed_TaskHandle_List_t* Lastnode = DStart;
-	Distributed_TaskHandle_List_t* pre_Lastnode = Lastnode;
-	while((Lastnode != s) && (Lastnode != NULL)){
-		pre_Lastnode = Lastnode;
-		Lastnode = Lastnode->Next_TaskHandle_List;
-	}
-	if(Lastnode == s){
-		if(Lastnode == DStart)
-			DStart = NULL;
-		else
-			pre_Lastnode->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
-	}
-	*/
 	Distributed_TaskHandle_List_t *tmp_NewDTaskControlBlock = pvPortMalloc(sizeof(Distributed_TaskHandle_List_t));
 	for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++)
 		*((uint8_t*)tmp_NewDTaskControlBlock+i) = *((uint8_t*)s+i);
@@ -297,11 +282,8 @@ void Distributed_Check_tmp_ver(Distributed_TaskHandle_List_t* s, uint32_t* Resul
 		printf("0x%lX, 0x%lX\r\n", (uint32_t)(tmp_NewDTaskControlBlock->Data_addr+i), *(tmp_NewDTaskControlBlock->Data_addr+i));
 	}
 	tmp_NewDTaskControlBlock->Finish_Flag = 1;
-	vPortFree(s);
-	printf("I am here and free all block s: 0x%lX\r\n", (uint32_t)s);
 	Distributed_Insert_Finish_Node(tmp_NewDTaskControlBlock);
 	//	need to wait for and merge all data
-
 	/*
 	Distributed_Data_t* Send_S = pvPortMalloc(sizeof(Distributed_Data_t));
 	Send_S->Data_addr = Data_addr;
@@ -310,10 +292,10 @@ void Distributed_Check_tmp_ver(Distributed_TaskHandle_List_t* s, uint32_t* Resul
 	xQueueSendToBack(Send_S->xQueue, Send_S, 0);
 	while(1);
 	*/
-
-	printf("delete distributed task\r\n");
-	vTaskDelete(*(tmp_NewDTaskControlBlock->TaskHandlex));
-	printf("Entry while loop forever\r\n");
+	vPortFree(s);
+	printf("delete distributed task in major node: 0x%lX\r\n", (uint32_t)(*(s->TaskHandlex)));
+	vTaskDelete(NULL);																				//	Kill local task(parameter eith NULL)
+	printf("Entry while loop forever, Should not be here\r\n");
 	while(1);
 }
 
@@ -351,12 +333,10 @@ void Distributed_Insert_Finish_Node(Distributed_TaskHandle_List_t* NewDTaskContr
 }
 
 uint32_t Got_sp_minus_immediate(uint32_t addr){
-
 	uint32_t sp_T1_bit_mask = 0xB080;
 	uint32_t sp_T2_bit_mask = 0xF1AD0D00;
 	uint32_t sp_T3_bit_mask = 0xF2AD0D00;
 	uint32_t immediate = 0;
-
 	uint32_t tmp = *((uint32_t *)addr);
 	uint32_t tmp_high = tmp >> 16;
 	uint32_t tmp_low = tmp << 16;
@@ -497,7 +477,6 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 				}
 			}
 		}
-		printf("1 split_num_without_fail_node: 0x%lX\r\n", split_num_without_fail_node);
 		uint32_t free_block_Max_without_fail_node[2][split_num_without_fail_node];							//	Copy to 2d array without fail node
 		split_num_without_fail_node = 0;
 		for(uint32_t i=0;i<split_num;i++){
@@ -507,7 +486,6 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 				split_num_without_fail_node++;
 			}
 		}
-		printf("2 split_num_without_fail_node: 0x%lX\r\n", split_num_without_fail_node);
 		printf("free_block_Max_without_fail_node:\r\n");
 		for(uint32_t i=0;i<split_num_without_fail_node;i++)
 			printf("0x%lX	Node id: 0x%lX, size: 0x%lX\r\n", i, free_block_Max_without_fail_node[0][i], free_block_Max_without_fail_node[1][i]);
@@ -559,7 +537,7 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 							tmp_data_size = 0;
 						}
 					}
-					printf("split_num_th: 0x%lX, Data_number_th: 0x%lX, tmp_data_size: 0x%lX\r\n", split_num_th, Data_number_th, tmp_data_size);
+					//printf("split_num_th: 0x%lX, Data_number_th: 0x%lX, tmp_data_size: 0x%lX\r\n", split_num_th, Data_number_th, tmp_data_size);
 					TwoD_Data_size_split_record[split_num_th][Data_number_th] = tmp_data_size;
 					Data_size_split += tmp_data_size;
 				}
@@ -640,12 +618,12 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 						Fail_node_num++;
 					}
 					else if(timeout_flag == 0){																//	0 mean Node Freespace is not enough to dispatch
-						printf("Got check back but freespace not satisfy\r\n");
+						printf("Got check back but freespace not satisfy, Node id: 0x%lX\r\n", Distributed_dispatch_node[split_num_th]);
 						tmp_invalid_node[split_num_th] = Distributed_dispatch_node[split_num_th];
 						Fail_node_num++;
 					}
 					else{																					//	other mean the node exist and Freespace is enough to dispatch
-						printf("Got check back and ready to DistributedNodeSendSubtask\r\n");
+						printf("Got check back and ready to DistributedNodeSendSubtask, Node id: 0x%lX\r\n", Distributed_dispatch_node[split_num_th]);
 					}
 				}
 			}
@@ -655,7 +633,6 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 				for(uint32_t i=0;i<act_split_num;i++){
 					if(tmp_invalid_node[i] != 0){
 						Fail_node[tmp_index] = tmp_invalid_node[i];
-						printf("tmp_invalid_node[%lX] = Fail_node[%lX] = 0x%lX\r\n", i, tmp_index, Fail_node[tmp_index]);
 						tmp_index++;
 					}
 				}
@@ -784,7 +761,6 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 			if(split_num_th == 0){
 				NewDTaskControlBlock->xQueue = ((Distributed_Data_t*)data_info)->xQueue;
 				Subscriber_task = NewDTaskControlBlock;
-				printf("Distributed_Send_Addr: 0x%lX\r\n", (uint32_t)Distributed_Send_Addr);
 			}
 			else{
 				NewDTaskControlBlock->xQueue = NULL;
@@ -792,17 +768,20 @@ Distributed_TaskHandle_List_t* Distributed_manager_task(void* data_info, uint32_
 				//	Distributed_dispatch_node[satisfy_split_num] is the destinate node, Distributed_dispatch_node[0] is local node id
 				//	Distributed_dispatch_node[satisfy_split_num], Distributed_Send_Addr, Distributed_Send_Size
 				//	???????
-
+				/*
 				printf("In the source buffer	-------------------------------------------------------------------\r\n");
 				tmp_Distributed_Data_List = Start_Distributed_Data_List;
 				for(uint32_t i=0;i<Data_number;i++){
 					printf("Data_addr:	0x%lX, Data_size_split_record[%d]: 0x%lX\r\n", (uint32_t)tmp_Distributed_Data_List->Data_addr, (int)i, (uint32_t)Data_size_split_record[i]);
+
 					for(uint32_t j=0;j<Data_size_split_record[i];j++)
 						printf("0x%lX, 0x%lX,\r\n", (uint32_t)((uint32_t*)tmp_Distributed_Data_List->Data_addr+j), (uint32_t)*((uint32_t*)tmp_Distributed_Data_List->Data_addr+j));
+
 					tmp_Distributed_Data_List = tmp_Distributed_Data_List->Next_Distributed_Data;
 				}
 
 				printf("Distributed_Send_Addr from 0x%lX to 0x%lX\r\n", (uint32_t)Distributed_Send_Addr, (uint32_t)((uint8_t*)Distributed_Send_Addr+Distributed_Send_Size));
+				*/
 				printf("Send to 0x%lX\r\n", Distributed_dispatch_node[split_num_th]);
 				DistributedNodeSendSubtask(Distributed_dispatch_node[split_num_th], Distributed_Send_Addr, Distributed_Send_Size);
 
@@ -1593,7 +1572,7 @@ void eth_handler(void){
 				multi = (Global_Node_id+(Global_Node_count-Sour)-1);
 			else
 				multi = (Global_Node_id-1);
-			printf("	multi: 0x%lX, Sour: 0x%lX, Global_Node_id: 0x%lX, Global_Node_count: 0x%lX\r\n", multi, Sour, Global_Node_id, Global_Node_count);
+			//printf("	multi: 0x%lX, Sour: 0x%lX, Global_Node_id: 0x%lX, Global_Node_count: 0x%lX\r\n", multi, Sour, Global_Node_id, Global_Node_count);
 			tickcount_hi_bound = tickcount_lo_bound + 100000*multi + 10;
 		}
 		//-------------------------------------------------------------------------------------------------------------------------------
@@ -1678,7 +1657,7 @@ void eth_handler(void){
 			PublishFlag = 1;
 			printf("Get DistributedNodeEnablePublish\r\n");
 		}
-		printf("Node_id: 0x%lX, Node_count: 0x%lX, Node_Master: 0x%lX, Node_Backup_Master: 0x%lX, Dest: 0x%lX, Sour: 0x%lX\r\n", Global_Node_id, Global_Node_count, Global_Node_Master, Global_Node_Backup_Master, Dest, Sour);
+		printf("Node_id: 0x%lX, Node_count: 0x%lX, Master: 0x%lX, Backup_Master: 0x%lX, Dest: 0x%lX, Sour: 0x%lX\r\n", Global_Node_id, Global_Node_count, Global_Node_Master, Global_Node_Backup_Master, Dest, Sour);
 	}
 	/* Clear the Eth DMA Rx IT pending bits */
 	SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, RS);
@@ -1953,13 +1932,13 @@ void task1(){
 						uint8_t* frame_addr = (uint8_t*)((DMA_RX_FRAME_infos->FS_Rx_Desc)->Buffer1Addr);
 						uint8_t block_number = *((uint8_t*)frame_addr+13);
 						uint32_t tmp_node_data_count = 0;
-						printf("\r\nDestinate, block_number: 0x%X, --------------------------------------\r\n", block_number);
+						printf("Destinate, block_number: 0x%X, --------------------------------------\r\n", block_number);
 						for(uint8_t i=0;i<block_number;i++){
 							Distributed_FreeBlock* tmp_block = (Distributed_FreeBlock*)((uint8_t*)frame_addr+14+i*sizeof(Distributed_FreeBlock));
 							if(tmp_block->Node_id != Global_Node_id){
 								if((tmp_block->Node_id > Global_Node_count) && (Global_Node_id != Global_Node_Master))
 									Global_Node_count = tmp_block->Node_id;
-								printf("tmp_block: 0x%lX, Node_id: 0x%lX, Block_number: 0x%lX, Block_size_array: 0x%lX\r\n", (uint32_t)tmp_block, tmp_block->Node_id, tmp_block->Block_number, (uint32_t)tmp_block->Block_size_array);
+								//printf("tmp_block: 0x%lX, Node_id: 0x%lX, Block_number: 0x%lX, Block_size_array: 0x%lX\r\n", (uint32_t)tmp_block, tmp_block->Node_id, tmp_block->Block_number, (uint32_t)tmp_block->Block_size_array);
 								Distributed_FreeBlock* Local_Node = GetFreeBlockNode(tmp_block->Node_id);
 								if(Local_Node->Block_number != tmp_block->Block_number){
 									if(Local_Node->Block_number > 0)
@@ -1967,14 +1946,14 @@ void task1(){
 									Local_Node->Block_number = tmp_block->Block_number;
 									Local_Node->Block_size_array = pvPortMalloc(Local_Node->Block_number*sizeof(uint32_t));
 								}
-								printf("BLock: ");
+								//printf("BLock: ");
 								for(uint32_t j=0;j<tmp_block->Block_number;j++){
 									uint32_t* tmp_addr = ((uint32_t*)((uint8_t*)frame_addr+14+block_number*sizeof(Distributed_FreeBlock))+tmp_node_data_count);
 									tmp_node_data_count++;
 									*(Local_Node->Block_size_array+j) = *tmp_addr;
-									printf("0x%lX, ",  (uint32_t)*tmp_addr);
+									//printf("0x%lX, ",  (uint32_t)*tmp_addr);
 								}
-								printf("\r\n");
+								//printf("\r\n");
 							}
 							else{
 								tmp_node_data_count += tmp_block->Block_number;
@@ -1982,7 +1961,7 @@ void task1(){
 						}
 						portENABLE_INTERRUPTS();
 
-						printf("Destinate End-------------------------------------------------------\r\n");
+						//printf("Destinate End-------------------------------------------------------\r\n");
 						uint32_t tmp_count = 0;
 						for(uint32_t i=0;i<block_number*sizeof(Distributed_FreeBlock);i++){
 							tmp_count++;
@@ -2015,7 +1994,6 @@ void task1(){
 							Lastnode = Lastnode->Next_TaskHandle_List;
 						}
 						if(Lastnode != NULL){
-							printf("delete distributed task\r\n");
 							uint32_t Total_malloc_size = sizeof(Distributed_TaskHandle_List_t) + (uint32_t)(Lastnode->Data_number)*sizeof(uint32_t);
 							printf("Total_malloc_size: 0x%lX\r\n", Total_malloc_size);
 							Distributed_TaskHandle_List_t* tmp_NewDTaskControlBlock = pvPortMalloc(Total_malloc_size);
@@ -2042,6 +2020,7 @@ void task1(){
 							for(uint32_t i=0;i<tmp_NewDTaskControlBlock->Data_number;i++)
 								printf("%d	0x%lX\r\n", (int)(i+1), (uint32_t)*(tmp_NewDTaskControlBlock->Data_addr+i));
 							*/
+							printf("delete distributed task in other node\r\n");
 							vTaskDelete(*(Lastnode->TaskHandlex));
 							vPortFree(Lastnode);
 							printf("1 Target to delete Lastnode: 0x%lX\r\n", (uint32_t)Lastnode);
@@ -2372,8 +2351,6 @@ uint32_t DistributedNodeSendFreespace(uint32_t Target_Node_id, uint32_t Node_id)
 	if(Target_Node_id == 0)
 		Target_Node_id = 0xFFFFFFFF;
 	UpdateLocalFreeBlock();
-	printf("List in DistributedNodeSendFreespace\r\n");
-	//List_FreeBlock();
 	uint32_t node_number = 0;
 	uint32_t block_number = 0;
 	Distributed_FreeBlock* FreespaceStart = DF_Start;
@@ -2413,24 +2390,24 @@ uint32_t DistributedNodeSendFreespace(uint32_t Target_Node_id, uint32_t Node_id)
 	uint32_t tmp_node_number = 0;
 	uint32_t tmp_node_data_count = 0;
 	uint32_t source_node_count = 0;
-	printf("\r\nSource, node_number: 0x%lX--------------------------------------------\r\n", node_number);
+	printf("Source, node_number: 0x%lX--------------------------------------------\r\n", node_number);
 	if(Node_id == 0){
 		tmp_block = FreespaceStart;
 		while(tmp_block != NULL){
 			source_node_count++;
-			printf("tmp_block: 0x%lX, Node_id: 0x%lX, Block_number: 0x%lX, Block_size_array: 0x%lX\r\n", (uint32_t)tmp_block, tmp_block->Node_id, tmp_block->Block_number, (uint32_t)tmp_block->Block_size_array);
+			//printf("tmp_block: 0x%lX, Node_id: 0x%lX, Block_number: 0x%lX, Block_size_array: 0x%lX\r\n", (uint32_t)tmp_block, tmp_block->Node_id, tmp_block->Block_number, (uint32_t)tmp_block->Block_size_array);
 			for(uint8_t i=0;i<sizeof(Distributed_FreeBlock);i++){
 				*((uint8_t*)(mydata+14+tmp_node_number*sizeof(Distributed_FreeBlock)+i)) = *((uint8_t*)tmp_block+i);
 			}
-			printf("BLock: ");
+			//printf("BLock: ");
 			for(uint32_t i=0;i<tmp_block->Block_number;i++){
 				for(uint32_t j=0;j<sizeof(uint32_t);j++){
 					*((uint8_t*)(mydata+14+node_number*sizeof(Distributed_FreeBlock)+tmp_node_data_count)) = *((uint8_t*)(tmp_block->Block_size_array+i)+j);
 					tmp_node_data_count++;
 				}
-				printf("0x%lX, ", *((uint32_t*)(mydata+14+node_number*sizeof(Distributed_FreeBlock)+tmp_node_data_count-4)));
+				//printf("0x%lX, ", *((uint32_t*)(mydata+14+node_number*sizeof(Distributed_FreeBlock)+tmp_node_data_count-4)));
 			}
-			printf("\r\n");
+			//printf("\r\n");
 			tmp_node_number++;
 			tmp_block = tmp_block->Next_Distributed_FreeBlock;
 		}
@@ -2438,21 +2415,21 @@ uint32_t DistributedNodeSendFreespace(uint32_t Target_Node_id, uint32_t Node_id)
 	else{
 		if (tmp_block->Node_id == Node_id){
 			printf("Send Specifid Node_id Block: 0x%lX\r\n", Node_id);
-			printf("tmp_block: 0x%lX, Node_id: 0x%lX, Block_number: 0x%lX, Block_size_array: 0x%lX\r\n", (uint32_t)tmp_block, tmp_block->Node_id, tmp_block->Block_number, (uint32_t)tmp_block->Block_size_array);
+			//printf("tmp_block: 0x%lX, Node_id: 0x%lX, Block_number: 0x%lX, Block_size_array: 0x%lX\r\n", (uint32_t)tmp_block, tmp_block->Node_id, tmp_block->Block_number, (uint32_t)tmp_block->Block_size_array);
 			for(uint8_t i=0;i<sizeof(Distributed_FreeBlock);i++){
 				*((uint8_t*)(mydata+14+i)) = *((uint8_t*)tmp_block+i);
 			}
-			printf("BLock: ");
+			//printf("BLock: ");
 			for(uint32_t i=0;i<tmp_block->Block_number;i++){
 				for(uint32_t j=0;j<sizeof(uint32_t);j++){
 					*((uint8_t*)(mydata+14+node_number*sizeof(Distributed_FreeBlock)+4*i+j)) = *((uint8_t*)tmp_block->Block_size_array+4*i+j);
 				}
-				printf("0x%lX, ", *((uint32_t*)(mydata+14+node_number*sizeof(Distributed_FreeBlock)+4*i)));
+				//printf("0x%lX, ", *((uint32_t*)(mydata+14+node_number*sizeof(Distributed_FreeBlock)+4*i)));
 			}
-			printf("\r\n");
+			//printf("\r\n");
 		}
 	}
-	printf("Source End, source_node_count: 0x%lX----------------------------------\r\n", source_node_count);
+//	printf("Source End, source_node_count: 0x%lX----------------------------------\r\n", source_node_count);
 	DistributedSendMsg(MyMacAddr, mydata, Send_size);
 	BlockChangeFlag = 0;
 	return 0;
