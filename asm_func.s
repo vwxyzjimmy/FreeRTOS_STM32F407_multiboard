@@ -62,13 +62,13 @@ sys_call:
 .global Distributed_Start
 Distributed_Start:
 	push	{lr}
-	mov	r0,	r0
-	mov	r1,	sp
-	mov	r2,	lr
-	blx	Distributed_manager_task
-	mov	r0,	r0
-	pop	{lr}
-	bx	lr
+	mov		r0,	r0											//	pass three parameter to Distributed_Dispatch_Task data_info, SP, LR
+	mov		r1,	sp
+	mov		r2,	lr
+	blx	Distributed_Dispatch_Task
+	mov		r0,	r0
+	pop		{lr}
+	bx		lr
 
 
 .type svc_handler, %function
