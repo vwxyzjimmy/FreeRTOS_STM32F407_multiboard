@@ -94,17 +94,18 @@ uint32_t Global_Node_Master = 0;
 uint32_t Global_Node_Backup_Master = 0;
 uint32_t Global_Node_Master_Token = 0;
 uint32_t Global_Task_id = 0;
-volatile uint32_t DisrtibutedNodeCheckIDFlag = 0;
-volatile uint8_t CheckMasterNodeFlag = 0;
-volatile uint8_t SendFreespaceFlag = 0;
-volatile uint32_t RecvFreespaceFlag = 0;
-uint32_t Checkback_flag = 0;
 Distributed_FreeBlock* DF_Start;
-extern uint8_t BlockChangeFlag;
+uint32_t DisrtibutedNodeCheckIDFlag = 0;
+uint8_t CheckMasterNodeFlag = 0;
+uint8_t SendFreespaceFlag = 0;
+uint32_t RecvFreespaceFlag = 0;
+uint32_t CheckbackFlag = 0;
 uint32_t ReceiveSubtaskFlag = 0;
 uint32_t PublishFlag = 1;
-volatile uint32_t tickcount_lo_bound = 0;
-volatile uint32_t tickcount_hi_bound = 0xFFFFFFFF;
+uint32_t TaskDoneFlag = 0;
+extern uint8_t BlockChangeFlag;
+uint32_t tickcount_lo_bound = 0;
+uint32_t tickcount_hi_bound = 0xFFFFFFFF;
 uint32_t unmerge_finish_distributed_task = 0;
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -867,7 +868,8 @@ void svc_handler_c(uint32_t LR, uint32_t MSP){
 				check_Lastnode = check_Lastnode->Next_TaskHandle_List;
 			}
 			if(tmp_count == 0){
-					printf("DTask_id: 0x%lX done, DSubTask_id: 0x%lX  is the last===============================================\r\n", Lastnode->DTask_id, Lastnode->DSubTask_id);
+				TaskDoneFlag = Lastnode->DTask_id;
+				printf("DTask_id: 0x%lX done, DSubTask_id: 0x%lX  is the last===============================================\r\n", Lastnode->DTask_id, Lastnode->DSubTask_id);
 			}
 		}
 
@@ -1630,8 +1632,8 @@ void eth_handler(void){
 		}
 		else if (Msg_event == 5){
 			if(DisrtibutedNodeCheckIDFlag == Sour){
-				Checkback_flag = *((uint8_t*)frame.buffer+13);
-				printf("Get DistributedNodeCheckback, checkback_flag: 0x%lX\r\n",  (uint32_t)Checkback_flag);
+				CheckbackFlag = *((uint8_t*)frame.buffer+13);
+				printf("Get DistributedNodeCheckback, checkback_flag: 0x%lX\r\n",  (uint32_t)CheckbackFlag);
 				DisrtibutedNodeCheckIDFlag = 0;
 			}
 		}
@@ -1683,6 +1685,7 @@ void eth_handler(void){
 					pre_Lastnode->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
 				Lastnode->Next_TaskHandle_List = NULL;
 				Lastnode->Finish_Flag = 1;
+				Lastnode->Data_number = size;
 				Distributed_Insert_Finish_Node(Lastnode);
 				printf("Find task_id: 0x%lX, subtask_id: 0x%lX in DTCB List in final\r\n", Lastnode->DTask_id, Lastnode->DSubTask_id);
 				if(Lastnode->Source_Processor_id == Global_Node_id){							//	Check Task done, DStart list without task_id(all subtask done)
@@ -1694,7 +1697,8 @@ void eth_handler(void){
 						check_Lastnode = check_Lastnode->Next_TaskHandle_List;
 					}
 					if(tmp_count == 0){
-							printf("DTask_id: 0x%lX done, DSubTask_id: 0x%lX  is the last===============================================\r\n", task_id, subtask_id);
+						TaskDoneFlag = task_id;
+						printf("DTask_id: 0x%lX done, DSubTask_id: 0x%lX  is the last===============================================\r\n", task_id, subtask_id);
 					}
 				}
 			}
@@ -1884,7 +1888,7 @@ void Distributed_Manager_Task(){
 						uint32_t tmp_count = 0;
 						printf("Finish task List:\r\n");
 						while(Lastnode != NULL){
-							printf("%d, Source_Processor_id: 0x%lX, Destinate_Processor_id: 0x%lX, DTask_id: 0x%lX, DSubTask_id: 0x%lX\r\n", (int)tmp_count, Lastnode->Source_Processor_id, Lastnode->Destinate_Processor_id, Lastnode->DTask_id, Lastnode->DSubTask_id);
+							printf("%d, Source_Processor_id: 0x%lX, Destinate_Processor_id: 0x%lX, DTask_id: 0x%lX, DSubTask_id: 0x%lX, Data_size: 0x%lX\r\n", (int)tmp_count, Lastnode->Source_Processor_id, Lastnode->Destinate_Processor_id, Lastnode->DTask_id, Lastnode->DSubTask_id, Lastnode->Data_number);
 							tmp_count++;
 							Lastnode = Lastnode->Next_TaskHandle_List;
 						}
@@ -1947,7 +1951,7 @@ void Distributed_Manager_Task(){
 						uint32_t Max_block_size = 0;
 						List_FreeBlock();
 						BlockLink_t* tmp_block = &xStart;
-						while((tmp_block->pxNextFreeBlock)!=NULL){
+						while((tmp_block->pxNextFreeBlock)!= NULL){
 							if(tmp_block->xBlockSize > Max_block_size)
 								Max_block_size = tmp_block->xBlockSize;
 							tmp_block = tmp_block->pxNextFreeBlock;
@@ -2045,8 +2049,6 @@ void Distributed_Manager_Task(){
 						}
 						if (tmp_RecvFreespaceFlag == RecvFreespaceFlag)
 							RecvFreespaceFlag = 0;
-						//List_FreeBlock();
-						//Distributed_Show_FreeBlock();
 					}
 
 					if (unmerge_finish_distributed_task > 0){
@@ -2169,6 +2171,37 @@ void Distributed_Manager_Task(){
 						ReceiveSubtaskFlag = 0;
 						portENABLE_INTERRUPTS();
 					}
+
+					if(TaskDoneFlag > 0){										//	Ready to recycle task_id = TaskDoneFlag result
+						printf("Disable all publish and check every node and recycle all subtask result then malloc a property size the send the result to the queue\r\n");
+						Distributed_TaskHandle_List_t* Lastnode = DF_Start;
+						while((Lastnode->DTask_id != TaskDoneFlag) && (Lastnode != NULL))					//	Find the target node DTCB head in DF_Start
+							Lastnode = Lastnode->Next_TaskHandle_List;
+
+						uint32_t Total_result_size = 0;
+						uint32_t target_node_count = 0;
+						Distributed_TaskHandle_List_t* Targetnodehead = Lastnode;
+						if(Lastnode != NULL){																//	Calculate target result size and node count
+							while((Lastnode->DTask_id == TaskDoneFlag) && (Lastnode != NULL)){
+								target_node_count++;
+								Total_result_size += Lastnode->Data_number;
+								Lastnode = Lastnode->Next_TaskHandle_List;
+							}
+						}
+						uint32_t target_node_array[target_node_count];
+						Lastnode = Targetnodehead;
+						target_node_count = 0;
+						while((Lastnode->DTask_id == TaskDoneFlag) && (Lastnode != NULL)){					//	record the target Node_id
+							target_node_array[target_node_count] = Lastnode->Destinate_Processor_id;
+							target_node_count++;
+							Lastnode = Lastnode->Next_TaskHandle_List;
+						}
+						
+						DistributedNodeDisablePublish();													//	Ready to recycle result, Node_id: target_node_array, size: Total_result_size
+
+						TaskDoneFlag = 0;
+					}
+
 					/*
 					if((Global_Node_Master == Global_Node_id) && (Global_Node_count > Global_Node_id) && (Global_Node_Backup_Master <= Global_Node_id) && (SendFreespaceFlag == 0)){
 						for(uint32_t i=(Global_Node_id+1);i<=Global_Node_count;i++){
@@ -2591,7 +2624,7 @@ uint8_t DistributedNodeCheck_size_Timeout(uint32_t tick, uint32_t Target_Node_id
 		}
 		if(DisrtibutedNodeCheckIDFlag == 0){
 			printf("Got check back!?\r\n");
-			success_flag = Checkback_flag;
+			success_flag = CheckbackFlag;
 		}
 		else{
 			printf("Without check back, timeout!?\r\n");
