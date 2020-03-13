@@ -264,7 +264,6 @@ void Distributed_Check(Distributed_TaskHandle_List_t* s, uint32_t* Result_Data_a
 
 void Distributed_Local_Subtask_Done(Distributed_TaskHandle_List_t* s, uint32_t* Result_Data_addr, uint32_t Result_Data_size){
 	printf("In Distributed_Local_Subtask_Done\r\n");
-
 	Distributed_TaskHandle_List_t *tmp_NewDTaskControlBlock = pvPortMalloc(sizeof(Distributed_TaskHandle_List_t)+ Result_Data_size*sizeof(uint32_t));					//	Copy a DTCB and copy from sour DTCB
 	for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++)
 		*((uint8_t*)tmp_NewDTaskControlBlock+i) = *((uint8_t*)s+i);
@@ -841,7 +840,6 @@ void svc_handler_c(uint32_t LR, uint32_t MSP){
 	else if (svc_num == 2){
 		printf("i think the program is done\r\n");
 		Distributed_TaskHandle_List_t* Lastnode = Distributed_GetNode(stacked_return_addr, DStart);
-
 		Distributed_TaskHandle_List_t* tmp_Lastnode = DStart;												//	Remove subtask TCB from DStart list
 		Distributed_TaskHandle_List_t* pre_tmp_Lastnode = tmp_Lastnode;
 		while((tmp_Lastnode != Lastnode) && (tmp_Lastnode != NULL)){
@@ -859,6 +857,19 @@ void svc_handler_c(uint32_t LR, uint32_t MSP){
 				pre_tmp_Lastnode->Next_TaskHandle_List = tmp_Lastnode->Next_TaskHandle_List;
 		}
 		Lastnode->Next_TaskHandle_List = NULL;
+
+		if(Lastnode->Source_Processor_id == Global_Node_id){												//	Check Task done, DStart list without task_id(all subtask done)
+			uint32_t tmp_count = 0;
+			Distributed_TaskHandle_List_t* check_Lastnode = DStart;
+			while(check_Lastnode != NULL){
+				if(check_Lastnode->DTask_id == Lastnode->DTask_id)
+					tmp_count++;
+				check_Lastnode = check_Lastnode->Next_TaskHandle_List;
+			}
+			if(tmp_count == 0){
+					printf("DTask_id: 0x%lX done, DSubTask_id: 0x%lX  is the last===============================================\r\n", Lastnode->DTask_id, Lastnode->DSubTask_id);
+			}
+		}
 
 		if (Lastnode->DSubTask_id != 0){
 			*((uint16_t*)(stacked_return_addr&0xFFFFFFFE)) = 0xe7fe;										//	modify return addr instruction to bx here
@@ -1440,12 +1451,10 @@ uint32_t ETH_ReadPHYRegister(uint16_t PHYAddress, uint16_t PHYReg){
 		TO_COUNT++;
 	}
 	if (TO_COUNT>=TO_LIMIT){
-		//printf("Turn Read Over ETH_MACMIIAR_MB\r\n");
 		return 0;
 	}
 	else{
 		volatile uint16_t ret = (uint16_t)REG(ETHERNET_MAC_BASE + ETH_MACMIIDR_OFFSET);
-		//printf("Pass Read ETH_MACMIIAR_MB ret: 0x%X\r\n", ret);
 		return ret;
 	}
 }
@@ -1456,8 +1465,8 @@ void ETH_DMATxDescChainInit(ETH_DMADESCTypeDef *DMATxDescTab, uint8_t* TxBuff, u
   DMATxDescToSet = DMATxDescTab;
   for(i=0; i < TxBuffCount; i++){
 	DMATxDesc = DMATxDescTab + i;
-	DMATxDesc->Status = 0x00100000 ;	// ETH_DMATxDesc_TCH 0x00100000;
-	DMATxDesc->Buffer1Addr = (uint32_t)(&TxBuff[i*ETH_TX_BUF_SIZE]);	// ETH_TX_BUF_SIZE ETH_MAX_PACKET_SIZE 1524U
+	DMATxDesc->Status = 0x00100000 ;														// ETH_DMATxDesc_TCH 0x00100000;
+	DMATxDesc->Buffer1Addr = (uint32_t)(&TxBuff[i*ETH_TX_BUF_SIZE]);						// ETH_TX_BUF_SIZE ETH_MAX_PACKET_SIZE 1524U
 	if(i < (TxBuffCount-1))
 		DMATxDesc->Buffer2NextDescAddr = (uint32_t)(DMATxDescTab+i+1);
 	else
@@ -1472,9 +1481,9 @@ void ETH_DMARxDescChainInit(ETH_DMADESCTypeDef *DMARxDescTab, uint8_t *RxBuff, u
 	DMARxDescToGet = DMARxDescTab;
 	for(i=0; i < RxBuffCount; i++){
 		DMARxDesc = DMARxDescTab+i;
-		DMARxDesc->Status = 0x80000000;		// ETH_DMARxDesc_OWN
-		DMARxDesc->ControlBufferSize = 0x00004000 | (uint32_t)ETH_RX_BUF_SIZE;		// ETH_DMARxDesc_RCH 0x00004000	ETH_RX_BUF_SIZE ETH_MAX_PACKET_SIZE   1524
-		DMARxDesc->Buffer1Addr = (uint32_t)(&RxBuff[i*ETH_RX_BUF_SIZE]);	// ETH_RX_BUF_SIZE 1524
+		DMARxDesc->Status = 0x80000000;														// ETH_DMARxDesc_OWN
+		DMARxDesc->ControlBufferSize = 0x00004000 | (uint32_t)ETH_RX_BUF_SIZE;				// ETH_DMARxDesc_RCH 0x00004000	ETH_RX_BUF_SIZE ETH_MAX_PACKET_SIZE   1524
+		DMARxDesc->Buffer1Addr = (uint32_t)(&RxBuff[i*ETH_RX_BUF_SIZE]);					// ETH_RX_BUF_SIZE 1524
 		if(i < (RxBuffCount-1))
 			DMARxDesc->Buffer2NextDescAddr = (uint32_t)(DMARxDescTab+i+1);
 		else
@@ -1490,7 +1499,7 @@ uint8_t DP83848Send(uint8_t* data, uint16_t length){
 	}
 
 	volatile ETH_DMADESCTypeDef *DMATxDesc;
-	if (DMATxDescToSet->Status & 0x80000000){				//ETH_DMATxDesc_OWN
+	if (DMATxDescToSet->Status & 0x80000000){												//ETH_DMATxDesc_OWN
 		printf("Error: ETHERNET DMA OWN descriptor\r\n");
 		return 0;
 	}
@@ -1562,7 +1571,7 @@ void eth_handler(void){
 	uint32_t Sour = *((uint32_t*)((uint8_t*)frame.buffer+8));
 	if ((Dest == 0xffffffff) || (Dest == Global_Node_id)){
 		//-------------------------------------------------------------------------------------------------------------------------------
-		if (Dest == 0xFFFFFFFF){
+		if (Dest == 0xffffffff){
 			tickcount_lo_bound = xTaskGetTickCount();
 			uint32_t multi = 0;
 			if( (Sour <= Global_Node_id) && (Sour > 0))
@@ -1571,8 +1580,8 @@ void eth_handler(void){
 				multi = (Global_Node_id+(Global_Node_count-Sour)-1);
 			else
 				multi = (Global_Node_id-1);
-			//printf("	multi: 0x%lX, Sour: 0x%lX, Global_Node_id: 0x%lX, Global_Node_count: 0x%lX\r\n", multi, Sour, Global_Node_id, Global_Node_count);
 			tickcount_hi_bound = tickcount_lo_bound + 100000*multi + 10;
+			//printf("Updata delay time, multi: 0x%lX\r\n", multi);
 		}
 		//-------------------------------------------------------------------------------------------------------------------------------
 		Msg_event = *((uint8_t*)frame.buffer+12);
@@ -1668,22 +1677,32 @@ void eth_handler(void){
 				Lastnode = Lastnode->Next_TaskHandle_List;
 			}
 			if(Lastnode != NULL){
-				if(Lastnode == DStart){
+				if(Lastnode == DStart)
 					DStart = DStart->Next_TaskHandle_List;
-				}
-				else{
+				else
 					pre_Lastnode->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
-				}
 				Lastnode->Next_TaskHandle_List = NULL;
 				Lastnode->Finish_Flag = 1;
 				Distributed_Insert_Finish_Node(Lastnode);
 				printf("Find task_id: 0x%lX, subtask_id: 0x%lX in DTCB List in final\r\n", Lastnode->DTask_id, Lastnode->DSubTask_id);
+				if(Lastnode->Source_Processor_id == Global_Node_id){							//	Check Task done, DStart list without task_id(all subtask done)
+					uint32_t tmp_count = 0;
+					Distributed_TaskHandle_List_t* check_Lastnode = DStart;
+					while(check_Lastnode != NULL){
+						if(check_Lastnode->DTask_id == task_id)
+							tmp_count++;
+						check_Lastnode = check_Lastnode->Next_TaskHandle_List;
+					}
+					if(tmp_count == 0){
+							printf("DTask_id: 0x%lX done, DSubTask_id: 0x%lX  is the last===============================================\r\n", task_id, subtask_id);
+					}
+				}
 			}
 			else
 				printf("Can't find task_id: 0x%lX, subtask_id: 0x%lX in DTCB List in final\r\n", task_id, subtask_id);
 			printf("Get DistributedNodeSubtaskFinish, task_id: 0x%lX, subtask_id: 0x%lX, size: 0x%lX\r\n", task_id, subtask_id, size);
 		}
-		printf("Node_id: 0x%lX, Node_count: 0x%lX, Master: 0x%lX, Backup_Master: 0x%lX, Dest: 0x%lX, Sour: 0x%lX\r\n", Global_Node_id, Global_Node_count, Global_Node_Master, Global_Node_Backup_Master, Dest, Sour);
+		//printf("Node_id: 0x%lX, Node_count: 0x%lX, Master: 0x%lX, Backup_Master: 0x%lX, Dest: 0x%lX, Sour: 0x%lX\r\n", Global_Node_id, Global_Node_count, Global_Node_Master, Global_Node_Backup_Master, Dest, Sour);
 	}
 	/* Clear the Eth DMA Rx IT pending bits */
 	SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, RS);
@@ -1692,8 +1711,8 @@ void eth_handler(void){
 
 uint32_t ETH_CheckFrameReceived(void){
   /* check if last segment */
-  if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&			// ETH_DMARxDesc_OWN	RESET
-  	((DMARxDescToGet->Status & 0x00000100) != (uint32_t)0)){			// ETH_DMARxDesc_LS		RESET
+  if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&								// ETH_DMARxDesc_OWN	RESET
+  	((DMARxDescToGet->Status & 0x00000100) != (uint32_t)0)){								// ETH_DMARxDesc_LS		RESET
     DMA_RX_FRAME_infos->Seg_Count++;
     if (DMA_RX_FRAME_infos->Seg_Count == 1){
       DMA_RX_FRAME_infos->FS_Rx_Desc = DMARxDescToGet;
@@ -1702,18 +1721,18 @@ uint32_t ETH_CheckFrameReceived(void){
     return 1;
   }
   /* check if first segment */
-  else if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&			// ETH_DMARxDesc_OWN RESET
-          ((DMARxDescToGet->Status & 0x00000200) != (uint32_t)0)&&			// ETH_DMARxDesc_FS  RESET
-            ((DMARxDescToGet->Status & 0x00000100) == (uint32_t)0)){		// ETH_DMARxDesc_LS	 RESET
+  else if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&						// ETH_DMARxDesc_OWN RESET
+          ((DMARxDescToGet->Status & 0x00000200) != (uint32_t)0)&&						// ETH_DMARxDesc_FS  RESET
+            ((DMARxDescToGet->Status & 0x00000100) == (uint32_t)0)){					// ETH_DMARxDesc_LS	 RESET
     DMA_RX_FRAME_infos->FS_Rx_Desc = DMARxDescToGet;
     DMA_RX_FRAME_infos->LS_Rx_Desc = NULL;
     DMA_RX_FRAME_infos->Seg_Count = 1;
     DMARxDescToGet = (ETH_DMADESCTypeDef*) (DMARxDescToGet->Buffer2NextDescAddr);
   }
   /* check if intermediate segment */
-  else if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&					// ETH_DMARxDesc_OWN RESET
-          ((DMARxDescToGet->Status & 0x00000200) == (uint32_t)0)&&					// ETH_DMARxDesc_FS  RESET
-            ((DMARxDescToGet->Status & 0x00000100) == (uint32_t)0)){			// ETH_DMARxDesc_LS 	 RESET
+  else if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&						// ETH_DMARxDesc_OWN RESET
+          ((DMARxDescToGet->Status & 0x00000200) == (uint32_t)0)&&						// ETH_DMARxDesc_FS  RESET
+            ((DMARxDescToGet->Status & 0x00000100) == (uint32_t)0)){					// ETH_DMARxDesc_LS 	 RESET
     (DMA_RX_FRAME_infos->Seg_Count) ++;
     DMARxDescToGet = (ETH_DMADESCTypeDef*) (DMARxDescToGet->Buffer2NextDescAddr);
   }
@@ -2052,21 +2071,23 @@ void Distributed_Manager_Task(){
 							}
 							tmp_NewDTaskControlBlock->Finish_Flag = 1;
 							tmp_NewDTaskControlBlock->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
-							if(Lastnode == DFinish){
+							if(Lastnode == DFinish)
 								DFinish = tmp_NewDTaskControlBlock;
-							}
-							else{
+							else
 								pre_Lastnode->Next_TaskHandle_List = tmp_NewDTaskControlBlock;
-							}
 							printf("delete distributed task in other node\r\n");
 							vTaskDelete(*(Lastnode->TaskHandlex));
 							vPortFree(Lastnode);
 							printf("1 Target to delete Lastnode: 0x%lX\r\n", (uint32_t)Lastnode);
+							while(!(Check_Sendable())){
+								for(uint32_t i=0;i<100;i++)
+									;
+							}
+							DistributedNodeSubtaskFinish(tmp_NewDTaskControlBlock->Source_Processor_id, tmp_NewDTaskControlBlock->DTask_id, tmp_NewDTaskControlBlock->DSubTask_id, tmp_NewDTaskControlBlock->Data_number);
 							portDISABLE_INTERRUPTS();
 							unmerge_finish_distributed_task--;
 							portENABLE_INTERRUPTS();
 							printf("After allocate\r\n");
-							//DistributedNodeSubtaskFinish(tmp_NewDTaskControlBlock->Source_Processor_id, tmp_NewDTaskControlBlock->DTask_id, tmp_NewDTaskControlBlock->DSubTask_id, tmp_NewDTaskControlBlock->Data_number);
 						}
 					}
 
@@ -2190,10 +2211,9 @@ void Distributed_Manager_Task(){
 						}
 					}
 					*/
-					if(Check_Sendable() && (PublishFlag > 0)){
+					if(Check_Sendable()){
 						if(BlockChangeFlag > 0){
 							DistributedNodeSendFreespace(0xffffffff, Global_Node_id);
-							printf("Check_Sendable\r\n");
 						}
 					}
 				}
@@ -2703,6 +2723,9 @@ uint8_t Check_Sendable(){
 		if((tickcount>tickcount_hi_bound) && (tickcount<tickcount_lo_bound)){
 			bool_send_flag = 1;
 		}
+	}
+	if (PublishFlag == 0){
+		bool_send_flag = 0;
 	}
 	return bool_send_flag;
 }
