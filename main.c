@@ -59,9 +59,11 @@ uint32_t DistributedNodeSendFreespace(uint32_t Target_Node_id, uint32_t Node_id)
 void DistributedNodeSendSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size);
 void DistributedNodeDisablePublish();
 void DistributedNodeEnablePublish();
-void DistributedNodeSubtaskFinish(uint32_t Target_Node_id, uint32_t task_id, uint32_t subtask_id, uint32_t size);
-uint8_t DistributedNodeCheck_size_Timeout(uint32_t tick, uint32_t Target_Node_id, uint32_t Needsize);
-void DistributedSendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t size);
+void DistributedNodeSubtaskFinish(uint32_t Target_Node_id, uint32_t Task_id, uint32_t Subtask_id, uint32_t Size);
+uint8_t DistributedNodeCheckSizeTimeout(uint32_t tick, uint32_t Target_Node_id, uint32_t Needsize);
+void DistributedNodeRequsetResult(uint32_t Target_Node_id, uint32_t Task_id, uint32_t Subtask_id);
+void DistributedNodeResponseResult(uint32_t Target_Node_id, uint32_t Task_id, uint32_t Subtask_id);
+void DistributedSendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t Size);
 void UpdateLocalFreeBlock();
 uint8_t Check_Sendable();
 Distributed_FreeBlock* GetFreeBlockNode(uint32_t Node_id);
@@ -103,6 +105,7 @@ uint32_t CheckbackFlag = 0;
 uint32_t ReceiveSubtaskFlag = 0;
 uint32_t PublishFlag = 1;
 uint32_t TaskDoneFlag = 0;
+uint32_t RequsetResultFlag = 0;
 extern uint8_t BlockChangeFlag;
 uint32_t tickcount_lo_bound = 0;
 uint32_t tickcount_hi_bound = 0xFFFFFFFF;
@@ -155,13 +158,13 @@ void Distributed_Create_Task(void* task, Distributed_Data_t *data_info, uint32_t
 	data_info->xQueue = &xQueue;
 	TaskHandle_t TaskHandle;
 	xTaskCreate(task, "Dtask", Stack_size, data_info, 1, &TaskHandle);
-	/*
+
 	while(xQueueReceive(xQueue, S, 0) == 0);
 	vQueueDelete(xQueue);
 	vPortFree(S->Data_addr);
 	vTaskDelete(TaskHandle);
 	vPortFree(S);
-	*/
+
 }
 
 /*
@@ -605,7 +608,7 @@ Distributed_TaskHandle_List_t* Distributed_Dispatch_Task(void* data_info, uint32
 			uint32_t tmp_invalid_node[act_split_num];
 			for(uint32_t split_num_th=0;split_num_th<act_split_num;split_num_th++){
 				if(Distributed_dispatch_node[split_num_th] != Global_Node_id){
-					uint8_t timeout_flag = DistributedNodeCheck_size_Timeout(210000, Distributed_dispatch_node[split_num_th], Distributed_data_need_size[split_num_th]);
+					uint8_t timeout_flag = DistributedNodeCheckSizeTimeout(210000, Distributed_dispatch_node[split_num_th], Distributed_data_need_size[split_num_th]);
 					if(timeout_flag == 0xFF){																//	0xFF mean node not response, not exist
 						printf("Without check back, can't DistributedNodeSendSubtask, invalid Node id: 0x%lX\r\n", Distributed_dispatch_node[split_num_th]);
 						tmp_invalid_node[split_num_th] = Distributed_dispatch_node[split_num_th];
@@ -1921,8 +1924,8 @@ void Distributed_Manager_Task(){
 						for(uint32_t i=0;i<free_block_number;i++){
 							uint8_t timeout_flag = 0;
 							if(Allfreeblocknode[i] != Global_Node_id){
-								printf("Ready to send DistributedNodeCheck_size_Timeout to 0x%lX\r\n", Allfreeblocknode[i]);
-								timeout_flag = DistributedNodeCheck_size_Timeout(105000, Allfreeblocknode[i], 0);
+								printf("Ready to send DistributedNodeCheckSizeTimeout to 0x%lX\r\n", Allfreeblocknode[i]);
+								timeout_flag = DistributedNodeCheckSizeTimeout(105000, Allfreeblocknode[i], 0);
 
 								if(timeout_flag != 0xff)
 									printf("Got response: 0x%lX\r\n",  (uint32_t)timeout_flag);
@@ -1968,7 +1971,7 @@ void Distributed_Manager_Task(){
 					}
 
 					if(CheckMasterNodeFlag == 1){
-						uint8_t timeout_flag = DistributedNodeCheck_size_Timeout(105000, Global_Node_Master, 0);
+						uint8_t timeout_flag = DistributedNodeCheckSizeTimeout(105000, Global_Node_Master, 0);
 						if(timeout_flag == 0xff){
 							printf("time out\r\n");
 							portDISABLE_INTERRUPTS();
@@ -2172,7 +2175,7 @@ void Distributed_Manager_Task(){
 						portENABLE_INTERRUPTS();
 					}
 
-					if(TaskDoneFlag > 0){										//	Ready to recycle task_id = TaskDoneFlag result
+					if(TaskDoneFlag > 0){																	//	Ready to recycle task_id = TaskDoneFlag result
 						printf("Disable all publish and check every node and recycle all subtask result then malloc a property size the send the result to the queue\r\n");
 						Distributed_TaskHandle_List_t* Lastnode = DF_Start;
 						while((Lastnode->DTask_id != TaskDoneFlag) && (Lastnode != NULL))					//	Find the target node DTCB head in DF_Start
@@ -2188,17 +2191,43 @@ void Distributed_Manager_Task(){
 								Lastnode = Lastnode->Next_TaskHandle_List;
 							}
 						}
-						uint32_t target_node_array[target_node_count];
+						Distributed_TaskHandle_List_t*  target_node_array[target_node_count];
+						Distributed_TaskHandle_List_t* Subtask_node_zero;
+
 						Lastnode = Targetnodehead;
 						target_node_count = 0;
 						while((Lastnode->DTask_id == TaskDoneFlag) && (Lastnode != NULL)){					//	record the target Node_id
-							target_node_array[target_node_count] = Lastnode->Destinate_Processor_id;
+							if(Lastnode->DSubTask_id == 0)
+								Subtask_node_zero = Lastnode;
+							target_node_array[target_node_count] = Lastnode;
 							target_node_count++;
 							Lastnode = Lastnode->Next_TaskHandle_List;
 						}
-						
-						DistributedNodeDisablePublish();													//	Ready to recycle result, Node_id: target_node_array, size: Total_result_size
+						Distributed_Data_t* Send_S = pvPortMalloc(sizeof(Distributed_Data_t));				//	Send result back to  caller, important
+						Send_S->Data_addr = pvPortMalloc(Total_result_size*sizeof(uint32_t));;
+						Send_S->Data_size = Total_result_size;
+						Send_S->xQueue = Subtask_node_zero->xQueue;
 
+						DistributedNodeDisablePublish();													//	Ready to recycle result, Node_id: target_node_array, size: Total_result_size
+						uint32_t* tmp_Target_Addr = Send_S->Data_addr;
+						for(uint32_t i=0;i<target_node_count;i++){
+							DistributedNodeRequsetResult(target_node_array[i]->Destinate_Processor_id, target_node_array[i]->DTask_id, target_node_array[i]->DSubTask_id);
+							uint32_t Prev_timeout = xTaskGetTickCount();
+							uint32_t Next_timeout = Prev_timeout + 100000;
+							while(RequsetResultFlag != 0){
+								uint32_t tmp_time = xTaskGetTickCount();
+								if(Next_timeout > Prev_timeout){
+									if((tmp_time > Next_timeout) || (tmp_time < Prev_timeout)){
+										;
+									}
+								}
+								else{
+
+								}
+							}
+							tmp_Target_Addr += target_node_array[i]->Data_number;
+						}
+						xQueueSendToBack((void*)Send_S->xQueue, (void*)Send_S, 0);
 						TaskDoneFlag = 0;
 					}
 
@@ -2566,22 +2595,38 @@ void DistributedNodeEnablePublish(){
 	printf("Broadcast DistributedNodeEnablePublish Node\r\n");
 }
 
-void DistributedNodeSubtaskFinish(uint32_t Target_Node_id, uint32_t task_id, uint32_t subtask_id, uint32_t size){
+void DistributedNodeSubtaskFinish(uint32_t Target_Node_id, uint32_t Task_id, uint32_t Subtask_id, uint32_t Size){
 	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
 	uint8_t mydata[25] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 	for(uint8_t i=0;i<4;i++){
 		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
 		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
 		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+13] = *((uint8_t*)&task_id+i);
-		mydata[i+17] = *((uint8_t*)&subtask_id+i);
-		mydata[i+21] = *((uint8_t*)&size+i);
+		mydata[i+13] = *((uint8_t*)&Task_id+i);
+		mydata[i+17] = *((uint8_t*)&Subtask_id+i);
+		mydata[i+21] = *((uint8_t*)&Size+i);
 	}
 	DistributedSendMsg(MyMacAddr, mydata, 25);
-	printf("Broadcast DistributedNodeSubtaskFinish to Node: 0x%lX, task_id: 0x%lX, subtask_id: 0x%lX, size: 0x%lX\r\n", Target_Node_id, task_id, subtask_id, size);
+	printf("Broadcast DistributedNodeSubtaskFinish to Node: 0x%lX, Task_id: 0x%lX, Subtask_id: 0x%lX, Size: 0x%lX\r\n", Target_Node_id, Task_id, Subtask_id, Size);
 }
 
-void DistributedSendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t size){
+
+void DistributedNodeRequsetResult(uint32_t Target_Node_id, uint32_t Task_id, uint32_t Subtask_id){
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[21] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+13] = *((uint8_t*)&Task_id+i);
+		mydata[i+17] = *((uint8_t*)&Subtask_id+i);
+	}
+	DistributedSendMsg(MyMacAddr, mydata, 21);
+	printf("Broadcast DistributedNodeRequsetResult, Target_Node_id: 0x%lX, Task_id: 0x%lX, Subtask_id: 0x%lX\r\n", Target_Node_id, Task_id, Subtask_id);
+
+}
+
+
+void DistributedSendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t Size){
 	while(!init_eth(DP83848_PHY_ADDRESS, MyMacAddr)){
 		printf("Reset eth\r\n");
 		for(uint32_t i=0;i<0x00000FFF;i++)
@@ -2590,7 +2635,7 @@ void DistributedSendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t size)
 
 	uint8_t Send_success_flag = 0;
 	while(!Send_success_flag){
-		Send_success_flag = DP83848Send(Target_Addr, size);
+		Send_success_flag = DP83848Send(Target_Addr, Size);
 		if (!Send_success_flag){
 			while(!init_eth(DP83848_PHY_ADDRESS, MyMacAddr)){
 				printf("Reset eth\r\n");
@@ -2603,14 +2648,14 @@ void DistributedSendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t size)
 	tickcount_hi_bound = tickcount_lo_bound + 100000*Global_Node_count + 10;
 }
 
-uint8_t DistributedNodeCheck_size_Timeout(uint32_t tick, uint32_t Target_Node_id, uint32_t Needsize){
+uint8_t DistributedNodeCheckSizeTimeout(uint32_t tick, uint32_t Target_Node_id, uint32_t Needsize){
 	if(Target_Node_id != Global_Node_id){
 		uint32_t base_tick = xTaskGetTickCount();
 		uint32_t timeout_tick = base_tick + tick;
 		while(!(DistributedNodeCheck(Target_Node_id, Needsize)));
 		uint32_t bool_timeout_flag = 0;
 		uint8_t success_flag = 0xFF;
-		printf("In DistributedNodeCheck_size_Timeout DisrtibutedNodeCheckIDFlag: 0x%lX\r\n", DisrtibutedNodeCheckIDFlag);
+		printf("In DistributedNodeCheckSizeTimeout DisrtibutedNodeCheckIDFlag: 0x%lX\r\n", DisrtibutedNodeCheckIDFlag);
 		while((bool_timeout_flag == 0) && (DisrtibutedNodeCheckIDFlag != 0)){
 			uint32_t now_tick = xTaskGetTickCount();
 			if(timeout_tick > base_tick){
