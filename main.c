@@ -1604,8 +1604,21 @@ void eth_handler(void){
 	}
 	uint32_t Dest = *((uint32_t*)((uint8_t*)frame.buffer+2));
 	uint32_t Sour = *((uint32_t*)((uint8_t*)frame.buffer+8));
+	//==========================================================================
+	tickcount_lo_bound = xTaskGetTickCount();
+	uint32_t multi = 0;
+	if( (Sour <= Global_Node_id) && (Sour > 0))
+		multi = (Global_Node_id-Sour-1);
+	else if((Sour > Global_Node_id) && (Sour <= Global_Node_count))
+		multi = (Global_Node_id+(Global_Node_count-Sour)-1);
+	else
+		multi = (Global_Node_id-1);
+	tickcount_hi_bound = tickcount_lo_bound + 100000*multi + 10;
+	//==========================================================================
+
 	if ((Dest == 0xffffffff) || (Dest == Global_Node_id)){
 		//-------------------------------------------------------------------------------------------------------------------------------
+		/*
 		if (Dest == 0xffffffff){
 			tickcount_lo_bound = xTaskGetTickCount();
 			uint32_t multi = 0;
@@ -1618,6 +1631,7 @@ void eth_handler(void){
 			tickcount_hi_bound = tickcount_lo_bound + 100000*multi + 10;
 			//printf("Updata delay time, multi: 0x%lX\r\n", multi);
 		}
+		*/
 		//-------------------------------------------------------------------------------------------------------------------------------
 		Msg_event = *((uint8_t*)frame.buffer+12);
 		if (Msg_event == 1){
@@ -2162,10 +2176,7 @@ void Distributed_Manager_Task(){
 								pre_Lastnode->Next_TaskHandle_List = tmp_NewDTaskControlBlock;
 							vTaskDelete(*(Lastnode->TaskHandlex));
 							vPortFree(Lastnode);
-							while(!(Check_Sendable())){
-								for(uint32_t i=0;i<100;i++)
-									;
-							}
+							while(!(Check_Sendable()));
 							DistributedNodeSubtaskFinish(tmp_NewDTaskControlBlock->Source_Processor_id, tmp_NewDTaskControlBlock->DTask_id, tmp_NewDTaskControlBlock->DSubTask_id, tmp_NewDTaskControlBlock->Data_number);
 							portDISABLE_INTERRUPTS();
 							unmerge_finish_distributed_task--;
