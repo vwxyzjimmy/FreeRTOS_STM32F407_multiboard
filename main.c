@@ -61,6 +61,7 @@ void DistributedNodeResponseSubtask(uint32_t Target_Node_id);
 void DistributedNodeDisablePublish();
 void DistributedNodeEnablePublish();
 void DistributedNodeSubtaskFinish(uint32_t Target_Node_id, uint32_t Task_id, uint32_t Subtask_id, uint32_t Size);
+void DistributedNodeResponseSubtaskFinish(uint32_t Target_Node_id);
 uint8_t DistributedNodeCheckSizeTimeout(uint32_t tick, uint32_t Target_Node_id, uint32_t Needsize);
 void DistributedNodeRequestResult(uint32_t Target_Node_id, uint32_t Task_id, uint32_t Subtask_id);
 void DistributedNodeResponseResult(uint32_t Target_Node_id, uint8_t* Result_addr, uint32_t Result_size);
@@ -111,6 +112,7 @@ uint32_t PublishFlag = 1;
 uint32_t TaskDoneFlag = 0;
 uint32_t RequestResultFlag = 0;
 uint32_t DispatchSuccessFlag = 0;
+uint32_t SubtaskFinishFlag = 0;
 extern uint8_t BlockChangeFlag;
 uint32_t tickcount_lo_bound = 0;
 uint32_t tickcount_hi_bound = 0xFFFFFFFF;
@@ -1723,7 +1725,7 @@ void eth_handler(void){
 			uint32_t task_id = *((uint32_t*)((uint8_t*)frame.buffer+13));
 			uint32_t subtask_id = *((uint32_t*)((uint8_t*)frame.buffer+17));
 			uint32_t size = *((uint32_t*)((uint8_t*)frame.buffer+21));
-
+			DistributedNodeResponseSubtaskFinish(Sour);
 			Distributed_TaskHandle_List_t* Lastnode = DStart;
 			Distributed_TaskHandle_List_t* pre_Lastnode;
 			while((!((Lastnode->DTask_id == task_id)&&(Lastnode->DSubTask_id == subtask_id))) && (Lastnode != NULL)){					//	Remove subtask TCB from DStart list
@@ -1759,6 +1761,10 @@ void eth_handler(void){
 			printf("Get DistributedNodeSubtaskFinish, task_id: 0x%lX, subtask_id: 0x%lX, size: 0x%lX\r\n", task_id, subtask_id, size);
 		}
 		else if (Msg_event == 0x0e){
+			SubtaskFinishFlag = Sour;
+			printf("Get DistributedNodeResponseSubtaskFinish\r\n");
+		}
+		else if (Msg_event == 0x0f){
 			uint32_t task_id = *((uint32_t*)((uint8_t*)frame.buffer+13));
 			uint32_t subtask_id = *((uint32_t*)((uint8_t*)frame.buffer+17));
 			Distributed_TaskHandle_List_t* Lastnode = DFinish;
@@ -1769,11 +1775,11 @@ void eth_handler(void){
 			}
 			printf("Get DistributedNodeRequestResult\r\n");
 		}
-		else if (Msg_event == 0x0f){
+		else if (Msg_event == 0x10){
 			RequestResultFlag = Sour;
 			printf("Get DistributedNodeResponseResult\r\n");
 		}
-		else if (Msg_event == 0x10){
+		else if (Msg_event == 0x11){
 			uint32_t processor_id = *((uint32_t*)((uint8_t*)frame.buffer+13));
 			uint32_t task_id = *((uint32_t*)((uint8_t*)frame.buffer+17));
 			printf("processor_id: 0x%lX, task_id: 0x%lX\r\n", processor_id, task_id);
@@ -2176,8 +2182,32 @@ void Distributed_Manager_Task(){
 								pre_Lastnode->Next_TaskHandle_List = tmp_NewDTaskControlBlock;
 							vTaskDelete(*(Lastnode->TaskHandlex));
 							vPortFree(Lastnode);
-							while(!(Check_Sendable()));
-							DistributedNodeSubtaskFinish(tmp_NewDTaskControlBlock->Source_Processor_id, tmp_NewDTaskControlBlock->DTask_id, tmp_NewDTaskControlBlock->DSubTask_id, tmp_NewDTaskControlBlock->Data_number);
+							while(1){
+								while(!(Check_Sendable()));
+								DistributedNodeSubtaskFinish(tmp_NewDTaskControlBlock->Source_Processor_id, tmp_NewDTaskControlBlock->DTask_id, tmp_NewDTaskControlBlock->DSubTask_id, tmp_NewDTaskControlBlock->Data_number);
+								uint32_t base_tick = xTaskGetTickCount();
+								uint32_t timeout_tick = base_tick + 100000;
+								while(SubtaskFinishFlag == 0){
+									uint32_t now_tick = xTaskGetTickCount();
+									if(timeout_tick > base_tick){
+										if((now_tick > timeout_tick) || (now_tick < base_tick))
+											break;
+									}
+									else{
+										if((now_tick > timeout_tick) && (now_tick < base_tick))
+											break;
+									}
+								}
+								if(SubtaskFinishFlag == tmp_NewDTaskControlBlock->Source_Processor_id){
+									printf("SubtaskFinishFlag success, node id: 0x%lX\r\n", SubtaskFinishFlag);
+									SubtaskFinishFlag = 0;
+									break;
+								}
+								else{
+									printf("Timeout in DistributedNodeSubtaskFinish\r\n");
+								}
+							}
+
 							portDISABLE_INTERRUPTS();
 							unmerge_finish_distributed_task--;
 							portENABLE_INTERRUPTS();
@@ -2758,9 +2788,21 @@ void DistributedNodeSubtaskFinish(uint32_t Target_Node_id, uint32_t Task_id, uin
 	printf("Broadcast DistributedNodeSubtaskFinish to Node: 0x%lX, Task_id: 0x%lX, Subtask_id: 0x%lX, Size: 0x%lX\r\n", Target_Node_id, Task_id, Subtask_id, Size);
 }
 
+void DistributedNodeResponseSubtaskFinish(uint32_t Target_Node_id){
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0e};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	DistributedSendMsg(MyMacAddr, mydata, 13);
+	printf("Broadcast DistributedNodeResponseSubtaskFinish to Node: 0x%lX\r\n", Target_Node_id);
+}
+
 void DistributedNodeRequestResult(uint32_t Target_Node_id, uint32_t Task_id, uint32_t Subtask_id){
 	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[21] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	uint8_t mydata[21] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 	for(uint8_t i=0;i<4;i++){
 		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
 		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
@@ -2780,7 +2822,7 @@ void DistributedNodeResponseResult(uint32_t Target_Node_id, uint8_t* Result_addr
 		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
 		*(((uint8_t*)Result_addr+2)+i) = *((uint8_t*)&Target_Node_id+i);
 		*(((uint8_t*)Result_addr+8)+i) = *((uint8_t*)&Global_Node_id+i);
-		*((uint8_t*)Result_addr+12) = 0x0f;
+		*((uint8_t*)Result_addr+12) = 0x10;
 	}
 	DistributedSendMsg(MyMacAddr, Result_addr, Result_size);
 	printf("Broadcast DistributedNodeResponseResult Node 0x%lX\r\n", Target_Node_id);
@@ -2788,7 +2830,7 @@ void DistributedNodeResponseResult(uint32_t Target_Node_id, uint8_t* Result_addr
 
 void DistributedNodeRemoveTask(uint32_t Target_Node_id, uint32_t Task_id){
 	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[21] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	uint8_t mydata[21] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 	for(uint8_t i=0;i<4;i++){
 		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
 		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
