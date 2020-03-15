@@ -73,6 +73,7 @@ void Distributed_Show_FreeBlock();
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 void Distributed_Manager_Task();
 void Distributed_task();
+void UserDefineTask();
 void task3();
 void eth_send(void);
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -164,13 +165,14 @@ void Distributed_Create_Task(void* task, Distributed_Data_t *data_info, uint32_t
 	xTaskCreate(task, "Dtask", Stack_size, data_info, 1, &TaskHandle);
 	Distributed_Data_t* Recv_S;
 	xQueueReceive(xQueue, (void*)&Recv_S, 0);
-	/*
+
 	while(xQueueReceive(xQueue, (void*)&Recv_S, 0) == 0);
 	vQueueDelete(xQueue);
+	for(uint32_t i=0;i<Recv_S->Data_size;i++)
+		printf("0x%lX, 0x%lX\r\n", (uint32_t)(Recv_S->Data_addr+i), *(Recv_S->Data_addr+i));
 	vPortFree(Recv_S->Data_addr);
 	vTaskDelete(TaskHandle);
 	vPortFree(Recv_S);
-	*/
 }
 
 /*
@@ -614,7 +616,7 @@ Distributed_TaskHandle_List_t* Distributed_Dispatch_Task(void* data_info, uint32
 			uint32_t tmp_invalid_node[act_split_num];
 			for(uint32_t split_num_th=0;split_num_th<act_split_num;split_num_th++){
 				if(Distributed_dispatch_node[split_num_th] != Global_Node_id){
-					uint8_t timeout_flag = DistributedNodeCheckSizeTimeout(210000, Distributed_dispatch_node[split_num_th], Distributed_data_need_size[split_num_th]);
+					uint8_t timeout_flag = DistributedNodeCheckSizeTimeout(21000, Distributed_dispatch_node[split_num_th], Distributed_data_need_size[split_num_th]);
 					if(timeout_flag == 0xFF){																//	0xFF mean node not response, not exist
 						printf("Without check back, can't DistributedNodeSendSubtask, invalid Node id: 0x%lX\r\n", Distributed_dispatch_node[split_num_th]);
 						tmp_invalid_node[split_num_th] = Distributed_dispatch_node[split_num_th];
@@ -1884,33 +1886,11 @@ FrameTypeDef Pkt_Handle(void){
 }
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 void Distributed_Manager_Task(){
-	uint32_t count = 0;
 	while(1){
 		if ((READ_BIT(USART1_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART1_BASE + USART_SR_OFFSET, ORE_BIT))){
 			char rec_cmd = (char)REG(USART1_BASE + USART_DR_OFFSET);
 			printf("%c\r\n", rec_cmd);
-			/*
-			if (rec_cmd == 'a'){
-				count++;
-				for(uint32_t i=0;i<16;i++){
-					*(((uint32_t*)0x10000000)+i) = i;
-					*(((uint32_t*)0x10000100)+i) = i;
-					*(((uint32_t*)0x10000200)+i) = i;
-				}
-				List_FreeBlock();
-				Distributed_Data_t* data_info = Distributed_Set_Traget_Data(0x10000000, 16, 4);
-				Distributed_Add_Target_Data(data_info, 0x10000100, 8, 2);
-				Distributed_Add_Target_Data(data_info, 0x10000200, 13, 1);
 
-				Distributed_Create_Task(Distributed_task, data_info, 1000);
-				List_FreeBlock();
-			}
-			else if (rec_cmd == 'b'){
-				vTaskDelete(TaskHandle_2);
-				printf("kill Distributed_task\r\n");
-				SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_BSRR_OFFSET, BRy_BIT(LED_BLUE));
-			}
-			*/
 			if (rec_cmd == 'c'){
 				Msg_event = 0;
 				Global_Node_id = 0;
@@ -1956,10 +1936,12 @@ void Distributed_Manager_Task(){
 				BlockChangeFlag = 0;
 
 				while(1){
+
 					if ((READ_BIT(USART1_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART1_BASE + USART_SR_OFFSET, ORE_BIT))){
 						rec_cmd = (char)REG(USART1_BASE + USART_DR_OFFSET);
 						printf("%c\r\n", rec_cmd);
 					}
+
 					if (rec_cmd == 'w'){
 						Distributed_TaskHandle_List_t* Lastnode = DStart;
 						uint32_t tmp_count = 0;
@@ -1971,6 +1953,7 @@ void Distributed_Manager_Task(){
 						}
 						rec_cmd = '\0';
 					}
+
 					if (rec_cmd == 'W'){
 						Distributed_TaskHandle_List_t* Lastnode = DFinish;
 						uint32_t tmp_count = 0;
@@ -1999,10 +1982,12 @@ void Distributed_Manager_Task(){
 						Distributed_Show_FreeBlock();
 						rec_cmd = '\0';
 					}
+
 					if (rec_cmd == 'S'){										//	List_FreeBlock
 						List_FreeBlock();
 						rec_cmd = '\0';
 					}
+
 					if (rec_cmd == 'f'){										//	send check all node
 						uint32_t free_block_number = 0;
 						Distributed_FreeBlock* local_free_block = DF_Start;
@@ -2032,9 +2017,9 @@ void Distributed_Manager_Task(){
 						}
 						rec_cmd = '\0';
 					}
+					/*
 					if (rec_cmd == 'd'){										//	dispatch distributed task
 						printf("distributed task test start\r\n");
-						count++;
 						for(uint32_t i=0;i<16;i++){
 							*(((uint32_t*)0x10000000)+i) = i;
 							*(((uint32_t*)0x10000100)+i) = 2*i;
@@ -2046,6 +2031,7 @@ void Distributed_Manager_Task(){
 						Distributed_Create_Task(Distributed_task, data_info, 1000);
 						rec_cmd = '\0';
 					}
+					*/
 
 					if (rec_cmd == 'm'){										//	malloc large size
 						uint32_t Max_block_size = 0;
@@ -2113,14 +2099,11 @@ void Distributed_Manager_Task(){
 									Local_Node->Block_number = tmp_block->Block_number;
 									Local_Node->Block_size_array = pvPortMalloc(Local_Node->Block_number*sizeof(uint32_t));
 								}
-								//printf("BLock: ");
 								for(uint32_t j=0;j<tmp_block->Block_number;j++){
 									uint32_t* tmp_addr = ((uint32_t*)((uint8_t*)frame_addr+14+block_number*sizeof(Distributed_FreeBlock))+tmp_node_data_count);
 									tmp_node_data_count++;
 									*(Local_Node->Block_size_array+j) = *tmp_addr;
-									//printf("0x%lX, ",  (uint32_t)*tmp_addr);
 								}
-								//printf("\r\n");
 							}
 							else{
 								tmp_node_data_count += tmp_block->Block_number;
@@ -2177,10 +2160,8 @@ void Distributed_Manager_Task(){
 								DFinish = tmp_NewDTaskControlBlock;
 							else
 								pre_Lastnode->Next_TaskHandle_List = tmp_NewDTaskControlBlock;
-							printf("delete distributed task in other node\r\n");
 							vTaskDelete(*(Lastnode->TaskHandlex));
 							vPortFree(Lastnode);
-							printf("1 Target to delete Lastnode: 0x%lX\r\n", (uint32_t)Lastnode);
 							while(!(Check_Sendable())){
 								for(uint32_t i=0;i<100;i++)
 									;
@@ -2189,7 +2170,6 @@ void Distributed_Manager_Task(){
 							portDISABLE_INTERRUPTS();
 							unmerge_finish_distributed_task--;
 							portENABLE_INTERRUPTS();
-							printf("After allocate\r\n");
 						}
 					}
 
@@ -2385,53 +2365,12 @@ void Distributed_Manager_Task(){
 						}
 					}
 
-					/*
-					if((Global_Node_Master == Global_Node_id) && (Global_Node_count > Global_Node_id) && (Global_Node_Backup_Master <= Global_Node_id) && (SendFreespaceFlag == 0)){
-						for(uint32_t i=(Global_Node_id+1);i<=Global_Node_count;i++){
-							while(!(DistributedNodeCheck(i)));
-							TO_COUNT = 0;
-							while((TO_COUNT < 1680000) && (DisrtibutedNodeCheckIDFlag != 0)){
-								TO_COUNT++;
-							}
-							if (TO_COUNT < 1680000){
-								printf("Dispatch BackupMaster to %dth Node\r\n", i);
-								DistributedNodeBackupMaster(i);
-								Global_Node_Backup_Master = i;
-								break;
-							}
-							else{
-								portDISABLE_INTERRUPTS();
-								DisrtibutedNodeCheckIDFlag = 0;
-								portENABLE_INTERRUPTS();
-								printf("Timeout, %dth Node not exist\r\n", i);
-							}
-						}
-					}
-					*/
-					/*
-					if((BlockChangeFlag > 0) && (PublishFlag > 0)){
-						uint8_t bool_send_flag = 0;
-						uint32_t tickcount = xTaskGetTickCount();
-						if(tickcount_hi_bound > tickcount_lo_bound){
-							if((tickcount>tickcount_hi_bound) || (tickcount<tickcount_lo_bound)){
-								bool_send_flag = 1;
-							}
-						}
-						else{
-							if((tickcount>tickcount_hi_bound) && (tickcount<tickcount_lo_bound)){
-								bool_send_flag = 1;
-							}
-						}
-						if(bool_send_flag != 0){
-							DistributedNodeSendFreespace(0xffffffff, Global_Node_id);
-						}
-					}
-					*/
 					if(Check_Sendable()){
 						if(BlockChangeFlag > 0){
 							DistributedNodeSendFreespace(0xffffffff, Global_Node_id);
 						}
 					}
+
 					while(DDelete != NULL){
 						portDISABLE_INTERRUPTS();
 						Distributed_TaskHandle_List_t* remove_node = DDelete;
@@ -2440,6 +2379,7 @@ void Distributed_Manager_Task(){
 						printf("Remove node from DDelete List, Source_Processor_id: 0x%lX, DTask_id: 0x%lX, DSubTask_id: 0x%lX\r\n", remove_node->Source_Processor_id, remove_node->DTask_id, remove_node->DSubTask_id);
 						vPortFree(remove_node);
 					}
+
 				}
 				rec_cmd = '\0';
 			}
@@ -2468,6 +2408,29 @@ void Distributed_task(void *task_info){
 	}
 
 	Distributed_End(data_info, array1->Data_addr, array1->Data_size);
+}
+
+void UserDefineTask(){
+	while(1){
+		if ((READ_BIT(USART1_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART1_BASE + USART_SR_OFFSET, ORE_BIT))){
+			char rec_cmd = (char)REG(USART1_BASE + USART_DR_OFFSET);
+			printf("%c\r\n", rec_cmd);
+
+			if (rec_cmd == 'd'){										//	dispatch distributed task
+				printf("distributed task test start\r\n");
+				for(uint32_t i=0;i<16;i++){
+					*(((uint32_t*)0x10000000)+i) = i;
+					*(((uint32_t*)0x10000100)+i) = 2*i;
+					*(((uint32_t*)0x10000200)+i) = 3*i;
+				}
+				Distributed_Data_t* data_info = Distributed_Set_Traget_Data((uint32_t*)0x10000000, 16, 4);
+				Distributed_Add_Target_Data(data_info, (uint32_t*)0x10000100, 8, 2);
+				Distributed_Add_Target_Data(data_info, (uint32_t*)0x10000200, 13, 1);
+				Distributed_Create_Task(Distributed_task, data_info, 1000);
+				rec_cmd = '\0';
+			}
+		}
+	}
 }
 
 void task3(){
@@ -3031,7 +2994,7 @@ int main(void){
 	REG(AIRCR_BASE) = NVIC_AIRCR_RESET_VALUE | NVIC_PRIORITYGROUP_4;
 	xTaskCreate(Distributed_Manager_Task, "Distributed_Manager_Task", 1000, NULL, 1, &TaskHandle_1);
 	xTaskCreate(task3, "task3", 1000, NULL, 1, &TaskHandle_3);
-	//xTaskCreate(eth_send, "eth_send", 1000, NULL, 1, &TaskHandle_1);
+	xTaskCreate(UserDefineTask, "UserDefineTask", 1000, NULL, 1, NULL);
 	vTaskStartScheduler();
 	while(1)
 		;

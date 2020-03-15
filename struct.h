@@ -6,13 +6,13 @@ do {                			 									\
 	Distributed_Local_Subtask_Done(s, target_addr, target_size);					\
 } while (0)
 
-typedef struct Distributed_Data {
+typedef struct Distributed_Data{
     uint32_t* Data_addr;
     uint32_t Data_size;
 	uint32_t Split_size;
 	QueueHandle_t* xQueue;
 	struct Distributed_Data* Next_Distributed_Data;
-} Distributed_Data_t;
+}Distributed_Data_t;
 
 typedef struct Distributed_FreeBlock {
     uint32_t Node_id;
