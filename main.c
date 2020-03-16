@@ -374,6 +374,7 @@ uint32_t Got_sp_minus_immediate(uint32_t addr){
 }
 
 Distributed_TaskHandle_List_t* Distributed_Dispatch_Task(void* data_info, uint32_t sp, uint32_t lr){
+	while(!(Check_Sendable()));
 	DistributedNodeDisablePublish();
 	printf("Start to manager_task\r\n");
 	Global_Task_id++;
@@ -2302,7 +2303,10 @@ void Distributed_Manager_Task(){
 						portENABLE_INTERRUPTS();
 					}
 
-					if(TaskDoneFlag > 0){																	//	Ready to recycle task_id = TaskDoneFlag result
+					if(TaskDoneFlag > 0){
+						while(!(Check_Sendable()));
+						DistributedNodeDisablePublish();
+																													//	Ready to recycle task_id = TaskDoneFlag result
 						printf("TaskDoneFlag\r\n");
 						printf("Disable all publish and check every node and recycle all subtask result then malloc a property size the send the result to the queue\r\n");
 						Distributed_TaskHandle_List_t* Lastnode = DFinish;
@@ -2344,8 +2348,7 @@ void Distributed_Manager_Task(){
 							Send_S->Data_addr = pvPortMalloc(Total_result_size*sizeof(uint32_t));;
 							Send_S->Data_size = Total_result_size;
 							Send_S->xQueue = Subtask_node_zero->xQueue;
-
-							DistributedNodeDisablePublish();													//	Ready to recycle result, Node_id: target_node_array, size: Total_result_size
+																												//	Ready to recycle result, Node_id: target_node_array, size: Total_result_size
 							uint32_t* tmp_Target_Addr = Send_S->Data_addr;
 							for(uint32_t i=0;i<target_node_count;i++){
 								printf("Recycle Result, DTask_id: 0x%lX, DSubTask_id: 0x%lX, Data_number: 0x%lX\r\n", target_node_array[i]->DTask_id, target_node_array[i]->DSubTask_id, target_node_array[i]->Data_number);
@@ -2412,21 +2415,27 @@ void Distributed_Manager_Task(){
 							printf("\r\n	Send_S->xQueue: 0x%lX\r\n", (uint32_t)Send_S->xQueue);
 							printf("\r\n	Send_S: 0x%lX, Data_addr: 0x%lX, Data_size: 0x%lX\r\n", (uint32_t)Send_S, (uint32_t)Send_S->Data_addr, Send_S->Data_size);
 							xQueueSendToBack(*((QueueHandle_t*)Send_S->xQueue), (void*)&Send_S, 0);
-							DistributedNodeEnablePublish();
 						}
 						else{
 							printf("Can't find target node\r\n");
 						}
+						DistributedNodeEnablePublish();
 						TaskDoneFlag = 0;
 					}
 
+					if(BlockChangeFlag > 0){
+						printf("BlockChangeFlag\r\n");
+						while(!(Check_Sendable()));
+						DistributedNodeSendFreespace(0xffffffff, Global_Node_id);
+					}
+					/*
 					if(Check_Sendable()){
 						if(BlockChangeFlag > 0){
 							printf("BlockChangeFlag\r\n");
 							DistributedNodeSendFreespace(0xffffffff, Global_Node_id);
 						}
 					}
-
+					*/
 					while(DDelete != NULL){
 						printf("DDelete\r\n");
 						portDISABLE_INTERRUPTS();
