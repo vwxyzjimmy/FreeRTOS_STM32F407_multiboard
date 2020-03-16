@@ -117,8 +117,11 @@ extern uint8_t BlockChangeFlag;
 uint32_t tickcount_lo_bound = 0;
 uint32_t tickcount_hi_bound = 0xFFFFFFFF;
 uint32_t unmerge_finish_distributed_task = 0;
-uint32_t timeout_freq = 10000;
-#define timeout_tick_count (168000000/8/timeout_freq)
+const uint32_t timeout_freq = 1000;
+extern uint32_t SystemCoreClock;
+extern uint32_t SystemTICK_RATE_HZ;
+#define timeout_tick_count (SystemCoreClock/SystemTICK_RATE_HZ/timeout_freq)
+
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Distributed_Data_t* Distributed_Set_Traget_Data(uint32_t* data_addr, uint32_t data_size, uint32_t split_size){
 	Distributed_Data_t* data_info = pvPortMalloc(sizeof(Distributed_Data_t));
@@ -295,7 +298,7 @@ void Distributed_Local_Subtask_Done(Distributed_TaskHandle_List_t* s, uint32_t* 
 		printf("0x%lX, 0x%lX\r\n", (uint32_t)(tmp_NewDTaskControlBlock->Data_addr+i), *(tmp_NewDTaskControlBlock->Data_addr+i));
 	}
 	tmp_NewDTaskControlBlock->Finish_Flag = 1;
-	Distributed_Insert_Finish_Node(tmp_NewDTaskControlBlock);																		//	INser to Fiish DTCB list
+	Distributed_Insert_Finish_Node(tmp_NewDTaskControlBlock);																		//	Inser to Fiish DTCB list
 	printf("Delete: s\r\n");
 	vPortFree(s);																													//	Free sour DTCB
 	printf("delete distributed task in major node: 0x%lX\r\n", (uint32_t)(*(s->TaskHandlex)));
@@ -314,6 +317,7 @@ void Distributed_Local_Subtask_Done(Distributed_TaskHandle_List_t* s, uint32_t* 
 }
 
 void Distributed_Insert_Finish_Node(Distributed_TaskHandle_List_t* NewDTaskControlBlock){
+	portDISABLE_INTERRUPTS();
 	Distributed_TaskHandle_List_t* Lastnode = DFinish;
 	Distributed_TaskHandle_List_t* pre_Lastnode = Lastnode;
 	NewDTaskControlBlock->Next_TaskHandle_List = NULL;
@@ -344,6 +348,7 @@ void Distributed_Insert_Finish_Node(Distributed_TaskHandle_List_t* NewDTaskContr
 			pre_Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
 		}
 	}
+	portENABLE_INTERRUPTS();
 }
 
 uint32_t Got_sp_minus_immediate(uint32_t addr){
@@ -624,7 +629,7 @@ Distributed_TaskHandle_List_t* Distributed_Dispatch_Task(void* data_info, uint32
 			uint32_t tmp_invalid_node[act_split_num];
 			for(uint32_t split_num_th=0;split_num_th<act_split_num;split_num_th++){
 				if(Distributed_dispatch_node[split_num_th] != Global_Node_id){
-					uint8_t timeout_flag = DistributedNodeCheckSizeTimeout(timeout_tick_count, Distributed_dispatch_node[split_num_th], Distributed_data_need_size[split_num_th]);
+					uint8_t timeout_flag = DistributedNodeCheckSizeTimeout(4*timeout_tick_count, Distributed_dispatch_node[split_num_th], Distributed_data_need_size[split_num_th]);
 					if(timeout_flag == 0xFF){																//	0xFF mean node not response, not exist
 						printf("Without check back, can't DistributedNodeSendSubtask, invalid Node id: 0x%lX\r\n", Distributed_dispatch_node[split_num_th]);
 						tmp_invalid_node[split_num_th] = Distributed_dispatch_node[split_num_th];
@@ -862,6 +867,7 @@ Distributed_TaskHandle_List_t* Distributed_Dispatch_Task(void* data_info, uint32
 }
 
 void svc_handler_c(uint32_t LR, uint32_t MSP){
+	portDISABLE_INTERRUPTS();
 	uint32_t *stack_frame_ptr;
 	if (LR & 0x4){
 		stack_frame_ptr = (uint32_t *)read_psp();
@@ -877,7 +883,7 @@ void svc_handler_c(uint32_t LR, uint32_t MSP){
 		vPortSVCHandler();
 	else if (svc_num == 1){
 		 *(stack_frame_ptr) = (uint32_t)Distributed_GetNode(stacked_return_addr, DStart);
-		 printf("i think the program is runnung: 0x%lX\r\n", (uint32_t)stack_frame_ptr);
+		 printf("i think the program is running: 0x%lX\r\n", (uint32_t)stack_frame_ptr);
 	}
 	else if (svc_num == 2){
 		printf("i think the program is done\r\n");
@@ -921,6 +927,7 @@ void svc_handler_c(uint32_t LR, uint32_t MSP){
 			unmerge_finish_distributed_task++;
 		}
 	}
+	portENABLE_INTERRUPTS();
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -2035,7 +2042,7 @@ void Distributed_Manager_Task(){
 							uint8_t timeout_flag = 0;
 							if(Allfreeblocknode[i] != Global_Node_id){
 								printf("Ready to send DistributedNodeCheckSizeTimeout to 0x%lX\r\n", Allfreeblocknode[i]);
-								timeout_flag = DistributedNodeCheckSizeTimeout(timeout_tick_count, Allfreeblocknode[i], 0);
+								timeout_flag = DistributedNodeCheckSizeTimeout(4*timeout_tick_count, Allfreeblocknode[i], 0);
 
 								if(timeout_flag != 0xff)
 									printf("Got response: 0x%lX\r\n",  (uint32_t)timeout_flag);
@@ -2045,21 +2052,6 @@ void Distributed_Manager_Task(){
 						}
 						rec_cmd = '\0';
 					}
-					/*
-					if (rec_cmd == 'd'){										//	dispatch distributed task
-						printf("distributed task test start\r\n");
-						for(uint32_t i=0;i<16;i++){
-							*(((uint32_t*)0x10000000)+i) = i;
-							*(((uint32_t*)0x10000100)+i) = 2*i;
-							*(((uint32_t*)0x10000200)+i) = 3*i;
-						}
-						Distributed_Data_t* data_info = Distributed_Set_Traget_Data((uint32_t*)0x10000000, 16, 4);
-						Distributed_Add_Target_Data(data_info, (uint32_t*)0x10000100, 8, 2);
-						Distributed_Add_Target_Data(data_info, (uint32_t*)0x10000200, 13, 1);
-						Distributed_Create_Task(Distributed_task, data_info, 1000);
-						rec_cmd = '\0';
-					}
-					*/
 
 					if (rec_cmd == 'm'){										//	malloc large size
 						uint32_t Max_block_size = 0;
@@ -2083,7 +2075,7 @@ void Distributed_Manager_Task(){
 
 					if(CheckMasterNodeFlag == 1){
 						printf("CheckMasterNodeFlag\r\n");
-						uint8_t timeout_flag = DistributedNodeCheckSizeTimeout(timeout_tick_count, Global_Node_Master, 0);
+						uint8_t timeout_flag = DistributedNodeCheckSizeTimeout(4*timeout_tick_count, Global_Node_Master, 0);
 						if(timeout_flag == 0xff){
 							printf("time out\r\n");
 							portDISABLE_INTERRUPTS();
@@ -2109,63 +2101,148 @@ void Distributed_Manager_Task(){
 						portENABLE_INTERRUPTS();
 					}
 
-					if(RecvFreespaceFlag > 0){
-						printf("RecvFreespaceFlag\r\n");
+
+					if(ReceiveSubtaskFlag > 0){
+						printf("ReceiveSubtaskFlag\r\n");
 						portDISABLE_INTERRUPTS();
-						volatile uint32_t tmp_RecvFreespaceFlag = RecvFreespaceFlag;
+						printf("ReceiveSubtaskFlag: 0x%lX\r\n", ReceiveSubtaskFlag);
 						uint8_t* frame_addr = (uint8_t*)((DMA_RX_FRAME_infos->FS_Rx_Desc)->Buffer1Addr);
-						uint8_t block_number = *((uint8_t*)frame_addr+13);
-						uint32_t tmp_node_data_count = 0;
-						//printf("Destinate, block_number: 0x%X, --------------------------------------\r\n", block_number);
-						for(uint8_t i=0;i<block_number;i++){
-							Distributed_FreeBlock* tmp_block = (Distributed_FreeBlock*)((uint8_t*)frame_addr+14+i*sizeof(Distributed_FreeBlock));
-							if(tmp_block->Node_id != Global_Node_id){
-								if((tmp_block->Node_id > Global_Node_count) && (Global_Node_id != Global_Node_Master))
-									Global_Node_count = tmp_block->Node_id;
-								//printf("tmp_block: 0x%lX, Node_id: 0x%lX, Block_number: 0x%lX, Block_size_array: 0x%lX\r\n", (uint32_t)tmp_block, tmp_block->Node_id, tmp_block->Block_number, (uint32_t)tmp_block->Block_size_array);
-								Distributed_FreeBlock* Local_Node = GetFreeBlockNode(tmp_block->Node_id);
-								if(Local_Node->Block_number != tmp_block->Block_number){
-									if(Local_Node->Block_number > 0)
-										vPortFree(Local_Node->Block_size_array);
-									Local_Node->Block_number = tmp_block->Block_number;
-									Local_Node->Block_size_array = pvPortMalloc(Local_Node->Block_number*sizeof(uint32_t));
-								}
-								for(uint32_t j=0;j<tmp_block->Block_number;j++){
-									uint32_t* tmp_addr = ((uint32_t*)((uint8_t*)frame_addr+14+block_number*sizeof(Distributed_FreeBlock))+tmp_node_data_count);
-									tmp_node_data_count++;
-									*(Local_Node->Block_size_array+j) = *tmp_addr;
-								}
-							}
-							else{
-								tmp_node_data_count += tmp_block->Block_number;
-							}
+						Distributed_TaskHandle_List_t* TmpDTaskControlBlock = (Distributed_TaskHandle_List_t*)((uint8_t*)frame_addr+13);
+						uint32_t Data_number = TmpDTaskControlBlock->Data_number;
+						uint32_t instruction_size = (uint8_t*)TmpDTaskControlBlock->Instruction_addr_end - (uint8_t*)TmpDTaskControlBlock->Instruction_addr;
+						uint32_t Data_size_split = 0;
+
+						uint32_t* Data_size_split_record;
+						uint32_t* Data_Max_size_split_record;
+						Distributed_Data_t* Start_Distributed_Data_List;
+						TaskHandle_t* Subtask_handler;
+						uint16_t* dest_instruction_addr;
+						uint32_t* dest_data_addr;
+
+						Data_size_split_record = (uint32_t*)((uint8_t*)TmpDTaskControlBlock + sizeof(Distributed_TaskHandle_List_t));
+
+						for(uint32_t i=0;i<Data_number;i++)												//	Calculate sum of data size and copy to array
+							Data_size_split += Data_size_split_record[i];
+
+						uint32_t Distributed_Recv_Size = 0;
+						Distributed_Recv_Size += sizeof(Distributed_TaskHandle_List_t);
+						Distributed_Recv_Size += Data_number*sizeof(uint32_t);
+						Distributed_Recv_Size += Data_number*sizeof(uint32_t);
+						Distributed_Recv_Size += Data_number*sizeof(Distributed_Data_t);
+						Distributed_Recv_Size += sizeof(TaskHandle_t);
+						Distributed_Recv_Size += instruction_size;
+						Distributed_Recv_Size += Data_size_split*sizeof(uint32_t);
+
+						Distributed_TaskHandle_List_t* NewDTaskControlBlock = pvPortMalloc(Distributed_Recv_Size);
+						for(uint32_t i=0;i<Distributed_Recv_Size;i++){
+							*((uint8_t*)NewDTaskControlBlock+i) = *((uint8_t*)TmpDTaskControlBlock+i);
 						}
+						Data_size_split_record = (uint32_t*)((uint8_t*)NewDTaskControlBlock + sizeof(Distributed_TaskHandle_List_t));
+						Data_Max_size_split_record = (uint32_t*)((uint8_t*)Data_size_split_record + Data_number*sizeof(uint32_t));
+						Start_Distributed_Data_List = (Distributed_Data_t*)((uint8_t*)Data_Max_size_split_record + Data_number*sizeof(uint32_t));
+						Subtask_handler = (TaskHandle_t*)((uint8_t*)Start_Distributed_Data_List + Data_number*sizeof(Distributed_Data_t));
+						dest_instruction_addr = (uint16_t*)((uint8_t*)Subtask_handler + sizeof(TaskHandle_t));
+						dest_data_addr = (uint32_t*)((uint8_t*)dest_instruction_addr + instruction_size);
+
+						NewDTaskControlBlock->Instruction_addr = (uint32_t*)dest_instruction_addr;
+						NewDTaskControlBlock->Instruction_addr_end = (uint32_t*)((uint8_t*)dest_instruction_addr + instruction_size);
+						NewDTaskControlBlock->Data_addr = dest_data_addr;
+						NewDTaskControlBlock->Data_size = Data_size_split_record;
+						NewDTaskControlBlock->Data_Max_size  = Data_Max_size_split_record;
+						NewDTaskControlBlock->TaskHandlex = Subtask_handler;
+						NewDTaskControlBlock->Distributed_Data_List = Start_Distributed_Data_List;
+						NewDTaskControlBlock->Next_TaskHandle_List = NULL;
+
+						uint32_t* tmp_Data_addr = dest_data_addr;
+						Distributed_Data_t* tmp_Distributed_Data_List = Start_Distributed_Data_List;
+						for(uint32_t i=0;i<Data_number;i++){
+							tmp_Distributed_Data_List->Next_Distributed_Data = (Distributed_Data_t*)((uint8_t*)tmp_Distributed_Data_List + sizeof(Distributed_Data_t));
+							tmp_Distributed_Data_List->Data_addr = tmp_Data_addr;
+							tmp_Data_addr += Data_size_split_record[i];
+							tmp_Distributed_Data_List = tmp_Distributed_Data_List->Next_Distributed_Data;
+						}
+
+						Distributed_TaskHandle_List_t* Lastnode = DStart;														//	Insert to Local DTCB List
+						if(Lastnode == NULL)
+							DStart = NewDTaskControlBlock;
+						else{
+							while(Lastnode->Next_TaskHandle_List != NULL)
+								Lastnode = Lastnode->Next_TaskHandle_List;
+							NewDTaskControlBlock->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
+							Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
+						}
+						printf("NewDTaskControlBlock->Stack_size: 0x%lX\r\n", NewDTaskControlBlock->Stack_size);
+						printf("sizeof(TaskHandle_t): 0x%X\r\n", sizeof(TaskHandle_t));
+						ReceiveSubtaskFlag = 0;
 						portENABLE_INTERRUPTS();
-						//printf("Destinate End-------------------------------------------------------\r\n");
-						uint32_t tmp_count = 0;
-						for(uint32_t i=0;i<block_number*sizeof(Distributed_FreeBlock);i++){
-							tmp_count++;
-						}
-						UpdateLocalFreeBlock();
-						if(RecvFreespaceFlag > Global_Node_count){
-							Global_Node_count = RecvFreespaceFlag;
-							printf("New Node and update Global_Node_count: 0x%lX\r\n", Global_Node_count);
-							if (Global_Node_id == Global_Node_Master){
-								if(Global_Node_Backup_Master == 0){
-									printf("Dispatch BackupMaster to %dth Node\r\n", (int)RecvFreespaceFlag);
-									DistributedNodeBackupMaster(RecvFreespaceFlag);
-									Global_Node_Backup_Master = RecvFreespaceFlag;
-								}
-								SendFreespaceFlag = 1;
-								BlockChangeFlag = 0;// important!!!
-							}
-						}
-						if (tmp_RecvFreespaceFlag == RecvFreespaceFlag)
-							RecvFreespaceFlag = 0;
+						xTaskCreate((void*)NewDTaskControlBlock->Instruction_addr, "Distributed task", (NewDTaskControlBlock->Stack_size), NULL, 1, NewDTaskControlBlock->TaskHandlex);
 					}
 
-					if (unmerge_finish_distributed_task > 0){
+					else if(RecvFreespaceFlag > 0){
+						printf("RecvFreespaceFlag\r\n");
+						portDISABLE_INTERRUPTS();
+						uint8_t* frame_addr = (uint8_t*)((DMA_RX_FRAME_infos->FS_Rx_Desc)->Buffer1Addr);
+						uint8_t tmp_event = *((uint8_t*)frame_addr+12);
+						uint8_t block_number = *((uint8_t*)frame_addr+13);
+						if(tmp_event == 8){
+							volatile uint32_t tmp_RecvFreespaceFlag = RecvFreespaceFlag;
+							uint32_t tmp_node_data_count = 0;
+							//printf("Destinate, block_number: 0x%X, --------------------------------------\r\n", block_number);
+							for(uint8_t i=0;i<block_number;i++){
+								Distributed_FreeBlock* tmp_block = (Distributed_FreeBlock*)((uint8_t*)frame_addr+14+i*sizeof(Distributed_FreeBlock));
+								if(tmp_block->Node_id != Global_Node_id){
+									if((tmp_block->Node_id > Global_Node_count) && (Global_Node_id != Global_Node_Master))
+										Global_Node_count = tmp_block->Node_id;
+									//printf("tmp_block: 0x%lX, Node_id: 0x%lX, Block_number: 0x%lX, Block_size_array: 0x%lX\r\n", (uint32_t)tmp_block, tmp_block->Node_id, tmp_block->Block_number, (uint32_t)tmp_block->Block_size_array);
+									Distributed_FreeBlock* Local_Node = GetFreeBlockNode(tmp_block->Node_id);
+									if(Local_Node->Block_number != tmp_block->Block_number){
+										if(Local_Node->Block_number > 0)
+											vPortFree(Local_Node->Block_size_array);
+										Local_Node->Block_number = tmp_block->Block_number;
+										Local_Node->Block_size_array = pvPortMalloc(Local_Node->Block_number*sizeof(uint32_t));
+									}
+									for(uint32_t j=0;j<tmp_block->Block_number;j++){
+										uint32_t* tmp_addr = ((uint32_t*)((uint8_t*)frame_addr+14+block_number*sizeof(Distributed_FreeBlock))+tmp_node_data_count);
+										tmp_node_data_count++;
+										*(Local_Node->Block_size_array+j) = *tmp_addr;
+									}
+								}
+								else{
+									tmp_node_data_count += tmp_block->Block_number;
+								}
+							}
+							//portENABLE_INTERRUPTS();
+							//printf("Destinate End-------------------------------------------------------\r\n");
+							uint32_t tmp_count = 0;
+							for(uint32_t i=0;i<block_number*sizeof(Distributed_FreeBlock);i++){
+								tmp_count++;
+							}
+							UpdateLocalFreeBlock();
+							if(RecvFreespaceFlag > Global_Node_count){
+								Global_Node_count = RecvFreespaceFlag;
+								printf("New Node and update Global_Node_count: 0x%lX\r\n", Global_Node_count);
+								if (Global_Node_id == Global_Node_Master){
+									if(Global_Node_Backup_Master == 0){
+										printf("Dispatch BackupMaster to %dth Node\r\n", (int)RecvFreespaceFlag);
+										DistributedNodeBackupMaster(RecvFreespaceFlag);
+										Global_Node_Backup_Master = RecvFreespaceFlag;
+									}
+									SendFreespaceFlag = 1;
+									BlockChangeFlag = 0;// important!!!
+								}
+							}
+							if (tmp_RecvFreespaceFlag == RecvFreespaceFlag)
+								RecvFreespaceFlag = 0;
+						}
+						else{
+							RecvFreespaceFlag = 0;
+						}
+						portENABLE_INTERRUPTS();
+					}
+
+					else if(unmerge_finish_distributed_task > 0){
 						printf("unmerge_finish_distributed_task\r\n");
+						portDISABLE_INTERRUPTS();
 						Distributed_TaskHandle_List_t* Lastnode = DFinish;
 						Distributed_TaskHandle_List_t* pre_Lastnode = DFinish;
 						while((Lastnode != NULL) && (Lastnode->Finish_Flag != 0)){
@@ -2218,92 +2295,12 @@ void Distributed_Manager_Task(){
 									printf("Timeout in DistributedNodeSubtaskFinish\r\n");
 								}
 							}
-
-							portDISABLE_INTERRUPTS();
 							unmerge_finish_distributed_task--;
-							portENABLE_INTERRUPTS();
 						}
-					}
-
-					if (ReceiveSubtaskFlag > 0){
-						printf("ReceiveSubtaskFlag\r\n");
-						portDISABLE_INTERRUPTS();
-						printf("ReceiveSubtaskFlag: 0x%lX\r\n", ReceiveSubtaskFlag);
-						uint8_t* frame_addr = (uint8_t*)((DMA_RX_FRAME_infos->FS_Rx_Desc)->Buffer1Addr);
-						Distributed_TaskHandle_List_t* TmpDTaskControlBlock = (Distributed_TaskHandle_List_t*)((uint8_t*)frame_addr+13);
-						uint32_t Data_number = TmpDTaskControlBlock->Data_number;
-						uint32_t instruction_size = (uint8_t*)TmpDTaskControlBlock->Instruction_addr_end - (uint8_t*)TmpDTaskControlBlock->Instruction_addr;
-						uint32_t Data_size_split = 0;
-
-						uint32_t* Data_size_split_record;
-						uint32_t* Data_Max_size_split_record;
-						Distributed_Data_t* Start_Distributed_Data_List;
-						TaskHandle_t* Subtask_handler;
-						uint16_t* dest_instruction_addr;
-						uint32_t* dest_data_addr;
-
-						Data_size_split_record = (uint32_t*)((uint8_t*)TmpDTaskControlBlock + sizeof(Distributed_TaskHandle_List_t));
-
-						for(uint32_t i=0;i<Data_number;i++)												//	Calculate sum of data size and copy to array
-							Data_size_split += Data_size_split_record[i];
-
-						uint32_t Distributed_Recv_Size = 0;
-						Distributed_Recv_Size += sizeof(Distributed_TaskHandle_List_t);
-						Distributed_Recv_Size += Data_number*sizeof(uint32_t);
-						Distributed_Recv_Size += Data_number*sizeof(uint32_t);
-						Distributed_Recv_Size += Data_number*sizeof(Distributed_Data_t);
-						Distributed_Recv_Size += sizeof(TaskHandle_t);
-						Distributed_Recv_Size += instruction_size;
-						Distributed_Recv_Size += Data_size_split*sizeof(uint32_t);
-
-						Distributed_TaskHandle_List_t* NewDTaskControlBlock = pvPortMalloc(Distributed_Recv_Size);
-						for(uint32_t i=0;i<Distributed_Recv_Size;i++){
-							*((uint8_t*)NewDTaskControlBlock+i) = *((uint8_t*)TmpDTaskControlBlock+i);
-						}
-						portENABLE_INTERRUPTS();
-						Data_size_split_record = (uint32_t*)((uint8_t*)NewDTaskControlBlock + sizeof(Distributed_TaskHandle_List_t));
-						Data_Max_size_split_record = (uint32_t*)((uint8_t*)Data_size_split_record + Data_number*sizeof(uint32_t));
-						Start_Distributed_Data_List = (Distributed_Data_t*)((uint8_t*)Data_Max_size_split_record + Data_number*sizeof(uint32_t));
-						Subtask_handler = (TaskHandle_t*)((uint8_t*)Start_Distributed_Data_List + Data_number*sizeof(Distributed_Data_t));
-						dest_instruction_addr = (uint16_t*)((uint8_t*)Subtask_handler + sizeof(TaskHandle_t));
-						dest_data_addr = (uint32_t*)((uint8_t*)dest_instruction_addr + instruction_size);
-
-						NewDTaskControlBlock->Instruction_addr = (uint32_t*)dest_instruction_addr;
-						NewDTaskControlBlock->Instruction_addr_end = (uint32_t*)((uint8_t*)dest_instruction_addr + instruction_size);
-						NewDTaskControlBlock->Data_addr = dest_data_addr;
-						NewDTaskControlBlock->Data_size = Data_size_split_record;
-						NewDTaskControlBlock->Data_Max_size  = Data_Max_size_split_record;
-						NewDTaskControlBlock->TaskHandlex = Subtask_handler;
-						NewDTaskControlBlock->Distributed_Data_List = Start_Distributed_Data_List;
-						NewDTaskControlBlock->Next_TaskHandle_List = NULL;
-
-						uint32_t* tmp_Data_addr = dest_data_addr;
-						Distributed_Data_t* tmp_Distributed_Data_List = Start_Distributed_Data_List;
-						for(uint32_t i=0;i<Data_number;i++){
-							tmp_Distributed_Data_List->Next_Distributed_Data = (Distributed_Data_t*)((uint8_t*)tmp_Distributed_Data_List + sizeof(Distributed_Data_t));
-							tmp_Distributed_Data_List->Data_addr = tmp_Data_addr;
-							tmp_Data_addr += Data_size_split_record[i];
-							tmp_Distributed_Data_List = tmp_Distributed_Data_List->Next_Distributed_Data;
-						}
-
-						Distributed_TaskHandle_List_t* Lastnode = DStart;														//	Insert to Local DTCB List
-						if(Lastnode == NULL)
-							DStart = NewDTaskControlBlock;
-						else{
-							while(Lastnode->Next_TaskHandle_List != NULL)
-								Lastnode = Lastnode->Next_TaskHandle_List;
-							NewDTaskControlBlock->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
-							Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
-						}
-						printf("NewDTaskControlBlock->Stack_size: 0x%lX\r\n", NewDTaskControlBlock->Stack_size);
-						printf("sizeof(TaskHandle_t): 0x%X\r\n", sizeof(TaskHandle_t));
-						xTaskCreate((void*)NewDTaskControlBlock->Instruction_addr, "Distributed task", (NewDTaskControlBlock->Stack_size), NULL, 1, NewDTaskControlBlock->TaskHandlex);
-						portDISABLE_INTERRUPTS();
-						ReceiveSubtaskFlag = 0;
 						portENABLE_INTERRUPTS();
 					}
 
-					if(TaskDoneFlag > 0){
+					else if(TaskDoneFlag > 0){
 						while(!(Check_Sendable()));
 						DistributedNodeDisablePublish();
 																													//	Ready to recycle task_id = TaskDoneFlag result
@@ -2423,29 +2420,25 @@ void Distributed_Manager_Task(){
 						TaskDoneFlag = 0;
 					}
 
-					if(BlockChangeFlag > 0){
-						printf("BlockChangeFlag\r\n");
-						while(!(Check_Sendable()));
-						DistributedNodeSendFreespace(0xffffffff, Global_Node_id);
-					}
-					/*
-					if(Check_Sendable()){
-						if(BlockChangeFlag > 0){
-							printf("BlockChangeFlag\r\n");
-							DistributedNodeSendFreespace(0xffffffff, Global_Node_id);
+					else if(DDelete != NULL){
+						while(DDelete != NULL){
+							printf("DDelete\r\n");
+							portDISABLE_INTERRUPTS();
+							Distributed_TaskHandle_List_t* remove_node = DDelete;
+							DDelete = DDelete->Next_TaskHandle_List;
+							portENABLE_INTERRUPTS();
+							printf("Remove node from DDelete List, Source_Processor_id: 0x%lX, DTask_id: 0x%lX, DSubTask_id: 0x%lX\r\n", remove_node->Source_Processor_id, remove_node->DTask_id, remove_node->DSubTask_id);
+							vPortFree(remove_node);
 						}
 					}
-					*/
-					while(DDelete != NULL){
-						printf("DDelete\r\n");
-						portDISABLE_INTERRUPTS();
-						Distributed_TaskHandle_List_t* remove_node = DDelete;
-						DDelete = DDelete->Next_TaskHandle_List;
-						portENABLE_INTERRUPTS();
-						printf("Remove node from DDelete List, Source_Processor_id: 0x%lX, DTask_id: 0x%lX, DSubTask_id: 0x%lX\r\n", remove_node->Source_Processor_id, remove_node->DTask_id, remove_node->DSubTask_id);
-						vPortFree(remove_node);
-					}
 
+					else if(BlockChangeFlag > 0){
+						printf("BlockChangeFlag\r\n");
+						while(!(Check_Sendable()));
+						portDISABLE_INTERRUPTS();
+						DistributedNodeSendFreespace(0xffffffff, Global_Node_id);
+						portENABLE_INTERRUPTS();
+					}
 				}
 				rec_cmd = '\0';
 			}
