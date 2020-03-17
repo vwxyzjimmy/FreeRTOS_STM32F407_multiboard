@@ -96,3 +96,21 @@ volatile ETH_DMA_Rx_Frame_infos *DMA_RX_FRAME_infos;
 #define 	ETH_SPEED_100M   0x00004000
 #define 	ETH_MODE_FULLDUPLEX   0x00000800
 #define 	ETH_MODE_HALFDUPLEX   0x00000000
+
+#define DistributedNodeGetID_MSG 					0x01
+#define DistributedNodeGetIDAgain_MSG 				0x02
+#define DistributedNodeResponseID_MSG 				0x03
+#define DistributedNodeCheck_MSG 					0x04
+#define DistributedNodeCheckback_MSG 				0x05
+#define DistributedNodeBackupMaster_MSG 			0x06
+#define DistributedNodeInvalid_MSG 					0x07
+#define DistributedNodeSendFreespace_MSG 			0x08
+#define DistributedNodeSendSubtask_MSG 				0x09
+#define DistributedNodeResponseSubtask_MSG 			0x0a
+#define DistributedNodeDisablePublish_MSG 			0x0b
+#define DistributedNodeEnablePublish_MSG 			0x0c
+#define DistributedNodeSubtaskFinish_MSG 			0x0d
+#define DistributedNodeResponseSubtaskFinish_MSG 	0x0e
+#define DistributedNodeRequestResult_MSG 			0x0f
+#define DistributedNodeResponseResult_MSG 			0x10
+#define DistributedNodeRemoveTask_MSG 				0x11

@@ -1,5 +1,10 @@
 .syntax unified
 
+.global	tri_svc
+tri_svc:
+	svc	#0x03
+	bx	lr
+
 .global	read_sp
 read_sp:
 	mov	r0,	sp
