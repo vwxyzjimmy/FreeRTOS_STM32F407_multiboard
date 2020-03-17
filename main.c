@@ -1545,7 +1545,8 @@ void eth_handler(void){
 		||	(tmp_event == DistributedNodeSubtaskFinish_MSG)		\
 		||	(tmp_event == DistributedNodeRequestResult_MSG)		\
 	){
-		tickcount_hi_bound += timeout_tick_count;
+		//if(Global_Node_id != Dest)
+			tickcount_hi_bound += timeout_tick_count;
 	}
 	//==========================================================================
 
