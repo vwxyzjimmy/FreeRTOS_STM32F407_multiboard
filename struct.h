@@ -109,8 +109,15 @@ volatile ETH_DMA_Rx_Frame_infos *DMA_RX_FRAME_infos;
 #define DistributedNodeResponseSubtask_MSG 			0x0a
 #define DistributedNodeDisablePublish_MSG 			0x0b
 #define DistributedNodeEnablePublish_MSG 			0x0c
-#define DistributedNodeSubtaskFinish_MSG 			0x0d
-#define DistributedNodeResponseSubtaskFinish_MSG 	0x0e
-#define DistributedNodeRequestResult_MSG 			0x0f
-#define DistributedNodeResponseResult_MSG 			0x10
-#define DistributedNodeRemoveTask_MSG 				0x11
+#define DistributedNodeResponsePublish_MSG			0x0d
+#define DistributedNodeRequestKey_MSG				0x0e
+#define DistributedNodeReleaseKey_MSG				0x0f
+#define DistributedNodeResponseKey_MSG				0x10
+#define DistributedNodeSubtaskFinish_MSG 			0x11
+#define DistributedNodeResponseSubtaskFinish_MSG 	0x12
+#define DistributedNodeRequestResult_MSG 			0x13
+#define DistributedNodeResponseResult_MSG 			0x14
+#define DistributedNodeRemoveTask_MSG 				0x15
+
+#define Request 0x00
+#define Release 0x01

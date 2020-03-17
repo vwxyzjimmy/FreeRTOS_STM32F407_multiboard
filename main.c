@@ -59,15 +59,20 @@ void DistributedNodeInvalid(uint32_t Target_Node_id);
 uint32_t DistributedNodeSendFreespace(uint32_t Target_Node_id, uint32_t Node_id);
 void DistributedNodeSendSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size);
 void DistributedNodeResponseSubtask(uint32_t Target_Node_id);
-void DistributedNodeDisablePublish();
-void DistributedNodeEnablePublish();
+void DistributedNodeDisablePublish(uint32_t Target_Node_id);
+void DistributedNodeEnablePublish(uint32_t Target_Node_id);
+void DistributedNodeResponsePublish(uint32_t Target_Node_id);
+void DistributedNodeRequestKey();
+void DistributedNodeReleaseKey();
+void DistributedNodeResponseKey(uint32_t Target_Node_id, uint8_t response_flag);
 void DistributedNodeSubtaskFinish(uint32_t Target_Node_id, uint32_t Task_id, uint32_t Subtask_id, uint32_t Size);
 void DistributedNodeResponseSubtaskFinish(uint32_t Target_Node_id, uint32_t Target_Subtask_id);
-uint8_t DistributedNodeCheckSizeTimeout(uint32_t tick, uint32_t Target_Node_id, uint32_t Needsize);
 void DistributedNodeRequestResult(uint32_t Target_Node_id, uint32_t Task_id, uint32_t Subtask_id);
 void DistributedNodeResponseResult(uint32_t Target_Node_id, uint8_t* Result_addr, uint32_t Result_size);
 void DistributedNodeRemoveTask(uint32_t Target_Node_id, uint32_t Task_id);
 void DistributedSendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t Size);
+uint8_t DistributedNodeCheckSizeTimeout(uint32_t tick, uint32_t Target_Node_id, uint32_t Needsize);
+uint8_t DistributedNodeDisableEnableSequence(uint8_t DisableEnableFlag);
 void UpdateLocalFreeBlock();
 uint8_t Check_Sendable();
 Distributed_FreeBlock* GetFreeBlockNode(uint32_t Node_id);
@@ -110,6 +115,9 @@ uint32_t RecvFreespaceFlag = 0;
 uint32_t CheckbackFlag = 0;
 uint32_t ReceiveSubtaskFlag = 0;
 uint32_t PublishFlag = 1;
+uint32_t PublishResponseFlag = 0;
+uint32_t RequestKeyFlag = 0;
+uint32_t ResponseKeyFlag = 0;
 uint32_t TaskDoneFlag = 0;
 uint32_t RequestResultFlag = 0;
 uint32_t DispatchSuccessFlag = 0;
@@ -271,8 +279,8 @@ uint32_t Got_sp_minus_immediate(uint32_t addr){
 
 Distributed_TaskHandle_List_t* Distributed_Dispatch_Task(void* data_info, uint32_t sp, uint32_t lr){
 	while(!(Check_Sendable()));
+	DistributedNodeDisableEnableSequence(Request);
 	portDISABLE_INTERRUPTS();
-	DistributedNodeDisablePublish();
 	printf("Start to manager_task\r\n");
 	Global_Task_id++;
 	uint32_t Data_number = 0;
@@ -750,8 +758,9 @@ Distributed_TaskHandle_List_t* Distributed_Dispatch_Task(void* data_info, uint32
 			vPortFree(s_delete);
 		}
 	}
-	DistributedNodeEnablePublish();												//	Enable otehr processor to publish freespace
+	//	Enable otehr processor to publish freespace
 	portENABLE_INTERRUPTS();
+	DistributedNodeDisableEnableSequence(Release);
 	return Subscriber_task;
 }
 
@@ -1512,6 +1521,7 @@ void eth_handler(void){
 	}
 	uint32_t Dest = *((uint32_t*)((uint8_t*)frame.buffer+2));
 	uint32_t Sour = *((uint32_t*)((uint8_t*)frame.buffer+8));
+	uint32_t tmp_event = *((uint32_t*)((uint8_t*)frame.buffer+12));
 	//==========================================================================
 	tickcount_lo_bound = xTaskGetTickCount();
 	uint32_t multi = 0;
@@ -1523,6 +1533,20 @@ void eth_handler(void){
 		multi = (Global_Node_id-1);
 
 	tickcount_hi_bound = tickcount_lo_bound + timeout_tick_count*multi + 10;
+
+	if (	(tmp_event == DistributedNodeGetID_MSG)				\
+		||	(tmp_event == DistributedNodeGetIDAgain_MSG)		\
+		||	(tmp_event == DistributedNodeCheck_MSG)				\
+		||	(tmp_event == DistributedNodeSendSubtask_MSG)		\
+		||	(tmp_event == DistributedNodeDisablePublish_MSG)	\
+		||	(tmp_event == DistributedNodeEnablePublish_MSG)		\
+		||	(tmp_event == DistributedNodeRequestKey_MSG)		\
+		||	(tmp_event == DistributedNodeReleaseKey_MSG)		\
+		||	(tmp_event == DistributedNodeSubtaskFinish_MSG)		\
+		||	(tmp_event == DistributedNodeRequestResult_MSG)		\
+	){
+		tickcount_hi_bound += timeout_tick_count;
+	}
 	//==========================================================================
 
 	if ((Dest == 0xffffffff) || (Dest == Global_Node_id)){
@@ -1606,11 +1630,59 @@ void eth_handler(void){
 		}
 		else if (Msg_event == DistributedNodeDisablePublish_MSG){
 			PublishFlag = 0;
+			DistributedNodeResponsePublish(Sour);
 			printf("Get DistributedNodeDisablePublish\r\n");
 		}
 		else if (Msg_event == DistributedNodeEnablePublish_MSG){
 			PublishFlag = 1;
+			DistributedNodeResponsePublish(Sour);
 			printf("Get DistributedNodeEnablePublish\r\n");
+		}
+		else if (Msg_event == DistributedNodeResponsePublish_MSG){
+			PublishResponseFlag = Sour;
+			printf("Get DistributedNodeResponsePublish\r\n");
+		}
+		else if (Msg_event == DistributedNodeRequestKey_MSG){
+			if(Global_Node_id == Global_Node_Master){
+				if(RequestKeyFlag == 0){
+					DistributedNodeResponseKey(Sour, 1);
+					RequestKeyFlag = Sour;
+					PublishFlag = 0;
+					printf("Request Key from Node: 0x%lX\r\n", Sour);
+				}
+				else{
+					DistributedNodeResponseKey(Sour, 0);
+					printf("Not Request Key from Node: 0x%lX, Node : 0x%lX occupy the key\r\n", Sour, RequestKeyFlag);
+				}
+				printf("Get DistributedNodeRequestKey\r\n");
+			}
+		}
+		else if (Msg_event == DistributedNodeReleaseKey_MSG){
+			if(Global_Node_id == Global_Node_Master){
+				if(RequestKeyFlag == Sour){
+					DistributedNodeResponseKey(Sour, 1);
+					RequestKeyFlag = 0;
+					PublishFlag = 1;
+					printf("Release Key from Node: 0x%lX\r\n", Sour);
+				}
+				else{
+					DistributedNodeResponseKey(Sour, 0);
+					printf("Not Release Key from Node: 0x%lX, Node : 0x%lX occupy the key\r\n", Sour, RequestKeyFlag);
+				}
+				printf("Get DistributedNodeReleaseKey\r\n");
+			}
+		}
+		else if (Msg_event == DistributedNodeResponseKey_MSG){
+			uint8_t getresponsekey = *((uint8_t*)frame.buffer+13);
+			if(getresponsekey > 0){
+				ResponseKeyFlag = Sour;
+				printf("Get Key from Mastar\r\n");
+			}
+			else{
+				ResponseKeyFlag = Global_Node_count + 1;
+				printf("Not Get Key from Master\r\n");
+			}
+			printf("Get DistributedNodeResponseKey\r\n");
 		}
 		else if (Msg_event == DistributedNodeSubtaskFinish_MSG){
 			uint32_t task_id = *((uint32_t*)((uint8_t*)frame.buffer+13));
@@ -2191,8 +2263,8 @@ void Distributed_Manager_Task(){
 
 					else if(TaskDoneFlag > 0){
 						while(!(Check_Sendable()));
+						DistributedNodeDisableEnableSequence(Request);
 						portDISABLE_INTERRUPTS();
-						DistributedNodeDisablePublish();
 																													//	Ready to recycle task_id = TaskDoneFlag result
 						printf("TaskDoneFlag\r\n");
 						printf("Disable all publish and check every node and recycle all subtask result then malloc a property size the send the result to the queue\r\n");
@@ -2306,9 +2378,9 @@ void Distributed_Manager_Task(){
 						else{
 							printf("Can't find target node\r\n");
 						}
-						DistributedNodeEnablePublish();
 						TaskDoneFlag = 0;
 						portENABLE_INTERRUPTS();
+						DistributedNodeDisableEnableSequence(Release);
 					}
 
 					else if(DDelete != NULL){
@@ -2660,11 +2732,12 @@ void DistributedNodeResponseSubtask(uint32_t Target_Node_id){
 	printf("Broadcast DistributedNodeResponseSubtask Node\r\n");
 }
 
-void DistributedNodeDisablePublish(){
+void DistributedNodeDisablePublish(uint32_t Target_Node_id){
 	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
 	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, DistributedNodeDisablePublish_MSG};
 	for(uint8_t i=0;i<4;i++){
 		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
 		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
 	}
 	PublishFlag = 0;
@@ -2672,16 +2745,63 @@ void DistributedNodeDisablePublish(){
 	printf("Broadcast DistributedNodeDisablePublish Node\r\n");
 }
 
-void DistributedNodeEnablePublish(){
+void DistributedNodeEnablePublish(uint32_t Target_Node_id){
 	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
 	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, DistributedNodeEnablePublish_MSG};
 	for(uint8_t i=0;i<4;i++){
 		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
 		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
 	}
 	PublishFlag = 1;
 	DistributedSendMsg(MyMacAddr, mydata, 13);
 	printf("Broadcast DistributedNodeEnablePublish Node\r\n");
+}
+
+void DistributedNodeResponsePublish(uint32_t Target_Node_id){
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, DistributedNodeResponsePublish_MSG};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	DistributedSendMsg(MyMacAddr, mydata, 13);
+	printf("Broadcast DistributedNodeResponsePublish Node\r\n");
+}
+
+void DistributedNodeRequestKey(){
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, DistributedNodeRequestKey_MSG};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	DistributedSendMsg(MyMacAddr, mydata, 13);
+	printf("Broadcast DistributedNodeRequestKey Node\r\n");
+}
+
+void DistributedNodeReleaseKey(){
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, DistributedNodeReleaseKey_MSG};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	DistributedSendMsg(MyMacAddr, mydata, 13);
+	printf("Broadcast DistributedNodeReleaseKey Node\r\n");
+}
+
+void DistributedNodeResponseKey(uint32_t Target_Node_id, uint8_t response_flag){
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[14] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, DistributedNodeResponseKey_MSG, response_flag};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	DistributedSendMsg(MyMacAddr, mydata, 14);
+	printf("Broadcast DistributedNodeResponseKey Node\r\n");
 }
 
 void DistributedNodeSubtaskFinish(uint32_t Target_Node_id, uint32_t Task_id, uint32_t Subtask_id, uint32_t Size){
@@ -2808,6 +2928,143 @@ uint8_t DistributedNodeCheckSizeTimeout(uint32_t tick, uint32_t Target_Node_id, 
 		printf("Dame you should not check yourself node id: 0x%lX\r\n", Target_Node_id);
 		return 0xff;
 	}
+}
+
+uint8_t DistributedNodeDisableEnableSequence(uint8_t DisableEnableFlag){
+	if(Global_Node_id == Global_Node_Master){									//	Local node is Master
+		if(DisableEnableFlag == 0){												//	Request
+			if(RequestKeyFlag != 0)												//	RequestKeyFlag is occupy
+				ResponseKeyFlag = Global_Node_count + 1;
+			else{
+				ResponseKeyFlag = Global_Node_id;								//	Request RequestKeyFlag
+				RequestKeyFlag = Global_Node_id;
+			}
+		}
+		else{																	//	Release
+			if(RequestKeyFlag != Global_Node_id)								//	Not the RequestKeyFlag occupy node
+				ResponseKeyFlag = Global_Node_count + 1;
+			else{																//	Release RequestKeyFlag
+				ResponseKeyFlag = Global_Node_id;
+				RequestKeyFlag = 0;
+			}
+		}
+	}
+	else{																		//	Local node is not Master, try to request or release by communication
+		while(1){
+			if(DisableEnableFlag == 0){
+				uint8_t bool_send_flag = 0;
+				uint32_t tickcount = xTaskGetTickCount();
+				if(tickcount_hi_bound > tickcount_lo_bound){
+					if((tickcount>tickcount_hi_bound) || (tickcount<tickcount_lo_bound)){
+						bool_send_flag = 1;
+					}
+				}
+				else{
+					if((tickcount>tickcount_hi_bound) && (tickcount<tickcount_lo_bound)){
+						bool_send_flag = 1;
+					}
+				}
+				if(bool_send_flag){
+					printf("DistributedNodeRequestKey to Master\r\n");
+					DistributedNodeRequestKey();								//	Request by communication
+				}
+			}
+			else{
+				printf("DistributedNodeReleaseKey to Master\r\n");
+				DistributedNodeReleaseKey();								//	Release by communication
+			}
+			uint32_t base_tick = xTaskGetTickCount();
+			uint32_t timeout_tick = base_tick + timeout_tick_count;
+			while(ResponseKeyFlag == 0){
+				uint32_t now_tick = xTaskGetTickCount();
+				if(timeout_tick > base_tick){
+					if((now_tick > timeout_tick) || (now_tick < base_tick))
+						break;
+				}
+				else{
+					if((now_tick > timeout_tick) && (now_tick < base_tick))
+						break;
+				}
+			}
+			if(ResponseKeyFlag > 0){										//	ResponseKeyFlag got response
+				break;
+			}
+			else{
+				if(DisableEnableFlag == 0)
+					printf("Timeout in DistributedNodeRequestKey\r\n");
+				else
+					printf("Timeout in DistributedNodeReleaseKey\r\n");
+			}
+		}
+	}
+	if(ResponseKeyFlag > Global_Node_count){									//	RequestKeyFlag is occupy, clear ResponseKeyFlag
+		if(DisableEnableFlag == 0)
+			printf("Not Request the Key\r\n");
+		else
+			printf("Not Release the Key\r\n");
+		ResponseKeyFlag = 0;
+		return 0;																//	Not Get the Key
+	}
+	else{																		//	occupy RequestKeyFlag, clear ResponseKeyFlag
+		ResponseKeyFlag = 0;
+	}
+	for(uint32_t i=1;i<Global_Node_count;i++){									//	Disable/Enable all node
+		if((i != Global_Node_Master) && (i != Global_Node_id)){
+			while(1){
+				uint8_t bool_send_flag = 0;
+				uint32_t tickcount = xTaskGetTickCount();
+				if(tickcount_hi_bound > tickcount_lo_bound){
+					if((tickcount>tickcount_hi_bound) || (tickcount<tickcount_lo_bound)){
+						bool_send_flag = 1;
+					}
+				}
+				else{
+					if((tickcount>tickcount_hi_bound) && (tickcount<tickcount_lo_bound)){
+						bool_send_flag = 1;
+					}
+				}
+				if(bool_send_flag){
+					if(DisableEnableFlag == 0){
+						printf("DistributedNodeDisablePublish to Node: 0x%lX\r\n", i);
+						DistributedNodeDisablePublish(i);
+					}
+					else{
+						printf("DistributedNodeEnablePublish to Node: 0x%lX\r\n", i);
+						DistributedNodeEnablePublish(i);
+					}
+					uint32_t base_tick = xTaskGetTickCount();
+					uint32_t timeout_tick = base_tick + timeout_tick_count;
+					while(PublishResponseFlag == 0){
+						uint32_t now_tick = xTaskGetTickCount();
+						if(timeout_tick > base_tick){
+							if((now_tick > timeout_tick) || (now_tick < base_tick))
+								break;
+						}
+						else{
+							if((now_tick > timeout_tick) && (now_tick < base_tick))
+								break;
+						}
+					}
+					if(PublishResponseFlag == i){								//	Got ResponsePublish
+						if(DisableEnableFlag == 0)
+							printf("Success disable, Node id: 0x%lX\r\n", i);
+						else
+							printf("Success enable, Node id: 0x%lX\r\n", i);
+						break;
+					}
+					else{
+						if(DisableEnableFlag == 0)
+							printf("Timeout in DistributedNodeDisablePublish, Node id: 0x%lX\r\n", i);
+						else
+							printf("Timeout in DistributedNodeEnablePublish, Node id: 0x%lX\r\n", i);
+						//	Should publish Invalid Node
+						//	??????
+					}
+				}
+			}
+		}
+	}
+	return	1;
 }
 
 void UpdateLocalFreeBlock(){
