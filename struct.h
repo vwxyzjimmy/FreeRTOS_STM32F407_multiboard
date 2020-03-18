@@ -79,8 +79,8 @@ typedef struct {
 
 #define ETH_TXBUFNB   2
 #define ETH_RXBUFNB   2
-#define ETH_TX_BUF_SIZE 3048
-#define ETH_RX_BUF_SIZE 3048
+#define ETH_TX_BUF_SIZE 1524
+#define ETH_RX_BUF_SIZE 1524
 ETH_DMADESCTypeDef  DMARxDscrTab[ETH_RXBUFNB] __attribute__((aligned (4)));/* Ethernet Rx MA Descriptor */
 ETH_DMADESCTypeDef  DMATxDscrTab[ETH_TXBUFNB] __attribute__((aligned (4)));/* Ethernet Tx DMA Descriptor */
 uint8_t Rx_Buff[ETH_RXBUFNB][ETH_RX_BUF_SIZE] __attribute__((aligned (4))); /* Ethernet Receive Buffer */
