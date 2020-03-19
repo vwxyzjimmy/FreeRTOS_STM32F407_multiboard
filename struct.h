@@ -106,9 +106,9 @@ volatile ETH_DMA_Rx_Frame_infos *DMA_RX_FRAME_infos;
 #define DistributedNodeInvalid_MSG 					0x07
 #define DistributedNodeSendFreespace_MSG 			0x08
 #define DistributedNodeSendSubtask_MSG 				0x09
-#define DistributedNodeSendSubtaskRemain_MSG		0x0a
+#define DistributedNodeSendRemainSubtask_MSG		0x0a
 #define DistributedNodeResponseSubtask_MSG 			0x0b
-#define DistributedNodeResponseSubtaskRemain_MSG	0x0c
+#define DistributedNodeResponseRemainSubtask_MSG	0x0c
 #define DistributedNodeDisablePublish_MSG 			0x0d
 #define DistributedNodeEnablePublish_MSG 			0x0e
 #define DistributedNodeResponsePublish_MSG			0x0f
@@ -119,7 +119,10 @@ volatile ETH_DMA_Rx_Frame_infos *DMA_RX_FRAME_infos;
 #define DistributedNodeResponseSubtaskFinish_MSG 	0x14
 #define DistributedNodeRequestResult_MSG 			0x15
 #define DistributedNodeResponseResult_MSG 			0x16
-#define DistributedNodeRemoveTask_MSG 				0x17
+#define DistributedNodeResponseRemainResult_MSG 	0x17
+#define DistributedNodeConfirmResult_MSG 			0x18
+#define DistributedNodeConfirmRemainResult_MSG 		0x19
+#define DistributedNodeRemoveTask_MSG 				0x1a
 
 #define Request 0x00
 #define Release 0x01

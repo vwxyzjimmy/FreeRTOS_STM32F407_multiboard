@@ -56,11 +56,11 @@ uint8_t DistributedNodeCheck(uint32_t Target_Node_id, uint32_t Needsize);
 void DistributedNodeCheckback(uint32_t Target_Node_id, uint8_t checkback_flag);
 void DistributedNodeBackupMaster(uint32_t Target_Node_id);
 void DistributedNodeInvalid(uint32_t Target_Node_id);
-uint32_t DistributedNodeSendFreespace(uint32_t Target_Node_id, uint32_t Node_id);
+void DistributedNodeSendFreespace(uint32_t Target_Node_id, uint32_t Node_id);
 void DistributedNodeSendSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size);
-void DistributedNodeSendSubtaskRemain(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size, uint32_t Remain_th);
+void DistributedNodeSendRemainSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size, uint32_t Remain_th);
 void DistributedNodeResponseSubtask(uint32_t Target_Node_id);
-void DistributedNodeResponseSubtaskRemain(uint32_t Target_Node_id, uint32_t Remain_th);
+void DistributedNodeResponseRemainSubtask(uint32_t Target_Node_id, uint32_t Remain_th);
 void DistributedNodeDisablePublish(uint32_t Target_Node_id);
 void DistributedNodeEnablePublish(uint32_t Target_Node_id);
 void DistributedNodeResponsePublish(uint32_t Target_Node_id);
@@ -125,6 +125,8 @@ uint32_t RequestResultFlag = 0;
 uint32_t DispatchSuccessFlag = 0;
 uint32_t RemainThFlag = 0;
 uint32_t SubtaskFinishFlag = 0;
+uint32_t ResponseResultFlag = 0;
+uint32_t ConfirmResultFlag = 0;
 extern uint8_t BlockChangeFlag;
 uint32_t tickcount_lo_bound = 0;
 uint32_t tickcount_hi_bound = 0xFFFFFFFF;
@@ -208,7 +210,6 @@ void Distributed_Local_Subtask_Done(Distributed_TaskHandle_List_t* s, uint32_t* 
 	printf("\r\n	Result data, Subtask id: 0x%lX, Result_Data_size: 0x%lX\r\n", tmp_NewDTaskControlBlock->DSubTask_id, Result_Data_size);
 	for(uint32_t i=0;i<Result_Data_size;i++){
 		*(tmp_NewDTaskControlBlock->Data_addr+i) = *(Result_Data_addr+i);
-		//printf("0x%lX, 0x%lX\r\n", (uint32_t)(tmp_NewDTaskControlBlock->Data_addr+i), *(tmp_NewDTaskControlBlock->Data_addr+i));
 	}
 	tmp_NewDTaskControlBlock->Finish_Flag = 1;
 	Distributed_Insert_Finish_Node(tmp_NewDTaskControlBlock);																		//	Inser to Fiish DTCB list
@@ -704,7 +705,7 @@ Distributed_TaskHandle_List_t* Distributed_Dispatch_Task(void* data_info, uint32
 
 				uint32_t* package_start_addr = (uint32_t*)((uint8_t*)Distributed_Send_Addr + 13);
 				uint32_t* package_stop_addr;
-
+				printf("Distributed_Send_Size: 0x%lX, Data_size_split: 0x%lX\r\n", Distributed_Send_Size, Data_size_split);
 				uint32_t Remain_Send_Size = Distributed_Send_Size;
 				uint32_t Send_Size = 0;
 				uint8_t* Send_Addr = Distributed_Send_Addr;
@@ -728,12 +729,8 @@ Distributed_TaskHandle_List_t* Distributed_Dispatch_Task(void* data_info, uint32
 								DistributedNodeSendSubtask(Distributed_dispatch_node[split_num_th], Send_Addr, Send_Size);	//	Dispatch by ethernet
 							}
 							else{
-								DistributedNodeSendSubtaskRemain(Distributed_dispatch_node[split_num_th], Send_Addr, Send_Size, Remain_th);	//	Dispatch by ethernet
+								DistributedNodeSendRemainSubtask(Distributed_dispatch_node[split_num_th], Send_Addr, Send_Size, Remain_th);	//	Dispatch by ethernet
 							}
-							/*
-							for(uint32_t i =0;i<Send_Size;i++)
-								printf("0x%lX, 0x%lX\r\n", (uint32_t)(Send_Addr+i), (uint32_t)*(Send_Addr+i));
-							*/
 							package_stop_addr = (uint32_t*)((uint8_t*)Send_Addr + Send_Size -4);
 							uint32_t base_tick = xTaskGetTickCount();
 							uint32_t timeout_tick = base_tick + 4*timeout_tick_count;
@@ -1560,6 +1557,88 @@ uint8_t DP83848Send(uint8_t* data, uint16_t length){
 	return 1;
 }
 
+uint32_t ETH_CheckFrameReceived(void){
+  /* check if last segment */
+  if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&								// ETH_DMARxDesc_OWN	RESET
+  	((DMARxDescToGet->Status & 0x00000100) != (uint32_t)0)){								// ETH_DMARxDesc_LS		RESET
+    DMA_RX_FRAME_infos->Seg_Count++;
+    if (DMA_RX_FRAME_infos->Seg_Count == 1){
+      DMA_RX_FRAME_infos->FS_Rx_Desc = DMARxDescToGet;
+    }
+    DMA_RX_FRAME_infos->LS_Rx_Desc = DMARxDescToGet;
+    return 1;
+  }
+  /* check if first segment */
+  else if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&						// ETH_DMARxDesc_OWN RESET
+          ((DMARxDescToGet->Status & 0x00000200) != (uint32_t)0)&&						// ETH_DMARxDesc_FS  RESET
+            ((DMARxDescToGet->Status & 0x00000100) == (uint32_t)0)){					// ETH_DMARxDesc_LS	 RESET
+    DMA_RX_FRAME_infos->FS_Rx_Desc = DMARxDescToGet;
+    DMA_RX_FRAME_infos->LS_Rx_Desc = NULL;
+    DMA_RX_FRAME_infos->Seg_Count = 1;
+    DMARxDescToGet = (ETH_DMADESCTypeDef*) (DMARxDescToGet->Buffer2NextDescAddr);
+  }
+  /* check if intermediate segment */
+  else if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&						// ETH_DMARxDesc_OWN RESET
+          ((DMARxDescToGet->Status & 0x00000200) == (uint32_t)0)&&						// ETH_DMARxDesc_FS  RESET
+            ((DMARxDescToGet->Status & 0x00000100) == (uint32_t)0)){					// ETH_DMARxDesc_LS 	 RESET
+    (DMA_RX_FRAME_infos->Seg_Count) ++;
+    DMARxDescToGet = (ETH_DMADESCTypeDef*) (DMARxDescToGet->Buffer2NextDescAddr);
+  }
+  return 0;
+}
+
+FrameTypeDef ETH_Get_Received_Frame(void){
+  uint32_t framelength = 0;
+  FrameTypeDef frame = {0,0,0};
+
+  /* Get the Frame Length of the received packet: substruct 4 bytes of the CRC */
+  framelength = ((DMARxDescToGet->Status & 0x3FFF0000) >> 16) - 4;	// ETH_DMARxDesc_FL ETH_DMARxDesc_FrameLengthShift
+  frame.length = framelength;
+  /* Get the address of the first frame descriptor and the buffer start address */
+  frame.descriptor = DMA_RX_FRAME_infos->FS_Rx_Desc;
+  frame.buffer =(DMA_RX_FRAME_infos->FS_Rx_Desc)->Buffer1Addr;
+
+  /* Update the ETHERNET DMA global Rx descriptor with next Rx descriptor */
+  /* Chained Mode */
+  /* Selects the next DMA Rx descriptor list for next buffer to read */
+  DMARxDescToGet = (ETH_DMADESCTypeDef*) (DMARxDescToGet->Buffer2NextDescAddr);
+
+  /* Return Frame */
+  return (frame);
+}
+
+FrameTypeDef Pkt_Handle(void){
+	volatile ETH_DMADESCTypeDef *DMARxNextDesc;
+    FrameTypeDef frame;
+    /* get received frame */
+    frame = ETH_Get_Received_Frame();
+    /* Obtain the size of the packet and put it into the "len" variable. */
+    //uint32_t receiveLen = (uint32_t)frame.length;
+    //uint8_t *receiveBuffer = (uint8_t*)frame.buffer;
+    /* Check if frame with multiple DMA buffer segments */
+    if (DMA_RX_FRAME_infos->Seg_Count > 1) {
+        DMARxNextDesc = DMA_RX_FRAME_infos->FS_Rx_Desc;
+    }
+	else {
+        DMARxNextDesc = frame.descriptor;
+    }
+    /* Set Own bit in Rx descriptors: gives the buffers back to DMA */
+    for (uint32_t i = 0; i < DMA_RX_FRAME_infos->Seg_Count; i++) {
+        DMARxNextDesc->Status = 0x80000000;		//	ETH_DMARxDesc_OWN
+        DMARxNextDesc = (ETH_DMADESCTypeDef *)(DMARxNextDesc->Buffer2NextDescAddr);
+    }
+    /* Clear Segment_Count */
+    DMA_RX_FRAME_infos->Seg_Count = 0;
+    /* When Rx Buffer unavailable flag is set: clear it and resume reception */
+	if (READ_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, RBUS) != (uint32_t)0){
+        /* Clear RBUS ETHERNET DMA flag */
+		SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, RBUS);
+        /* Resume DMA reception */
+        REG(ETHERNET_MAC_BASE + ETH_DMATPDR_OFFSET) = 0;
+    }
+	return frame;
+}
+
 void eth_handler(void){
 	/* Handles all the received frames */
 	/* check if any packet received */
@@ -1677,21 +1756,21 @@ void eth_handler(void){
 			//DistributedNodeResponseSubtask(Sour);								//	Need to be send after allocate the data
 			printf("Get DistributedNodeSendSubtask\r\n");
 		}
-		else if (Msg_event == DistributedNodeSendSubtaskRemain_MSG){
+		else if (Msg_event == DistributedNodeSendRemainSubtask_MSG){
 			ReceiveSubtaskFlag = Sour;
 			RemainThFlag = *((uint32_t*)((uint8_t*)frame.buffer+13));
-			//DistributedNodeResponseSubtaskRemain(Sour, RemainThFlag);								//	Need to be send after allocate the data
-			printf("Get DistributedNodeSendSubtaskRemain\r\n");
+			//DistributedNodeResponseRemainSubtask(Sour, RemainThFlag);								//	Need to be send after allocate the data
+			printf("Get DistributedNodeSendRemainSubtask\r\n");
 		}
 		else if (Msg_event == DistributedNodeResponseSubtask_MSG){
 			DispatchSuccessFlag = Sour;
 			RemainThFlag = 0;
 			printf("Get DistributedNodeResponseSubtask\r\n");
 		}
-		else if (Msg_event == DistributedNodeResponseSubtaskRemain_MSG){
+		else if (Msg_event == DistributedNodeResponseRemainSubtask_MSG){
 			DispatchSuccessFlag = Sour;
 			RemainThFlag = *((uint32_t*)((uint8_t*)frame.buffer+13));
-			printf("Get DistributedNodeResponseSubtaskRemain\r\n");
+			printf("Get DistributedNodeResponseRemainSubtask\r\n");
 		}
 		else if (Msg_event == DistributedNodeDisablePublish_MSG){
 			PublishFlag = 0;
@@ -1779,7 +1858,7 @@ void eth_handler(void){
 					}
 					if(tmp_count == 0){
 						TaskDoneFlag = task_id;
-						printf("2 DTask_id: 0x%lX done, DSubTask_id: 0x%lX  is the last===============================================\r\n", task_id, subtask_id);
+						printf("DTask_id: 0x%lX done, DSubTask_id: 0x%lX  is the last===============================================\r\n", task_id, subtask_id);
 					}
 				}
 			}
@@ -1799,7 +1878,8 @@ void eth_handler(void){
 			while((Lastnode->Source_Processor_id != Sour) && (Lastnode->DTask_id != task_id) && (Lastnode->DSubTask_id != subtask_id) && (Lastnode != NULL))
 				Lastnode = Lastnode->Next_TaskHandle_List;
 			if(Lastnode != NULL){
-				DistributedNodeResponseResult(Lastnode->Source_Processor_id, ((uint8_t*)Lastnode->Data_addr-13), (13+Lastnode->Data_number*sizeof(uint32_t)));
+				ResponseResultFlag = (uint32_t)Lastnode;
+				//DistributedNodeResponseResult(Lastnode->Source_Processor_id, ((uint8_t*)Lastnode->Data_addr-13), (13+Lastnode->Data_number*sizeof(uint32_t)));
 			}
 			printf("Get DistributedNodeRequestResult\r\n");
 		}
@@ -1849,88 +1929,6 @@ void eth_handler(void){
 	/* Clear the Eth DMA Rx IT pending bits */
 	SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, RS);
 	SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, NIS);
-}
-
-uint32_t ETH_CheckFrameReceived(void){
-  /* check if last segment */
-  if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&								// ETH_DMARxDesc_OWN	RESET
-  	((DMARxDescToGet->Status & 0x00000100) != (uint32_t)0)){								// ETH_DMARxDesc_LS		RESET
-    DMA_RX_FRAME_infos->Seg_Count++;
-    if (DMA_RX_FRAME_infos->Seg_Count == 1){
-      DMA_RX_FRAME_infos->FS_Rx_Desc = DMARxDescToGet;
-    }
-    DMA_RX_FRAME_infos->LS_Rx_Desc = DMARxDescToGet;
-    return 1;
-  }
-  /* check if first segment */
-  else if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&						// ETH_DMARxDesc_OWN RESET
-          ((DMARxDescToGet->Status & 0x00000200) != (uint32_t)0)&&						// ETH_DMARxDesc_FS  RESET
-            ((DMARxDescToGet->Status & 0x00000100) == (uint32_t)0)){					// ETH_DMARxDesc_LS	 RESET
-    DMA_RX_FRAME_infos->FS_Rx_Desc = DMARxDescToGet;
-    DMA_RX_FRAME_infos->LS_Rx_Desc = NULL;
-    DMA_RX_FRAME_infos->Seg_Count = 1;
-    DMARxDescToGet = (ETH_DMADESCTypeDef*) (DMARxDescToGet->Buffer2NextDescAddr);
-  }
-  /* check if intermediate segment */
-  else if(((DMARxDescToGet->Status & 0x80000000) == (uint32_t)0) &&						// ETH_DMARxDesc_OWN RESET
-          ((DMARxDescToGet->Status & 0x00000200) == (uint32_t)0)&&						// ETH_DMARxDesc_FS  RESET
-            ((DMARxDescToGet->Status & 0x00000100) == (uint32_t)0)){					// ETH_DMARxDesc_LS 	 RESET
-    (DMA_RX_FRAME_infos->Seg_Count) ++;
-    DMARxDescToGet = (ETH_DMADESCTypeDef*) (DMARxDescToGet->Buffer2NextDescAddr);
-  }
-  return 0;
-}
-
-FrameTypeDef ETH_Get_Received_Frame(void){
-  uint32_t framelength = 0;
-  FrameTypeDef frame = {0,0,0};
-
-  /* Get the Frame Length of the received packet: substruct 4 bytes of the CRC */
-  framelength = ((DMARxDescToGet->Status & 0x3FFF0000) >> 16) - 4;	// ETH_DMARxDesc_FL ETH_DMARxDesc_FrameLengthShift
-  frame.length = framelength;
-  /* Get the address of the first frame descriptor and the buffer start address */
-  frame.descriptor = DMA_RX_FRAME_infos->FS_Rx_Desc;
-  frame.buffer =(DMA_RX_FRAME_infos->FS_Rx_Desc)->Buffer1Addr;
-
-  /* Update the ETHERNET DMA global Rx descriptor with next Rx descriptor */
-  /* Chained Mode */
-  /* Selects the next DMA Rx descriptor list for next buffer to read */
-  DMARxDescToGet = (ETH_DMADESCTypeDef*) (DMARxDescToGet->Buffer2NextDescAddr);
-
-  /* Return Frame */
-  return (frame);
-}
-
-FrameTypeDef Pkt_Handle(void){
-	volatile ETH_DMADESCTypeDef *DMARxNextDesc;
-    FrameTypeDef frame;
-    /* get received frame */
-    frame = ETH_Get_Received_Frame();
-    /* Obtain the size of the packet and put it into the "len" variable. */
-    //uint32_t receiveLen = (uint32_t)frame.length;
-    //uint8_t *receiveBuffer = (uint8_t*)frame.buffer;
-    /* Check if frame with multiple DMA buffer segments */
-    if (DMA_RX_FRAME_infos->Seg_Count > 1) {
-        DMARxNextDesc = DMA_RX_FRAME_infos->FS_Rx_Desc;
-    }
-	else {
-        DMARxNextDesc = frame.descriptor;
-    }
-    /* Set Own bit in Rx descriptors: gives the buffers back to DMA */
-    for (uint32_t i = 0; i < DMA_RX_FRAME_infos->Seg_Count; i++) {
-        DMARxNextDesc->Status = 0x80000000;		//	ETH_DMARxDesc_OWN
-        DMARxNextDesc = (ETH_DMADESCTypeDef *)(DMARxNextDesc->Buffer2NextDescAddr);
-    }
-    /* Clear Segment_Count */
-    DMA_RX_FRAME_infos->Seg_Count = 0;
-    /* When Rx Buffer unavailable flag is set: clear it and resume reception */
-	if (READ_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, RBUS) != (uint32_t)0){
-        /* Clear RBUS ETHERNET DMA flag */
-		SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, RBUS);
-        /* Resume DMA reception */
-        REG(ETHERNET_MAC_BASE + ETH_DMATPDR_OFFSET) = 0;
-    }
-	return frame;
 }
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 void Distributed_Manager_Task(){
@@ -2177,7 +2175,7 @@ void Distributed_Manager_Task(){
 										if(Remain_th == 0)
 											DistributedNodeResponseSubtask(ReceiveSubtaskFlag);
 										else
-											DistributedNodeResponseSubtaskRemain(ReceiveSubtaskFlag, Remain_th);
+											DistributedNodeResponseRemainSubtask(ReceiveSubtaskFlag, Remain_th);
 										ReceiveSubtaskFlag = 0;
 										uint32_t base_tick = xTaskGetTickCount();
 										uint32_t timeout_tick = base_tick + 4*timeout_tick_count;
@@ -2195,21 +2193,21 @@ void Distributed_Manager_Task(){
 										portDISABLE_INTERRUPTS();
 										if((ReceiveSubtaskFlag == NewDTaskControlBlock->Source_Processor_id) && (RemainThFlag == (Remain_th+1))){
 											Remain_th++;
-											printf("Receive DistributedNodeSendSubtaskRemain, Remain_th: 0x%lX\r\n", RemainThFlag);
+											printf("Receive DistributedNodeSendRemainSubtask, Remain_th: 0x%lX\r\n", RemainThFlag);
 											break;
 										}
 										else{
 											if(Remain_th == 0)
 												printf("Timeout in DistributedNodeResponseSubtask, Remain_th: 0x%lX\r\n", Remain_th);
 											else
-												printf("Timeout in DistributedNodeResponseSubtaskRemain, Remain_th: 0x%lX\r\n", Remain_th);
+												printf("Timeout in DistributedNodeResponseRemainSubtask, Remain_th: 0x%lX\r\n", Remain_th);
 										}
 									}
 
 									frame_addr = (uint8_t*)((DMA_RX_FRAME_infos->FS_Rx_Desc)->Buffer1Addr);
-									uint32_t DistributedNodeSendSubtaskRemain_Header_Size = 17;
-									uint8_t* tmp_Data_addr = ((uint8_t*)frame_addr+DistributedNodeSendSubtaskRemain_Header_Size);
-									Recv_Data_Number = (ETH_FRAM_SIZE - DistributedNodeSendSubtaskRemain_Header_Size);
+									uint32_t DistributedNodeSendRemainSubtask_Header_Size = 17;
+									uint8_t* tmp_Data_addr = ((uint8_t*)frame_addr+DistributedNodeSendRemainSubtask_Header_Size);
+									Recv_Data_Number = (ETH_FRAM_SIZE - DistributedNodeSendRemainSubtask_Header_Size);
 									if(Recv_Data_Number > Remaind_Data_number)
 										Recv_Data_Number = Remaind_Data_number;
 									for(uint32_t i=0;i<Recv_Data_Number;i++){
@@ -2225,7 +2223,7 @@ void Distributed_Manager_Task(){
 								if(Remain_th == 0)
 									DistributedNodeResponseSubtask(ReceiveSubtaskFlag);
 								else
-									DistributedNodeResponseSubtaskRemain(ReceiveSubtaskFlag, Remain_th);
+									DistributedNodeResponseRemainSubtask(ReceiveSubtaskFlag, Remain_th);
 							}
 							else{
 								for(uint32_t i=0;i<Distributed_Recv_Size;i++)
@@ -2337,7 +2335,46 @@ void Distributed_Manager_Task(){
 						}
 						portENABLE_INTERRUPTS();
 					}
-
+					/*
+					else if(ResponseResultFlag != 0){
+						portDISABLE_INTERRUPTS();
+						Distributed_TaskHandle_List_t* Resultnode;
+						uint32_t Send_Total_Size = (13+Resultnode->Data_number*sizeof(uint32_t));
+						uint32_t Send_Remain_Size = Send_Total_Size;
+						uint32_t Send_Size = Send_Total_Size;
+						printf("ResponseResult, Source_Processor_id: 0x%lX, DTask_id: 0x%lX, DSubTask_id: 0x%lX, Send_Total_Size: 0x%lX\r\n", Resultnode->Source_Processor_id, Resultnode->DTask_id, Resultnode->DSubTask_id, Send_Total_Size);
+						if(Send_Total_Size > ETH_FRAM_SIZE){
+							Send_Size = ETH_FRAM_SIZE;
+						}
+						while(Send_Remain_Size > 0){
+							portENABLE_INTERRUPTS();
+							printf("DistributedNodeResponseResult\r\n");
+							DistributedNodeResponseResult(Resultnode->Source_Processor_id, ((uint8_t*)Resultnode->Data_addr-13),Send_Size);
+							uint32_t base_tick = xTaskGetTickCount();
+							uint32_t timeout_tick = base_tick + timeout_tick_count;
+							while(ConfirmResultFlag == 0){
+								uint32_t now_tick = xTaskGetTickCount();
+								if(timeout_tick > base_tick){
+									if((now_tick > timeout_tick) || (now_tick < base_tick))
+										break;
+								}
+								else{
+									if((now_tick > timeout_tick) && (now_tick < base_tick))
+										break;
+								}
+							}
+							portDISABLE_INTERRUPTS();
+							if(ConfirmResultFlag == Resultnode->DSubTask_id){
+								printf("DistributedNodeResponseResult success, DSubTask_id: 0x%lX\r\n", ConfirmResultFlag);
+								ConfirmResultFlag = 0;
+								break;
+							}
+							else{
+								printf("Timeout in DistributedNodeResponseResult\r\n");
+							}
+						}
+					}
+					*/
 					else if(unmerge_finish_distributed_task > 0){
 						printf("unmerge_finish_distributed_task\r\n");
 						portDISABLE_INTERRUPTS();
@@ -2377,7 +2414,7 @@ void Distributed_Manager_Task(){
 								printf("DistributedNodeSubtaskFinish, before send, SubtaskFinishFlag: 0x%lX\r\n", SubtaskFinishFlag);
 								DistributedNodeSubtaskFinish(tmp_NewDTaskControlBlock->Source_Processor_id, tmp_NewDTaskControlBlock->DTask_id, tmp_NewDTaskControlBlock->DSubTask_id, tmp_NewDTaskControlBlock->Data_number);
 								uint32_t base_tick = xTaskGetTickCount();
-								uint32_t timeout_tick = base_tick + 4*timeout_tick_count;
+								uint32_t timeout_tick = base_tick + timeout_tick_count;
 								while(SubtaskFinishFlag == 0){
 									uint32_t now_tick = xTaskGetTickCount();
 									if(timeout_tick > base_tick){
@@ -2588,12 +2625,12 @@ void UserDefineTask(){
 				printf("distributed task test start\r\n");
 				for(uint32_t i=0;i<0xfff;i++){
 					*(((uint32_t*)0x10000000)+i) = i;
-					*(((uint32_t*)0x10001000)+i) = 2*i;
-					*(((uint32_t*)0x10002000)+i) = 3*i;
+					*(((uint32_t*)0x10001000)+i) = i;
+					*(((uint32_t*)0x10002000)+i) = i;
 				}
-				Distributed_Data_t* data_info = Distributed_Set_Traget_Data((uint32_t*)0x10000000, 0x800, 1);
-				//Distributed_Add_Target_Data(data_info, (uint32_t*)0x10000100, 0x100, 2);
-				//Distributed_Add_Target_Data(data_info, (uint32_t*)0x10000200, 0x100, 1);
+				Distributed_Data_t* data_info = Distributed_Set_Traget_Data((uint32_t*)0x10000000, 0x100, 1);
+				Distributed_Add_Target_Data(data_info, (uint32_t*)0x10001000, 0x400, 1);
+				Distributed_Add_Target_Data(data_info, (uint32_t*)0x10002000, 0x600, 1);
 				Distributed_Create_Task(Distributed_task, data_info, 1000);
 				printf("Return from Distributed_Create_Task\r\n");
 			}
@@ -2762,7 +2799,7 @@ void DistributedNodeInvalid(uint32_t Target_Node_id){
 	printf("Broadcast DistributedNodeInvalid Node 0x%lX\r\n", Target_Node_id);
 }
 
-uint32_t DistributedNodeSendFreespace(uint32_t Target_Node_id, uint32_t Node_id){
+void DistributedNodeSendFreespace(uint32_t Target_Node_id, uint32_t Node_id){
 	if(Target_Node_id == 0)
 		Target_Node_id = 0xFFFFFFFF;
 	UpdateLocalFreeBlock();
@@ -2776,7 +2813,7 @@ uint32_t DistributedNodeSendFreespace(uint32_t Target_Node_id, uint32_t Node_id)
 		}
 		if(tmp_block == NULL){
 			printf("DistributedNodeSendFreespace Fail, Without Node_id: 0x%lX\r\n", Node_id);
-			return 0;
+			return;
 		}
 		else{
 			node_number++;
@@ -2847,7 +2884,7 @@ uint32_t DistributedNodeSendFreespace(uint32_t Target_Node_id, uint32_t Node_id)
 	//	printf("Source End, source_node_count: 0x%lX----------------------------------\r\n", source_node_count);
 	DistributedSendMsg(MyMacAddr, mydata, Send_size);
 	BlockChangeFlag = 0;
-	return 0;
+	return;
 }
 
 void DistributedNodeSendSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size){
@@ -2864,7 +2901,7 @@ void DistributedNodeSendSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, 
 	printf("Broadcast DistributedNodeSubtask Node 0x%lX\r\n", Target_Node_id);
 }
 
-void DistributedNodeSendSubtaskRemain(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size, uint32_t Remain_th){
+void DistributedNodeSendRemainSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size, uint32_t Remain_th){
 	printf("Subtask_size: 0x%lX\r\n", Subtask_size);
 	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
 	uint8_t* Send_Addr = Subtask_addr - 17;
@@ -2876,10 +2913,10 @@ void DistributedNodeSendSubtaskRemain(uint32_t Target_Node_id, uint8_t* Subtask_
 		*((uint8_t*)Send_Addr+8+i) = *((uint8_t*)&Global_Node_id+i);
 		*((uint8_t*)Send_Addr+13+i) = *((uint8_t*)&Remain_th+i);
 	}
-	*((uint8_t*)Send_Addr+12) = DistributedNodeSendSubtaskRemain_MSG;
+	*((uint8_t*)Send_Addr+12) = DistributedNodeSendRemainSubtask_MSG;
 
 	DistributedSendMsg(MyMacAddr, Send_Addr, Subtask_size);
-	printf("Broadcast DistributedNodeSendSubtaskRemain Node 0x%lX\r\n", Target_Node_id);
+	printf("Broadcast DistributedNodeSendRemainSubtask Node 0x%lX\r\n", Target_Node_id);
 }
 
 
@@ -2895,9 +2932,9 @@ void DistributedNodeResponseSubtask(uint32_t Target_Node_id){
 	printf("Broadcast DistributedNodeResponseSubtask Node\r\n");
 }
 
-void DistributedNodeResponseSubtaskRemain(uint32_t Target_Node_id, uint32_t Remain_th){
+void DistributedNodeResponseRemainSubtask(uint32_t Target_Node_id, uint32_t Remain_th){
 	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[17] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, DistributedNodeResponseSubtaskRemain_MSG, 0x00, 0x00, 0x00, 0x00};
+	uint8_t mydata[17] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, DistributedNodeResponseRemainSubtask_MSG, 0x00, 0x00, 0x00, 0x00};
 	for(uint8_t i=0;i<4;i++){
 		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
 		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
@@ -2905,7 +2942,7 @@ void DistributedNodeResponseSubtaskRemain(uint32_t Target_Node_id, uint32_t Rema
 		mydata[i+13] = *((uint8_t*)&Remain_th+i);
 	}
 	DistributedSendMsg(MyMacAddr, mydata, 17);
-	printf("Broadcast DistributedNodeResponseSubtaskRemain Node\r\n");
+	printf("Broadcast DistributedNodeResponseRemainSubtask Node\r\n");
 }
 
 void DistributedNodeDisablePublish(uint32_t Target_Node_id){
