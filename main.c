@@ -725,16 +725,16 @@ Distributed_TaskHandle_List_t* Distributed_Dispatch_Task(void* data_info, uint32
 						while(1){
 							portENABLE_INTERRUPTS();
 							if(Send_Addr == Distributed_Send_Addr){
-								printf("Send to 0x%lX, Send_Size: 0x%lX, Remain_th: 0x%lX, Remain_Send_Size: 0x%lX\r\n", Distributed_dispatch_node[split_num_th], Send_Size, Remain_th, Remain_Send_Size);
 								DistributedNodeSendSubtask(Distributed_dispatch_node[split_num_th], Send_Addr, Send_Size);	//	Dispatch by ethernet
 							}
 							else{
-								printf("Send to 0x%lX, Send_Size: 0x%lX, Remain_th: 0x%lX, Remain_Send_Size: 0x%lX\r\n", Distributed_dispatch_node[split_num_th], Send_Size, Remain_th, Remain_Send_Size);
 								DistributedNodeSendSubtaskRemain(Distributed_dispatch_node[split_num_th], Send_Addr, Send_Size, Remain_th);	//	Dispatch by ethernet
 							}
+							/*
 							for(uint32_t i =0;i<Send_Size;i++)
 								printf("0x%lX, 0x%lX\r\n", (uint32_t)(Send_Addr+i), (uint32_t)*(Send_Addr+i));
-							package_stop_addr = (uint32_t*)((uint8_t*)Send_Addr + Send_Size) - 1;
+							*/
+							package_stop_addr = (uint32_t*)((uint8_t*)Send_Addr + Send_Size -4);
 							uint32_t base_tick = xTaskGetTickCount();
 							uint32_t timeout_tick = base_tick + 4*timeout_tick_count;
 							while(DispatchSuccessFlag == 0){
@@ -770,7 +770,7 @@ Distributed_TaskHandle_List_t* Distributed_Dispatch_Task(void* data_info, uint32
 					}
 				}
 				uint32_t package_size = (uint32_t)package_stop_addr - (uint32_t)package_start_addr;
-				printf("\r\n\r\npackage_start_addr: 0x%lX, package_start_addr: 0x%lX, package_size: 0x%lX\r\n0x%lX, 0X%lX\r\n\r\n", (uint32_t)package_start_addr, (uint32_t)package_stop_addr, package_size, *package_start_addr, *package_stop_addr);
+				printf("\r\n\r\npackage_start_addr: 0x%lX, package_stop_addr: 0x%lX, package_size: 0x%lX\r\n0x%lX, 0X%lX\r\n\r\n", (uint32_t)package_start_addr, (uint32_t)package_stop_addr, package_size, *((uint32_t*)package_start_addr), *((uint32_t*)package_stop_addr));
 
 				uint32_t subtask_Distributed_TaskHandle_List_size = sizeof(Distributed_TaskHandle_List_t);							//	Copy Distributed_TaskHandle_List_t part
 				Distributed_TaskHandle_List_t* tmp_NewDTaskControlBlock = (Distributed_TaskHandle_List_t *)pvPortMalloc(subtask_Distributed_TaskHandle_List_size);
@@ -2145,39 +2145,32 @@ void Distributed_Manager_Task(){
 								Data_size_split += Data_size_split_record[i];
 
 							uint32_t Distributed_Recv_Size = 0;
-							uint32_t Except_Data_Size = 0;
 							Distributed_Recv_Size += sizeof(Distributed_TaskHandle_List_t);
 							Distributed_Recv_Size += Data_number*sizeof(uint32_t);
 							Distributed_Recv_Size += Data_number*sizeof(uint32_t);
 							Distributed_Recv_Size += Data_number*sizeof(Distributed_Data_t);
 							Distributed_Recv_Size += sizeof(TaskHandle_t);
 							Distributed_Recv_Size += instruction_size;
-							Except_Data_Size = Distributed_Recv_Size;
 							Distributed_Recv_Size += Data_size_split*sizeof(uint32_t);
 
 							Distributed_TaskHandle_List_t* NewDTaskControlBlock = pvPortMalloc(Distributed_Recv_Size);
-							/*
-							for(uint32_t i=0;i<Distributed_Recv_Size;i++){
-								*((uint8_t*)NewDTaskControlBlock+i) = *((uint8_t*)TmpDTaskControlBlock+i);
-							}
-							*/
+
 							uint32_t* package_start_addr = (uint32_t*)NewDTaskControlBlock;
 							uint32_t* package_stop_addr;
 							uint32_t DistributedNodeSendSubtask_Header_Size = 13;
-							uint32_t Recv_Data_Number = (ETH_FRAM_SIZE - DistributedNodeSendSubtask_Header_Size - Except_Data_Size)/sizeof(uint32_t);
-							printf("Recv Data_size_split: 0x%lX\r\n", Data_size_split);
-							if(Data_size_split > Recv_Data_Number){
+							uint32_t Recv_Data_Number = (ETH_FRAM_SIZE - DistributedNodeSendSubtask_Header_Size);
+							if(Distributed_Recv_Size > Recv_Data_Number){
 								printf("Not Recv All Data yet\r\n");
 								//	Need to enable interrupt and send response and get the remain data
 								uint8_t* Data_Dest_ptr = (uint8_t*)NewDTaskControlBlock;
-								uint32_t Remaind_Data_number = Data_size_split;
+								uint32_t Remaind_Data_number = Distributed_Recv_Size;
 								uint32_t Remain_th = 0;
-								for(uint32_t i=0;i<(Except_Data_Size + Recv_Data_Number*sizeof(uint32_t));i++)
-									*((uint8_t*)NewDTaskControlBlock+i) = *((uint8_t*)TmpDTaskControlBlock+i);
-								Data_Dest_ptr += (Except_Data_Size + Recv_Data_Number*sizeof(uint32_t));
-								Remaind_Data_number -= Recv_Data_Number;
-								printf("Recv_Data_Number: 0x%lX, Remaind_Data_number: 0x%lX\r\n", Recv_Data_Number, Remaind_Data_number);
+								for(uint32_t i=0;i<Recv_Data_Number;i++)
+									*((uint8_t*)Data_Dest_ptr+i) = *((uint8_t*)TmpDTaskControlBlock+i);
 
+								Data_Dest_ptr += Recv_Data_Number;
+								Remaind_Data_number -= Recv_Data_Number;
+								printf("Distributed_Recv_Size: 0x%lX, Got Recv_Data_Number: 0x%lX, Remaind_Data_number: 0x%lX\r\n", Distributed_Recv_Size, Recv_Data_Number, Remaind_Data_number);
 								while(Remaind_Data_number > 0){
 									while(1){
 										portENABLE_INTERRUPTS();
@@ -2216,15 +2209,16 @@ void Distributed_Manager_Task(){
 									frame_addr = (uint8_t*)((DMA_RX_FRAME_infos->FS_Rx_Desc)->Buffer1Addr);
 									uint32_t DistributedNodeSendSubtaskRemain_Header_Size = 17;
 									uint8_t* tmp_Data_addr = ((uint8_t*)frame_addr+DistributedNodeSendSubtaskRemain_Header_Size);
-									Recv_Data_Number = (ETH_FRAM_SIZE - DistributedNodeSendSubtaskRemain_Header_Size)/sizeof(uint32_t);
+									Recv_Data_Number = (ETH_FRAM_SIZE - DistributedNodeSendSubtaskRemain_Header_Size);
 									if(Recv_Data_Number > Remaind_Data_number)
 										Recv_Data_Number = Remaind_Data_number;
-									for(uint32_t i=0;i<(Recv_Data_Number*sizeof(uint32_t));i++){
+									for(uint32_t i=0;i<Recv_Data_Number;i++){
 										*(Data_Dest_ptr+i) = *(tmp_Data_addr+i);
-										printf("0x%lX, 0x%X\r\n", (uint32_t)(Data_Dest_ptr+i), (*(Data_Dest_ptr+i)));
+										//printf("0x%lX, 0x%lX\r\n", (uint32_t)(Data_Dest_ptr+i), (uint32_t)(*(Data_Dest_ptr+i)));
 									}
-									Data_Dest_ptr = (uint8_t*)((uint32_t*)Data_Dest_ptr + Recv_Data_Number);
-									package_stop_addr = (uint32_t*)Data_Dest_ptr-1;
+									printf("From 0x%lX: 0x%lX to 0x%lX: 0x%lX, Size: 0x%lX\r\n", (uint32_t)Data_Dest_ptr, (uint32_t)(*Data_Dest_ptr), (uint32_t)(Data_Dest_ptr+Recv_Data_Number-1), (uint32_t)*(Data_Dest_ptr+Recv_Data_Number-1), Recv_Data_Number);
+									Data_Dest_ptr = (uint8_t*)Data_Dest_ptr + Recv_Data_Number;
+									package_stop_addr = (uint32_t*)(Data_Dest_ptr-4);
 									Remaind_Data_number -= Recv_Data_Number;
 									printf("Recv_Data_Number: 0x%lX, Remaind_Data_number: 0x%lX\r\n", Recv_Data_Number, Remaind_Data_number);
 								}
@@ -2239,8 +2233,7 @@ void Distributed_Manager_Task(){
 								DistributedNodeResponseSubtask(ReceiveSubtaskFlag);
 							}
 							uint32_t package_size = (uint32_t)package_stop_addr - (uint32_t)package_start_addr;
-							printf("\r\n\r\npackage_start_addr: 0x%lX, package_start_addr: 0x%lX, package_size: 0x%lX\r\n0x%lX, 0X%lX\r\n\r\n", (uint32_t)package_start_addr, (uint32_t)package_stop_addr, package_size, *package_start_addr, *package_stop_addr);
-
+							printf("\r\n\r\npackage_start_addr: 0x%lX, package_stop_addr: 0x%lX, package_size: 0x%lX\r\n0x%lX, 0X%lX\r\n\r\n", (uint32_t)package_start_addr, (uint32_t)package_stop_addr, package_size, *((uint32_t*)package_start_addr), *((uint32_t*)package_stop_addr));
 
 							Data_size_split_record = (uint32_t*)((uint8_t*)NewDTaskControlBlock + sizeof(Distributed_TaskHandle_List_t));
 							Data_Max_size_split_record = (uint32_t*)((uint8_t*)Data_size_split_record + Data_number*sizeof(uint32_t));
