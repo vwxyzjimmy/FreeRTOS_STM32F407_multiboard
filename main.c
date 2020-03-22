@@ -1393,19 +1393,19 @@ uint8_t init_eth(uint16_t PHYAddress, uint8_t *Addr){
 		(&DMATxDscrTab[i])->Status |= 0x00C00000;	// DMATxDesc_Checksum 0x00C00000
 
 	SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, TE);
-	for(uint32_t i=0;i<0x0000FFFF;i++)
+	for(uint32_t i=0;i<0x00000FFF;i++)
 		;
 	SET_BIT(ETHERNET_MAC_BASE + ETH_MACCR_OFFSET, RE);
-	for(uint32_t i=0;i<0x0000FFFF;i++)
+	for(uint32_t i=0;i<0x00000FFF;i++)
 		;
 	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, FTF);
-	for(uint32_t i=0;i<0x0000FFFF;i++)
+	for(uint32_t i=0;i<0x00000FFF;i++)
 		;
 	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, ST);
-	for(uint32_t i=0;i<0x0000FFFF;i++)
+	for(uint32_t i=0;i<0x00000FFF;i++)
 		;
 	SET_BIT(ETHERNET_MAC_BASE + ETH_DMAOMR_OFFSET, DMAOMR_SR);
-	for(uint32_t i=0;i<0x0000FFFF;i++)
+	for(uint32_t i=0;i<0x00000FFF;i++)
 		;
 	return 1;
 }
