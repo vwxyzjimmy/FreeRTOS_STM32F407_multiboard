@@ -3,7 +3,7 @@ do {                			 									\
 	s->Data_addr = target_addr;										\
 	s->Data_number = target_size;									\
 	__asm volatile ("svc	#0x2	\n");							\
-	Distributed_Local_Subtask_Done(s, target_addr, target_size);					\
+	Distributed_Local_Subtask_Done(s, target_addr, target_size);	\
 } while (0)
 
 typedef struct Distributed_Data{

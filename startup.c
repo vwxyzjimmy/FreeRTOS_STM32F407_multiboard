@@ -6,7 +6,7 @@
 extern int main(void);
 extern uint32_t read_psp();
 uint32_t SystemCoreClock = 168000000;
-uint32_t SystemTICK_RATE_HZ = 10000;								//	168000	//184320
+uint32_t SystemTICK_RATE_HZ = 1000;								//	168000	//184320
 void set_sysclk_pll(void);
 
 void reset_handler(void)
@@ -50,7 +50,6 @@ void reset_handler(void)
 
 void hardfault_handler_c(uint32_t LR, uint32_t MSP)
 {
-
 	uint32_t *stack_frame_ptr;
 	if (LR & 0x4){
 		stack_frame_ptr = (uint32_t *)read_psp();
