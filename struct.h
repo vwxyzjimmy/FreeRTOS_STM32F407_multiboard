@@ -3,7 +3,7 @@ do {                			 									\
 	s->Data_addr = target_addr;										\
 	s->Data_number = target_size;									\
 	__asm volatile ("svc	#0x2	\n");							\
-	Distributed_Local_Subtask_Done(s, target_addr, target_size);	\
+	Distributed_LocalSubtaskDone(s, target_addr, target_size);	\
 } while (0)
 
 typedef struct Distributed_Data{
@@ -33,7 +33,7 @@ typedef struct Distributed_TaskHandle_List {
     uint32_t* Data_size;
 	uint32_t* Data_Max_size;
 	uint32_t Data_number;
-	uint32_t Remaind_Data_number;
+	uint32_t Remain_Data_number;
 	uint32_t Stack_size;
     uint32_t Finish_Flag;
     TaskHandle_t *TaskHandlex;
@@ -46,14 +46,14 @@ typedef struct A_BLOCK_LINK {
 	size_t xBlockSize;
 } BlockLink_t;
 
-#define Distributed_Get_Traget_Data(s)		 														\
+#define Distributed_GetTragetData(s)		 														\
 ({																									\
 	Distributed_Data_t* tmp_array = s->Distributed_Data_List;										\
-	if (s->Remaind_Data_number < s->Data_number){													\
-		for(uint32_t Data_number_i=0;Data_number_i<s->Remaind_Data_number;Data_number_i++){			\
+	if (s->Remain_Data_number < s->Data_number){													\
+		for(uint32_t Data_number_i=0;Data_number_i<s->Remain_Data_number;Data_number_i++){			\
 			tmp_array = tmp_array->Next_Distributed_Data;											\
 		}																							\
-		s->Remaind_Data_number = s->Remaind_Data_number + 1;										\
+		s->Remain_Data_number = s->Remain_Data_number + 1;										\
 	}																								\
 	tmp_array;																						\
 })
@@ -97,31 +97,31 @@ volatile ETH_DMA_Rx_Frame_infos *DMA_RX_FRAME_infos;
 #define 	ETH_MODE_FULLDUPLEX   0x00000800
 #define 	ETH_MODE_HALFDUPLEX   0x00000000
 
-#define DistributedNodeGetID_MSG 					0x01
-#define DistributedNodeGetIDAgain_MSG 				0x02
-#define DistributedNodeResponseID_MSG 				0x03
-#define DistributedNodeCheck_MSG 					0x04
-#define DistributedNodeCheckback_MSG 				0x05
-#define DistributedNodeBackupMaster_MSG 			0x06
-#define DistributedNodeInvalid_MSG 					0x07
-#define DistributedNodeSendFreespace_MSG 			0x08
-#define DistributedNodeSendSubtask_MSG 				0x09
-#define DistributedNodeSendRemainSubtask_MSG		0x0a
-#define DistributedNodeResponseSubtask_MSG 			0x0b
-#define DistributedNodeResponseRemainSubtask_MSG	0x0c
-#define DistributedNodeDisablePublish_MSG 			0x0d
-#define DistributedNodeEnablePublish_MSG 			0x0e
-#define DistributedNodeResponsePublish_MSG			0x0f
-#define DistributedNodeRequestKey_MSG				0x10
-#define DistributedNodeReleaseKey_MSG				0x11
-#define DistributedNodeResponseKey_MSG				0x12
-#define DistributedNodeSubtaskFinish_MSG 			0x13
-#define DistributedNodeResponseSubtaskFinish_MSG 	0x14
-#define DistributedNodeRequestResult_MSG 			0x15
-#define DistributedNodeRequestRemainResult_MSG		0x16
-#define DistributedNodeResponseResult_MSG 			0x17
-#define DistributedNodeResponseRemainResult_MSG 	0x18
-#define DistributedNodeRemoveTask_MSG 				0x19
+#define Distributed_NodeGetID_MSG 					0x01
+#define Distributed_NodeGetIDAgain_MSG 				0x02
+#define Distributed_NodeResponseID_MSG 				0x03
+#define Distributed_NodeCheck_MSG 					0x04
+#define Distributed_NodeCheckback_MSG 				0x05
+#define Distributed_NodeBackupMaster_MSG 			0x06
+#define Distributed_NodeInvalid_MSG 				0x07
+#define Distributed_NodeSendFreeBlock_MSG 			0x08
+#define Distributed_NodeSendSubtask_MSG 			0x09
+#define Distributed_NodeSendRemainSubtask_MSG		0x0a
+#define Distributed_NodeResponseSubtask_MSG 		0x0b
+#define Distributed_NodeResponseRemainSubtask_MSG	0x0c
+#define Distributed_NodeDisablePublish_MSG 			0x0d
+#define Distributed_NodeEnablePublish_MSG 			0x0e
+#define Distributed_NodeResponsePublish_MSG			0x0f
+#define Distributed_NodeRequestKey_MSG				0x10
+#define Distributed_NodeReleaseKey_MSG				0x11
+#define Distributed_NodeResponseKey_MSG				0x12
+#define Distributed_NodeSubtaskFinish_MSG 			0x13
+#define Distributed_NodeResponseSubtaskFinish_MSG 	0x14
+#define Distributed_NodeRequestResult_MSG 			0x15
+#define Distributed_NodeRequestRemainResult_MSG		0x16
+#define Distributed_NodeResponseResult_MSG 			0x17
+#define Distributed_NodeResponseRemainResult_MSG 	0x18
+#define Distributed_NodeRemoveTask_MSG 				0x19
 
 #define Request 0x00
 #define Release 0x01

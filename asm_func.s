@@ -70,7 +70,7 @@ Distributed_Start:
 	mov		r0,	r0											//	pass three parameter to Distributed_Dispatch_Task data_info, SP, LR
 	mov		r1,	sp
 	mov		r2,	lr
-	blx	Distributed_Dispatch_Task
+	blx	Distributed_DispatchTask
 	mov		r0,	r0
 	pop		{lr}
 	bx		lr
