@@ -58,7 +58,8 @@ void hardfault_handler_c(uint32_t LR, uint32_t MSP)
 		stack_frame_ptr = (uint32_t *)MSP;
 	}
 	uint32_t stacked_return_addr = *(stack_frame_ptr+6);
-	printf("stacked_return_addr: 0x%X\r\n", (unsigned int)stacked_return_addr);
+	uint32_t stacked_LR = *(stack_frame_ptr+5);
+	printf("stacked_return_addr: 0x%X, stacked_LR: 0x%lX\r\n", (unsigned int)stacked_return_addr, stacked_LR);
 	blink(LED_RED);
 }
 
