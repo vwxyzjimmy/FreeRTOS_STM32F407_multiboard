@@ -89,3 +89,10 @@ hardfault_handler:
 	movs	r0,	lr
 	mrs	r1,	msp
 	b	hardfault_handler_c
+
+.type exti0_handler, %function
+.global exti0_handler
+exti0_handler:
+	movs	r0,	lr
+	mrs	r1,	msp
+	b	exti0_handler_c
