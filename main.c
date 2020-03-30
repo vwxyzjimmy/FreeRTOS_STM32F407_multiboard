@@ -2646,8 +2646,11 @@ void Distributed_ManageTask(){
 									;
 								}
 							}
+							
 							vTaskDelete(*(Lastnode->TaskHandlex));
+							portDISABLE_INTERRUPTS();
 							vPortFree(Lastnode);
+							portENABLE_INTERRUPTS();
 							unmerge_finish_distributed_task--;
 						}
 						else{
@@ -3671,55 +3674,39 @@ uint8_t Distributed_NodeRecvCompleteSequence(uint32_t Target_Node_id){
 
 void UpdateLocalFreeBlock(){
 	//printf("  UpdateLocalFreeBlock Start\r\n");
-	DebugFlag = 512 + 1;
 	portDISABLE_INTERRUPTS();
 	Distributed_FreeBlock* local_free_block = DF_Start;
-	DebugFlag = 512 + 2;
 	while((local_free_block != NULL) && (local_free_block->Node_id != Global_Node_id)){
 		local_free_block = local_free_block->Next_Distributed_FreeBlock;
 	}
-	DebugFlag = 512 + 3;
 	if(local_free_block == NULL){
-		DebugFlag = 512 + 4;
 		local_free_block = pvPortMalloc(sizeof(Distributed_FreeBlock));
 		local_free_block->Node_id = Global_Node_id;
 		local_free_block->Block_number = 0;
 		Distributed_FreeBlock* tmp_free_block = DF_Start;
-		DebugFlag = 512 + 5;
 		while((tmp_free_block->Next_Distributed_FreeBlock != NULL) && ((tmp_free_block->Next_Distributed_FreeBlock)->Node_id <= Global_Node_id)){
 			tmp_free_block = tmp_free_block->Next_Distributed_FreeBlock;
 		}
-		DebugFlag = 512 + 6;
 		if(tmp_free_block != DF_Start){
-			DebugFlag = 512 + 7;
 			local_free_block->Next_Distributed_FreeBlock = tmp_free_block->Next_Distributed_FreeBlock;
 			tmp_free_block->Next_Distributed_FreeBlock = local_free_block;
 		}
 		else{
-			DebugFlag = 512 + 8;
 			if (DF_Start == NULL){
-				DebugFlag = 512 + 9;
 				DF_Start = local_free_block;
 			}
 			else{
-				DebugFlag = 512 + 10;
 				if (DF_Start->Node_id > Global_Node_id){
-					DebugFlag = 512 + 11;
 					local_free_block->Next_Distributed_FreeBlock = DF_Start;
 					DF_Start = local_free_block;
 				}
 				else{
-					DebugFlag = 512 + 12;
 					local_free_block->Next_Distributed_FreeBlock = DF_Start->Next_Distributed_FreeBlock;
 					DF_Start->Next_Distributed_FreeBlock = local_free_block;
 				}
-				DebugFlag = 512 + 13;
 			}
-			DebugFlag = 512 + 14;
 		}
-		DebugFlag = 512 + 15;
 	}
-	DebugFlag = 512 + 16;
 	uint32_t block_number = 0;
 	BlockLink_t* tmp_block = &xStart;
 	while(tmp_block != NULL){
@@ -3728,11 +3715,8 @@ void UpdateLocalFreeBlock(){
 		}
 		tmp_block = tmp_block->pxNextFreeBlock;
 	}
-	DebugFlag = 512 + 17;
 	if(block_number != local_free_block->Block_number){
-		DebugFlag = 512 + 18;
 		if(local_free_block->Block_number > 0){
-			DebugFlag = 512 + 19;
 			vPortFree(local_free_block->Block_size_array);
 			block_number = 0;
 			tmp_block = &xStart;
@@ -3745,18 +3729,15 @@ void UpdateLocalFreeBlock(){
 		}
 		local_free_block->Block_size_array = pvPortMalloc(block_number*sizeof(uint32_t));
 	}
-	DebugFlag = 512 + 20;
 	block_number = 0;
 	tmp_block = &xStart;
 	while(tmp_block != NULL){
-		DebugFlag = 512 + 21;
 		if(tmp_block->xBlockSize > 0){
 			*(local_free_block->Block_size_array+block_number) = tmp_block->xBlockSize;
 			block_number++;
 		}
 		tmp_block = tmp_block->pxNextFreeBlock;
 	}
-	DebugFlag = 512 + 22;
 	local_free_block->Block_number = block_number;
 	portENABLE_INTERRUPTS();
 }
