@@ -152,6 +152,7 @@ uint32_t SendFlag = 0;
 uint32_t RecvFlag = 0;
 uint32_t svc_tick = 0;
 uint32_t distributed_task_duration_tick = 0;
+uint32_t complete_Remain_th = 0;
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Distributed_Data_t* Distributed_SetTragetData(uint32_t* data_addr, uint32_t data_size, uint32_t split_size){
 	Distributed_Data_t* data_info = pvPortMalloc(sizeof(Distributed_Data_t));
@@ -405,6 +406,7 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 	uint32_t act_split_num = 0;													//	Tmp split number
 	while(success_dispatch_flag == 0){
 		DebugFlag = 9;
+		portDISABLE_INTERRUPTS();
 		uint32_t split_num_without_fail_node = split_num;
 		if(Fail_node_num > 0){													//	If fail node array is not empty(at the first time Fail_node_num is zero)
 			for(uint32_t i=0;i<Fail_node_num;i++)
@@ -420,6 +422,7 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 				}
 			}
 		}
+		portENABLE_INTERRUPTS();
 		DebugFlag = 10;
 		uint32_t free_block_Max_without_fail_node[2][split_num_without_fail_node];									//	Create 2d array from free_block_Max and without fail node
 		split_num_without_fail_node = 0;
@@ -539,7 +542,9 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 			if(success_dispatch_flag > 0){																//	every Distributed_dispatch_node has been dispatch
 				break;
 			}
-			else{																//	dispatch fail, abandon the least FreeBlock node(decrease_node_num++), then try again
+			else{
+				portDISABLE_INTERRUPTS();
+																				//	dispatch fail, abandon the least FreeBlock node(decrease_node_num++), then try again
 				vPortFree(Distributed_dispatch_node);							//	free Distributed_dispatch_node array
 				vPortFree(Distributed_data_need_size);							//	free Distributed_dispatch_node array
 				for(uint32_t i=0;i<act_split_num;i++){							//	free 2d TwoD_Data_Max_size_split_record and TwoD_Data_size_split_record array
@@ -549,6 +554,7 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 				vPortFree(TwoD_Data_Max_size_split_record);
 				vPortFree(TwoD_Data_size_split_record);
 				decrease_node_num++;
+				portENABLE_INTERRUPTS();
 			}
 		}
 		DebugFlag = 12;
@@ -565,9 +571,10 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 			for(uint32_t split_num_th=0;split_num_th<act_split_num;split_num_th++){
 				if(Distributed_dispatch_node[split_num_th] != Global_Node_id){
 					portENABLE_INTERRUPTS();
-					uint8_t timeout_flag = Distributed_NodeCheckSizeTimeout(4*timeout_tick_count, Distributed_dispatch_node[split_num_th], Distributed_data_need_size[split_num_th]);
-					portDISABLE_INTERRUPTS();
 					DebugFlag = 256 + 14;
+					uint8_t timeout_flag = Distributed_NodeCheckSizeTimeout(4*timeout_tick_count, Distributed_dispatch_node[split_num_th], Distributed_data_need_size[split_num_th]);
+					DebugFlag = 256 + 15;
+					portDISABLE_INTERRUPTS();
 					if(timeout_flag == 0xFF){																//	0xFF mean node not response, not exist
 						printf("Without check back, can't Distributed_NodeSendSubtask, invalid Node id: 0x%lX\r\n", Distributed_dispatch_node[split_num_th]);
 						tmp_invalid_node[split_num_th] = Distributed_dispatch_node[split_num_th];
@@ -962,7 +969,7 @@ void exti0_handler_c(uint32_t LR, uint32_t MSP)
 	uint32_t stacked_return_addr = *(stack_frame_ptr+6);
 	uint32_t stacked_LR = *(stack_frame_ptr+5);
 
-	printf("DebugFlag: 0x%lX, SendFlag: 0x%lX, RecvFlag: 0x%lX, Return_addr: 0x%lX, LR: 0x%lX\r\n", DebugFlag, SendFlag, RecvFlag, stacked_return_addr, stacked_LR);
+	printf("DebugFlag: 0x%lX, SendFlag: 0x%lX, RecvFlag: 0x%lX, Return_addr: 0x%lX, LR: 0x%lX, complete_Remain_th: 0x%lX\r\n", DebugFlag, SendFlag, RecvFlag, stacked_return_addr, stacked_LR, complete_Remain_th);
 	SET_BIT(EXTI_BASE + EXTI_PR_OFFSET, 0);
 }
 
@@ -2622,10 +2629,11 @@ void Distributed_ManageTask(){
 							else
 								pre_Lastnode->Next_TaskHandle_List = tmp_NewDTaskControlBlock;
 							portENABLE_INTERRUPTS();
+							SubtaskFinishFlag = 0;
 							while(1){
-								//while(!(Check_Sendable()));
+								while(!(Check_Sendable()));
 								Distributed_NodeSubtaskFinish(tmp_NewDTaskControlBlock->Source_Processor_id, tmp_NewDTaskControlBlock->DTask_id, tmp_NewDTaskControlBlock->DSubTask_id, tmp_NewDTaskControlBlock->Data_number);
-								WaitForFlag(&SubtaskFinishFlag, 1);
+								WaitForFlag(&SubtaskFinishFlag, 10);
 								if(SubtaskFinishFlag == tmp_NewDTaskControlBlock->DSubTask_id){
 									portDISABLE_INTERRUPTS();
 									printf("SubtaskFinishFlag success, DSubTask_id: 0x%lX\r\n", SubtaskFinishFlag);
@@ -2945,9 +2953,7 @@ void Distributed_NodeResponseID(){
 uint8_t Distributed_NodeCheck(uint32_t Target_Node_id, uint32_t Needsize){
 	SendFlag = Distributed_NodeCheck_MSG;
 	if (DisrtibutedNodeCheckIDFlag == 0){
-		portDISABLE_INTERRUPTS();
 		DisrtibutedNodeCheckIDFlag = Target_Node_id;
-		portENABLE_INTERRUPTS();
 		uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
 		uint8_t mydata[17] = { 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeCheck_MSG, 0x00, 0x00, 0x00, 0x00};
 		for(uint8_t i=0;i<4;i++){
@@ -3012,14 +3018,14 @@ void Distributed_NodeInvalid(uint32_t Target_Node_id){
 	#endif
 }
 
-void Distributed_NodeSendFreeBlock(uint32_t Target_Node_id, uint32_t Node_id){\
+void Distributed_NodeSendFreeBlock(uint32_t Target_Node_id, uint32_t Node_id){
 	SendFlag = Distributed_NodeSendFreeBlock_MSG;
 	if(Target_Node_id == 0)
 		Target_Node_id = 0xFFFFFFFF;
 	UpdateLocalFreeBlock();
+	portDISABLE_INTERRUPTS();
 	uint32_t node_number = 0;
 	uint32_t block_number = 0;
-	portDISABLE_INTERRUPTS();
 	Distributed_FreeBlock* FreeBlockStart = DF_Start;
 	Distributed_FreeBlock* tmp_block = FreeBlockStart;
 	if(Node_id > 0){
@@ -3028,7 +3034,6 @@ void Distributed_NodeSendFreeBlock(uint32_t Target_Node_id, uint32_t Node_id){\
 		}
 		if(tmp_block == NULL){
 			printf("Distributed_NodeSendFreeBlock Fail, Without Node_id: 0x%lX\r\n", Node_id);
-			return;
 		}
 		else{
 			node_number++;
@@ -3100,7 +3105,6 @@ void Distributed_NodeSendFreeBlock(uint32_t Target_Node_id, uint32_t Node_id){\
 	//	printf("Source End, source_node_count: 0x%lX----------------------------------\r\n", source_node_count);
 	Distributed_SendMsg(MyMacAddr, mydata, Send_size);
 	BlockChangeFlag = 0;
-	return;
 }
 
 void Distributed_NodeSendSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size){
@@ -3547,6 +3551,12 @@ uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
 				}
 			}
 		}
+		else if (i == Global_Node_id){
+			if(DisableEnableFlag == 0)
+				PublishFlag = 0;
+			else
+				PublishFlag = 1;
+		}
 	}
 	uint32_t duration_tick = xTaskGetTickCount() - record_tick;
 	printf("Distributed_NodeRequestReleaseSequence Duration: 0x%lX\r\n", duration_tick);
@@ -3557,6 +3567,7 @@ uint8_t Distributed_NodeSendCompleteSequence(uint32_t Target_Node_id){
 	portDISABLE_INTERRUPTS();
 	uint8_t Remain_th = 1;
 	SendCompleteFlag = 0;
+	complete_Remain_th = Remain_th;
 	portENABLE_INTERRUPTS();
 	Distributed_NodeSendComplete(Target_Node_id, Remain_th);
 	WaitForFlag(&SendCompleteFlag, 1);
@@ -3565,6 +3576,7 @@ uint8_t Distributed_NodeSendCompleteSequence(uint32_t Target_Node_id){
 		Remain_th = SendCompleteFlag + 1;
 		uint32_t send_complete_count = 0;
 		uint32_t send_complete_limit = 5;
+		complete_Remain_th = Remain_th;
 		while(1){
 			SendCompleteFlag = 0;
 			portENABLE_INTERRUPTS();
@@ -3576,6 +3588,7 @@ uint8_t Distributed_NodeSendCompleteSequence(uint32_t Target_Node_id){
 					printf("NodeSendComplete SUCCESS\r\n");
 				#endif
 				Remain_th = SendCompleteFlag + 1;
+				complete_Remain_th = Remain_th;
 				Distributed_NodeSendComplete(Target_Node_id, Remain_th);
 				break;
 			}
@@ -3603,10 +3616,12 @@ uint8_t Distributed_NodeSendCompleteSequence(uint32_t Target_Node_id){
 uint8_t Distributed_NodeRecvCompleteSequence(uint32_t Target_Node_id){
 	portENABLE_INTERRUPTS();
 	uint8_t Remain_th = 0;
+	complete_Remain_th = Remain_th;
 	WaitForFlag(&SendCompleteFlag, 1);
 	portDISABLE_INTERRUPTS();
 	if(SendCompleteFlag > Remain_th){
 		Remain_th = SendCompleteFlag + 1;
+		complete_Remain_th = Remain_th;
 		SendCompleteFlag = 0;
 		while(1){
 			portENABLE_INTERRUPTS();
@@ -3615,6 +3630,7 @@ uint8_t Distributed_NodeRecvCompleteSequence(uint32_t Target_Node_id){
 			portDISABLE_INTERRUPTS();
 			if(SendCompleteFlag > Remain_th){
 				Remain_th = SendCompleteFlag + 1;
+				complete_Remain_th = Remain_th;
 				SendCompleteFlag = 0;
 				uint32_t recv_complete_count = 0;
 				uint32_t recv_complete_limit = 5;
@@ -3655,40 +3671,55 @@ uint8_t Distributed_NodeRecvCompleteSequence(uint32_t Target_Node_id){
 
 void UpdateLocalFreeBlock(){
 	//printf("  UpdateLocalFreeBlock Start\r\n");
+	DebugFlag = 512 + 1;
 	portDISABLE_INTERRUPTS();
 	Distributed_FreeBlock* local_free_block = DF_Start;
+	DebugFlag = 512 + 2;
 	while((local_free_block != NULL) && (local_free_block->Node_id != Global_Node_id)){
 		local_free_block = local_free_block->Next_Distributed_FreeBlock;
 	}
+	DebugFlag = 512 + 3;
 	if(local_free_block == NULL){
+		DebugFlag = 512 + 4;
 		local_free_block = pvPortMalloc(sizeof(Distributed_FreeBlock));
 		local_free_block->Node_id = Global_Node_id;
 		local_free_block->Block_number = 0;
 		Distributed_FreeBlock* tmp_free_block = DF_Start;
+		DebugFlag = 512 + 5;
 		while((tmp_free_block->Next_Distributed_FreeBlock != NULL) && ((tmp_free_block->Next_Distributed_FreeBlock)->Node_id <= Global_Node_id)){
 			tmp_free_block = tmp_free_block->Next_Distributed_FreeBlock;
 		}
+		DebugFlag = 512 + 6;
 		if(tmp_free_block != DF_Start){
+			DebugFlag = 512 + 7;
 			local_free_block->Next_Distributed_FreeBlock = tmp_free_block->Next_Distributed_FreeBlock;
 			tmp_free_block->Next_Distributed_FreeBlock = local_free_block;
 		}
 		else{
+			DebugFlag = 512 + 8;
 			if (DF_Start == NULL){
+				DebugFlag = 512 + 9;
 				DF_Start = local_free_block;
 			}
 			else{
+				DebugFlag = 512 + 10;
 				if (DF_Start->Node_id > Global_Node_id){
+					DebugFlag = 512 + 11;
 					local_free_block->Next_Distributed_FreeBlock = DF_Start;
 					DF_Start = local_free_block;
 				}
 				else{
+					DebugFlag = 512 + 12;
 					local_free_block->Next_Distributed_FreeBlock = DF_Start->Next_Distributed_FreeBlock;
 					DF_Start->Next_Distributed_FreeBlock = local_free_block;
 				}
+				DebugFlag = 512 + 13;
 			}
+			DebugFlag = 512 + 14;
 		}
+		DebugFlag = 512 + 15;
 	}
-
+	DebugFlag = 512 + 16;
 	uint32_t block_number = 0;
 	BlockLink_t* tmp_block = &xStart;
 	while(tmp_block != NULL){
@@ -3697,8 +3728,11 @@ void UpdateLocalFreeBlock(){
 		}
 		tmp_block = tmp_block->pxNextFreeBlock;
 	}
+	DebugFlag = 512 + 17;
 	if(block_number != local_free_block->Block_number){
+		DebugFlag = 512 + 18;
 		if(local_free_block->Block_number > 0){
+			DebugFlag = 512 + 19;
 			vPortFree(local_free_block->Block_size_array);
 			block_number = 0;
 			tmp_block = &xStart;
@@ -3711,15 +3745,18 @@ void UpdateLocalFreeBlock(){
 		}
 		local_free_block->Block_size_array = pvPortMalloc(block_number*sizeof(uint32_t));
 	}
+	DebugFlag = 512 + 20;
 	block_number = 0;
 	tmp_block = &xStart;
 	while(tmp_block != NULL){
+		DebugFlag = 512 + 21;
 		if(tmp_block->xBlockSize > 0){
 			*(local_free_block->Block_size_array+block_number) = tmp_block->xBlockSize;
 			block_number++;
 		}
 		tmp_block = tmp_block->pxNextFreeBlock;
 	}
+	DebugFlag = 512 + 22;
 	local_free_block->Block_number = block_number;
 	portENABLE_INTERRUPTS();
 }
