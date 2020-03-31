@@ -2647,7 +2647,7 @@ void Distributed_ManageTask(){
 							ResponseSubtaskFinishFlag = 0;
 							portENABLE_INTERRUPTS();
 							while(1){
-								while(!(Check_Sendable()));
+								//while(!(Check_Sendable()));
 								Distributed_NodeSubtaskFinish(tmp_NewDTaskControlBlock->Source_Processor_id, tmp_NewDTaskControlBlock->DTask_id, tmp_NewDTaskControlBlock->DSubTask_id, tmp_NewDTaskControlBlock->Data_number);
 								WaitForFlag(&ResponseSubtaskFinishFlag, 10);
 								if(ResponseSubtaskFinishFlag == tmp_NewDTaskControlBlock->DSubTask_id){
