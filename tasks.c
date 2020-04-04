@@ -738,7 +738,6 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB ) PRIVILEGED_FUNCTION;
 							UBaseType_t uxPriority,
 							TaskHandle_t * const pxCreatedTask )
 	{
-
 	TCB_t *pxNewTCB;
 	BaseType_t xReturn;
 
@@ -822,6 +821,7 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB ) PRIVILEGED_FUNCTION;
 		{
 			xReturn = errCOULD_NOT_ALLOCATE_REQUIRED_MEMORY;
 		}
+
 		return xReturn;
 	}
 
@@ -1133,11 +1133,13 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 			pxNewTCB->uxTCBNumber = uxTaskNumber;
 		}
 		#endif /* configUSE_TRACE_FACILITY */
+
 		traceTASK_CREATE( pxNewTCB );
 
 		prvAddTaskToReadyList( pxNewTCB );
 
 		portSETUP_TCB( pxNewTCB );
+
 	}
 	taskEXIT_CRITICAL();
 
@@ -1153,12 +1155,12 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 		{
 			mtCOVERAGE_TEST_MARKER();
 		}
+
 	}
 	else
 	{
 		mtCOVERAGE_TEST_MARKER();
 	}
-
 }
 /*-----------------------------------------------------------*/
 
