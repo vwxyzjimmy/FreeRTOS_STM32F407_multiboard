@@ -226,6 +226,7 @@ void Distributed_CreateTask(void* task, Distributed_Data_t *data_info, uint32_t 
 }
 
 void Distributed_LocalSubtaskDone(Distributed_TaskHandle_List_t* s, uint32_t* Result_Data_addr, uint32_t Result_Data_size) {
+	portENTER_CRITICAL();
 	Distributed_TaskHandle_List_t *tmp_NewDTaskControlBlock = pvPortMalloc(sizeof(Distributed_TaskHandle_List_t)+ Result_Data_size*sizeof(uint32_t));					//	Copy a DTCB and copy from sour DTCB
 	for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++)
 		*((uint8_t*)tmp_NewDTaskControlBlock+i) = *((uint8_t*)s+i);
@@ -238,6 +239,19 @@ void Distributed_LocalSubtaskDone(Distributed_TaskHandle_List_t* s, uint32_t* Re
 	tmp_NewDTaskControlBlock->Finish_Flag = 1;
 	Distributed_InsertFinishNode(tmp_NewDTaskControlBlock);																			//	Inser to Fiish DTCB list
 	vPortFree(s);																													//	Free sour DTCB
+	if(tmp_NewDTaskControlBlock->Source_Processor_id == Global_Node_id){															//	Check Task done, DStart list without task_id(all subtask done)
+		uint32_t tmp_count = 0;
+		Distributed_TaskHandle_List_t* check_Lastnode = DStart;
+		while(check_Lastnode != NULL){
+			if(check_Lastnode->DTask_id == tmp_NewDTaskControlBlock->DTask_id)
+				tmp_count++;
+			check_Lastnode = check_Lastnode->Next_TaskHandle_List;
+		}
+		if(tmp_count == 0){
+			TaskDoneFlag = tmp_NewDTaskControlBlock->DTask_id;
+		}
+	}
+	portEXIT_CRITICAL();
 	vTaskDelete(NULL);																												//	Kill local task(parameter eith NULL)
 	printf("Entry while loop forever, Should not be here\r\n");
 	while(1);
@@ -899,6 +913,7 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 			}
 			DebugFlag = 39;
 		}
+
 		DebugFlag = 40;
 		vPortFree(Distributed_dispatch_node);									//	dispatch sucess, free useless array
 		vPortFree(Distributed_data_need_size);									//	free Distributed_dispatch_node array
@@ -980,20 +995,6 @@ void svc_handler_c(uint32_t LR, uint32_t MSP){
 				pre_tmp_Lastnode->Next_TaskHandle_List = tmp_Lastnode->Next_TaskHandle_List;
 		}
 		Lastnode->Next_TaskHandle_List = NULL;
-		if(Lastnode->Source_Processor_id == Global_Node_id){
-																				//	Check Task done, DStart list without task_id(all subtask done)
-			uint32_t tmp_count = 0;
-			Distributed_TaskHandle_List_t* check_Lastnode = DStart;
-			while(check_Lastnode != NULL){
-				if(check_Lastnode->DTask_id == Lastnode->DTask_id)
-					tmp_count++;
-				check_Lastnode = check_Lastnode->Next_TaskHandle_List;
-			}
-			if(tmp_count == 0){
-				TaskDoneFlag = Lastnode->DTask_id;
-				//printf("1 DTask_id: 0x%lX done, DSubTask_id: 0x%lX  is the last===============================================\r\n", Lastnode->DTask_id, Lastnode->DSubTask_id);
-			}
-		}
 		if (Lastnode->DSubTask_id != 0){
 			*((uint16_t*)(stacked_return_addr&0xFFFFFFFE)) = 0xe7fe;										//	modify return addr instruction to bx here
 			Lastnode->Finish_Flag = 0;																		//	Finish_Flag = 0 mean that the data has not merge yet
@@ -2069,70 +2070,75 @@ void eth_handler(void){
 			#endif
 		}
 		else if (Msg_event == Distributed_NodeSubtaskFinish_MSG){
-			uint32_t task_id = *((uint32_t*)((uint8_t*)frame.buffer+13));
-			uint32_t subtask_id = *((uint32_t*)((uint8_t*)frame.buffer+17));
-			uint32_t size = *((uint32_t*)((uint8_t*)frame.buffer+21));
-			Distributed_TaskHandle_List_t* Lastnode = DStart;
-			Distributed_TaskHandle_List_t* pre_Lastnode;
-			while((!((Lastnode->DTask_id == task_id)&&(Lastnode->DSubTask_id == subtask_id))) && (Lastnode != NULL)){					//	Remove subtask TCB from DStart list
-				pre_Lastnode = Lastnode;
-				Lastnode = Lastnode->Next_TaskHandle_List;
-			}
-			if(Lastnode != NULL){
-				if(Lastnode == DStart)
-					DStart = DStart->Next_TaskHandle_List;
-				else
-					pre_Lastnode->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
-				Lastnode->Next_TaskHandle_List = NULL;
-				Lastnode->Finish_Flag = 1;
-				Lastnode->Data_number = size;
-				Distributed_InsertFinishNode(Lastnode);
-				//printf("Find task_id: 0x%lX, subtask_id: 0x%lX in DTCB List in final\r\n", Lastnode->DTask_id, Lastnode->DSubTask_id);
-				/*
-				if(Lastnode->Source_Processor_id == Global_Node_id){							//	Check Task done, DStart list without task_id(all subtask done)
-					uint32_t tmp_count = 0;
-					Distributed_TaskHandle_List_t* check_Lastnode = DStart;
-					while(check_Lastnode != NULL){
-						if(check_Lastnode->DTask_id == task_id)
-							tmp_count++;
-						check_Lastnode = check_Lastnode->Next_TaskHandle_List;
-					}
-					if(tmp_count == 0){
-						TaskDoneFlag = task_id;
-						//printf("DTask_id: 0x%lX done, DSubTask_id: 0x%lX  is the last===============================================\r\n", task_id, subtask_id);
-					}
-				}
-				*/
-				//printf("Destinate_Processor_id: 0x%lX, Taks: 0x%lX, Subtask: 0x%lX\r\n", Lastnode->Destinate_Processor_id, Lastnode->DTask_id, Lastnode->DSubTask_id);
-				SubtaskfinishFlag = (uint32_t)Lastnode;
-			}
-			else{
-				Lastnode = DFinish;
+			if(SubtaskfinishFlag == 0){
+				uint32_t task_id = *((uint32_t*)((uint8_t*)frame.buffer+13));
+				uint32_t subtask_id = *((uint32_t*)((uint8_t*)frame.buffer+17));
+				uint32_t size = *((uint32_t*)((uint8_t*)frame.buffer+21));
+				Distributed_TaskHandle_List_t* Lastnode = DStart;
+				Distributed_TaskHandle_List_t* pre_Lastnode;
 				while((!((Lastnode->DTask_id == task_id)&&(Lastnode->DSubTask_id == subtask_id))) && (Lastnode != NULL)){					//	Remove subtask TCB from DStart list
+					pre_Lastnode = Lastnode;
 					Lastnode = Lastnode->Next_TaskHandle_List;
 				}
 				if(Lastnode != NULL){
-					printf("\r\n\r\nSubtask in the DFinish list\r\n\r\n");
+					if(Lastnode == DStart)
+						DStart = DStart->Next_TaskHandle_List;
+					else
+						pre_Lastnode->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
+					Lastnode->Next_TaskHandle_List = NULL;
+					Lastnode->Finish_Flag = 1;
+					Lastnode->Data_number = size;
+					Distributed_InsertFinishNode(Lastnode);
+					//printf("Find task_id: 0x%lX, subtask_id: 0x%lX in DTCB List in final\r\n", Lastnode->DTask_id, Lastnode->DSubTask_id);
+					/*
+					if(Lastnode->Source_Processor_id == Global_Node_id){							//	Check Task done, DStart list without task_id(all subtask done)
+						uint32_t tmp_count = 0;
+						Distributed_TaskHandle_List_t* check_Lastnode = DStart;
+						while(check_Lastnode != NULL){
+							if(check_Lastnode->DTask_id == task_id)
+								tmp_count++;
+							check_Lastnode = check_Lastnode->Next_TaskHandle_List;
+						}
+						if(tmp_count == 0){
+							TaskDoneFlag = task_id;
+							//printf("DTask_id: 0x%lX done, DSubTask_id: 0x%lX  is the last===============================================\r\n", task_id, subtask_id);
+						}
+					}
+					*/
+					//printf("Destinate_Processor_id: 0x%lX, Taks: 0x%lX, Subtask: 0x%lX\r\n", Lastnode->Destinate_Processor_id, Lastnode->DTask_id, Lastnode->DSubTask_id);
 					SubtaskfinishFlag = (uint32_t)Lastnode;
+					Distributed_NodeResponseSubtaskFinish(Sour, subtask_id);
 				}
 				else{
-					printf("\r\n\r\nNo Subtask Here, Task id: 0x%lX, Subtak id: 0x%lX\r\n\r\n", task_id, subtask_id);
-					SubtaskfinishFlag = 0xFFFFFFFF;
-					No_Node_ID = Sour;
-					No_Task_ID = task_id;
-					No_Subtask_ID = subtask_id;
+					Lastnode = DFinish;
+					while((!((Lastnode->DTask_id == task_id)&&(Lastnode->DSubTask_id == subtask_id))) && (Lastnode != NULL)){					//	Remove subtask TCB from DStart list
+						Lastnode = Lastnode->Next_TaskHandle_List;
+					}
+					if(Lastnode != NULL){
+						printf("\r\n\r\nSubtask in the DFinish list\r\n\r\n");
+						//SubtaskfinishFlag = (uint32_t)Lastnode;
+					}
+					else{
+						printf("\r\n\r\nNo Subtask Here, Task id: 0x%lX, Subtak id: 0x%lX\r\n\r\n", task_id, subtask_id);
+						SubtaskfinishFlag = 0xFFFFFFFF;
+						No_Node_ID = Sour;
+						No_Task_ID = task_id;
+						No_Subtask_ID = subtask_id;
 
+					}
+					Distributed_NodeResponseSubtaskFinish(Sour, subtask_id);
+					//printf("Can't find task_id: 0x%lX, subtask_id: 0x%lX in DTCB List in final\r\n", task_id, subtask_id);
 				}
-				//printf("Can't find task_id: 0x%lX, subtask_id: 0x%lX in DTCB List in final\r\n", task_id, subtask_id);
+				#if(PrintSendRecv > 0)
+					printf("Get Distributed_NodeSubtaskFinish, Node: 0x%lX, Task: 0x%lX, Subtask: 0x%lX\r\n", Sour, task_id, subtask_id);
+				#endif
 			}
-			Distributed_NodeResponseSubtaskFinish(Sour, subtask_id);
-			/*
-			for(uint32_t i=0;i<5;i++)
-
-			*/
-			#if(PrintSendRecv > 0)
-				printf("Get Distributed_NodeSubtaskFinish, Node: 0x%lX, Task: 0x%lX, Subtask: 0x%lX\r\n", Sour, task_id, subtask_id);
-			#endif
+			else{
+				;
+				#if(PrintSendRecv > 0)
+					printf("subtask task id: 0x%lX not recv done\r\n", SubtaskfinishFlag);
+				#endif
+			}
 		}
 		else if (Msg_event == Distributed_NodeResponseSubtaskFinish_MSG){
 			uint32_t subtask_id = *((uint32_t*)((uint8_t*)frame.buffer+13));
@@ -2651,12 +2657,37 @@ void Distributed_ManageTask(){
 							#if(PrintSendRecv > 0)
 								printf("Send Distributed_NodeResponseSubtaskFinish\r\n");
 							#endif
+							/*
 							Distributed_NodeResponseSubtaskFinish(Lastnode->Destinate_Processor_id, Lastnode->DSubTask_id);
+
+							vPortExitCritical();
+							critial_count--;
+							uint8_t Flag = 0;
+							while(Flag == 0){
+								Flag = Distributed_NodeRecvCompleteSequence(No_Node_ID);
+								if(Flag == 0)
+									Distributed_NodeResponseSubtaskFinish(Lastnode->Destinate_Processor_id, Lastnode->DSubTask_id);
+							}
+							vPortEnterCritical();
+							critial_count++;
+							*/
 							DebugFlag = 512 + 31;
 						}
 						else{
 							DebugFlag = 512 + 32;
+							/*
 							Distributed_NodeResponseSubtaskFinish(No_Node_ID, No_Subtask_ID);
+							vPortExitCritical();
+							critial_count--;
+							uint8_t Flag = 0;
+							while(Flag == 0){
+								Flag = Distributed_NodeRecvCompleteSequence(No_Node_ID);
+								if(Flag == 0)
+									Distributed_NodeResponseSubtaskFinish(No_Node_ID, No_Subtask_ID);
+							}
+							vPortEnterCritical();
+							critial_count++;
+							*/
 							DebugFlag = 512 + 33;
 						}
 						SubtaskfinishFlag = 0;
@@ -2786,11 +2817,11 @@ void Distributed_ManageTask(){
 								Distributed_NodeResponseRemainResult(Resultnode->Source_Processor_id, Send_Addr, Send_Size, Remain_th);
 							vPortExitCritical();
 							//ebugFlag = 512 + 56;
-							DebugFlag = 702 + Resultnode->Source_Processor_id;
+							DebugFlag = 768 + Resultnode->Source_Processor_id;
 							WaitForFlag(&ConfirmResultFlag, 1);
 							vPortEnterCritical();
 							//DebugFlag = 512 + 57;
-							DebugFlag = 702 + Resultnode->Source_Processor_id;
+							DebugFlag = 768 + Resultnode->Source_Processor_id;
 							if((ConfirmResultFlag == Resultnode->Source_Processor_id) && (RemainThResultFlag == (Remain_th+1))){
 								//printf("Distributed_NodeResponseResult success, DSubTask_id: 0x%lX, Remain_th: 0x%lX\r\n", ConfirmResultFlag, (Remain_th+1));
 								ConfirmResultFlag = 0;
@@ -2866,6 +2897,7 @@ void Distributed_ManageTask(){
 								//while(!(Check_Sendable()));
 								//while(!PublishFlag);
 								DebugFlag = 512 + 66;
+								//printf("Distributed_NodeSubtaskFinish\r\n");
 								Distributed_NodeSubtaskFinish(tmp_NewDTaskControlBlock->Source_Processor_id, tmp_NewDTaskControlBlock->DTask_id, tmp_NewDTaskControlBlock->DSubTask_id, tmp_NewDTaskControlBlock->Data_number);
 								vPortExitCritical();
 								critial_count--;
@@ -2877,6 +2909,15 @@ void Distributed_ManageTask(){
 									printf("ResponseSubtaskFinishFlag success, DSubTask_id: 0x%lX\r\n", ResponseSubtaskFinishFlag);
 									ResponseSubtaskFinishFlag = 0;
 									DebugFlag = 512 + 68;
+									/*
+									vPortExitCritical();
+									critial_count--;
+									uint8_t Flag = 0;
+									while(Flag == 0)
+										Flag = Distributed_NodeSendCompleteSequence(tmp_NewDTaskControlBlock->Source_Processor_id);
+									vPortEnterCritical();
+									critial_count++;
+									*/
 									break;
 								}
 								else{
@@ -2922,7 +2963,7 @@ void Distributed_ManageTask(){
 								Lastnode = Lastnode->Next_TaskHandle_List;
 							}
 							if(Lastnode == NULL){
-								printf("Fuck can't find target node\r\n");
+								printf("Fuck can't find target node, TaskDoneFlag: 0x%lX\r\n", TaskDoneFlag);
 								Lastnode = DFinish;
 								while(Lastnode != NULL){
 									printf("Lastnode, Source_Processor_id: 0x%lX, DTask_id: 0x%lX, DSubTask_id: 0x%lX\r\n", Lastnode->Source_Processor_id, Lastnode->DTask_id, Lastnode->DSubTask_id);
@@ -3013,12 +3054,12 @@ void Distributed_ManageTask(){
 												Recv_Size = Recv_Data_Number;
 											else
 												Recv_Size = Recv_Remain_Size;
-											DebugFlag = 702 + target_node_array[i]->Destinate_Processor_id;
+											DebugFlag = 768 + target_node_array[i]->Destinate_Processor_id;
 											if(Remain_th == 1)
 												Distributed_NodeRequestResult(target_node_array[i]->Destinate_Processor_id, target_node_array[i]->DTask_id, target_node_array[i]->DSubTask_id);
 											else
 												Distributed_NodeRequestRemainResult(target_node_array[i]->Destinate_Processor_id, Remain_th);
-											DebugFlag = 702 + target_node_array[i]->Destinate_Processor_id;
+											DebugFlag = 768 + target_node_array[i]->Destinate_Processor_id;
 											vPortExitCritical();
 											critial_count--;
 											WaitForFlag(&RequestResultFlag, 10);
