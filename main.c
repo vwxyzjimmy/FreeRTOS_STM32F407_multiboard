@@ -227,15 +227,29 @@ void Distributed_CreateTask(void* task, Distributed_Data_t *data_info, uint32_t 
 
 void Distributed_LocalSubtaskDone(Distributed_TaskHandle_List_t* s, uint32_t* Result_Data_addr, uint32_t Result_Data_size) {
 	portENTER_CRITICAL();
-	Distributed_TaskHandle_List_t *tmp_NewDTaskControlBlock = pvPortMalloc(sizeof(Distributed_TaskHandle_List_t)+ Result_Data_size*sizeof(uint32_t));					//	Copy a DTCB and copy from sour DTCB
-	for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++)
+	Distributed_TaskHandle_List_t* tmp_NewDTaskControlBlock = pvPortMalloc(sizeof(Distributed_TaskHandle_List_t) + Result_Data_size*sizeof(uint32_t));					//	Copy a DTCB and copy from sour DTCB
+	if(tmp_NewDTaskControlBlock == NULL){
+		uint32_t mallocsize = (sizeof(Distributed_TaskHandle_List_t) + Result_Data_size*sizeof(uint32_t));
+		uint32_t largestblock = 0;
+		BlockLink_t* block_ndoe = &xStart;
+		while(block_ndoe != NULL) {
+			if(block_ndoe->xBlockSize > largestblock)
+				largestblock = block_ndoe->xBlockSize;
+			block_ndoe = block_ndoe->pxNextFreeBlock;
+		}
+		printf("Malloc size: 0x%lX, but largest free block: 0x%lX\r\n", mallocsize, largestblock);
+		printf("NOt enough size to malloc in Distributed_LocalSubtaskDone\r\n");
+	}
+	for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++){
 		*((uint8_t*)tmp_NewDTaskControlBlock+i) = *((uint8_t*)s+i);
+	}
 	tmp_NewDTaskControlBlock->Next_TaskHandle_List = NULL;
 	tmp_NewDTaskControlBlock->Data_addr = (uint32_t*)((uint8_t*)tmp_NewDTaskControlBlock + sizeof(Distributed_TaskHandle_List_t));											//	Copy result from sour data
 	tmp_NewDTaskControlBlock->Data_number = Result_Data_size;
 	printf("\r\n	Result data, Subtask id: 0x%lX, Result_Data_size: 0x%lX\r\n", tmp_NewDTaskControlBlock->DSubTask_id, Result_Data_size);
 	for(uint32_t i=0;i<Result_Data_size;i++)
 		*(tmp_NewDTaskControlBlock->Data_addr+i) = *(Result_Data_addr+i);
+
 	tmp_NewDTaskControlBlock->Finish_Flag = 1;
 	Distributed_InsertFinishNode(tmp_NewDTaskControlBlock);																			//	Inser to Fiish DTCB list
 	vPortFree(s);																													//	Free sour DTCB
@@ -3252,7 +3266,7 @@ void UserDefine_Task(){
 
 				while(1){
 					uint32_t base_tick = xTaskGetTickCount();
-					Distributed_Data_t* data_info = Distributed_SetTragetData((uint32_t*)0x10000000, 0x3000, 1);
+					Distributed_Data_t* data_info = Distributed_SetTragetData((uint32_t*)0x10000000, 0x1000, 1);
 					//Distributed_AddTargetData(data_info, (uint32_t*)0x10001000, 0x400, 1);
 					//Distributed_AddTargetData(data_info, (uint32_t*)0x10002000, 0x400, 1);
 					Distributed_CreateTask(UserDefine_Distributed_Task, data_info, 1000);
