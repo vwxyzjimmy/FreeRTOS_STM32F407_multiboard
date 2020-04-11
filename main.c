@@ -34,7 +34,7 @@ void Distributed_LocalSubtaskDone(Distributed_TaskHandle_List_t* s, uint32_t* Re
 void Distributed_InsertFinishNode(Distributed_TaskHandle_List_t* NewDTaskControlBlock);
 void Distributed_CreateTask(void* task, Distributed_Data_t *s, uint32_t Stack_size);
 Distributed_TaskHandle_List_t* Distributed_GetNode(uint32_t Return_addr, Distributed_TaskHandle_List_t* Lastnode);
-Distributed_Data_t* Distributed_SetTragetData(uint32_t* data_addr, uint32_t data_size, uint32_t split_size);
+Distributed_Data_t* Distributed_SetTargetData(uint32_t* data_addr, uint32_t data_size, uint32_t split_size);
 void Distributed_AddTargetData(Distributed_Data_t* S, uint32_t* data_addr, uint32_t data_size, uint32_t split_size);
 extern Distributed_TaskHandle_List_t* Distributed_Start(void *data_info);
 extern void tri_svc();
@@ -161,7 +161,7 @@ uint32_t complete_Remain_th = 0;
 
 uint32_t critial_count = 0;
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-Distributed_Data_t* Distributed_SetTragetData(uint32_t* data_addr, uint32_t data_size, uint32_t split_size){
+Distributed_Data_t* Distributed_SetTargetData(uint32_t* data_addr, uint32_t data_size, uint32_t split_size){
 	Distributed_Data_t* data_info = pvPortMalloc(sizeof(Distributed_Data_t));
 	data_info->Data_addr = data_addr;
 	data_info->Data_size = data_size;
@@ -239,9 +239,19 @@ void Distributed_LocalSubtaskDone(Distributed_TaskHandle_List_t* s, uint32_t* Re
 		}
 		printf("Malloc size: 0x%lX, but largest free block: 0x%lX\r\n", mallocsize, largestblock);
 		printf("NOt enough size to malloc in Distributed_LocalSubtaskDone\r\n");
+		Distributed_TaskHandle_List_t tmp_DTCB;
+		for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++)
+			*(((uint8_t*)&tmp_DTCB)+i) = *((uint8_t*)s+i);
+		vPortFree(s);
+		tmp_NewDTaskControlBlock = pvPortMalloc(mallocsize);
+		printf("Malloc again, tmp_NewDTaskControlBlock: 0x%lX\r\n", (uint32_t)tmp_NewDTaskControlBlock);
+		for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++)
+			*((uint8_t*)tmp_NewDTaskControlBlock+i) = *(((uint8_t*)&tmp_DTCB)+i);
 	}
-	for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++){
-		*((uint8_t*)tmp_NewDTaskControlBlock+i) = *((uint8_t*)s+i);
+	else{
+		for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++)
+			*((uint8_t*)tmp_NewDTaskControlBlock+i) = *((uint8_t*)s+i);
+		vPortFree(s);																													//	Free sour DTCB
 	}
 	tmp_NewDTaskControlBlock->Next_TaskHandle_List = NULL;
 	tmp_NewDTaskControlBlock->Data_addr = (uint32_t*)((uint8_t*)tmp_NewDTaskControlBlock + sizeof(Distributed_TaskHandle_List_t));											//	Copy result from sour data
@@ -252,7 +262,6 @@ void Distributed_LocalSubtaskDone(Distributed_TaskHandle_List_t* s, uint32_t* Re
 
 	tmp_NewDTaskControlBlock->Finish_Flag = 1;
 	Distributed_InsertFinishNode(tmp_NewDTaskControlBlock);																			//	Inser to Fiish DTCB list
-	vPortFree(s);																													//	Free sour DTCB
 	if(tmp_NewDTaskControlBlock->Source_Processor_id == Global_Node_id){															//	Check Task done, DStart list without task_id(all subtask done)
 		uint32_t tmp_count = 0;
 		Distributed_TaskHandle_List_t* check_Lastnode = DStart;
@@ -3254,7 +3263,7 @@ void UserDefine_Task(){
 				}
 				/*
 				uint32_t base_tick = xTaskGetTickCount();
-				Distributed_Data_t* data_info = Distributed_SetTragetData((uint32_t*)0x10000000, 0x3000, 1);
+				Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x3000, 1);
 				//Distributed_AddTargetData(data_info, (uint32_t*)0x10001000, 0x400, 1);
 				//Distributed_AddTargetData(data_info, (uint32_t*)0x10002000, 0x400, 1);
 				Distributed_CreateTask(UserDefine_Distributed_Task, data_info, 1000);
@@ -3266,7 +3275,7 @@ void UserDefine_Task(){
 
 				while(1){
 					uint32_t base_tick = xTaskGetTickCount();
-					Distributed_Data_t* data_info = Distributed_SetTragetData((uint32_t*)0x10000000, 0x1000, 1);
+					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x3000, 1);
 					//Distributed_AddTargetData(data_info, (uint32_t*)0x10001000, 0x400, 1);
 					//Distributed_AddTargetData(data_info, (uint32_t*)0x10002000, 0x400, 1);
 					Distributed_CreateTask(UserDefine_Distributed_Task, data_info, 1000);
