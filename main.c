@@ -206,11 +206,16 @@ void ListFreeBlock(){
 	critial_count--;
 }
 
-void Distributed_CreateTask(void* task, Distributed_Data_t *data_info, uint32_t Stack_size){
+void Distributed_CreateTask(void* task, Distributed_Data_t* data_info, uint32_t Stack_size){
+	TaskHandle_t Now_TaskHandle = xTaskGetCurrentTaskHandle();
+	printf("Now_TaskHandle: 0x%lX\r\n", (uint32_t)Now_TaskHandle);
 	QueueHandle_t xQueue = xQueueCreate(1, sizeof(uint32_t*));
+	data_info->TaskHandle = Now_TaskHandle;
 	data_info->xQueue = &xQueue;
 	TaskHandle_t TaskHandle;
 	xTaskCreate(task, "Dtask", Stack_size, data_info, 1, &TaskHandle);
+	vTaskSuspend(NULL);
+	printf("I won't be here\r\n");
 	Distributed_Data_t* Recv_S;
 	while(xQueueReceive(xQueue, (void*)&Recv_S, 0) == 0);
 	printf("xQueueReceive, Recv_S: 0x%lX, Data_addr: 0x%lX, Data_size: 0x%lX\r\n", (uint32_t)Recv_S, (uint32_t)Recv_S->Data_addr, Recv_S->Data_size);
@@ -842,7 +847,7 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 			DebugFlag = 30;
 			if(split_num_th == 0){
 				DebugFlag = 31;
-				*(NewDTaskControlBlock->TaskHandlex) = NULL;
+				NewDTaskControlBlock->TaskHandlex = (TaskHandle_t*)(((Distributed_Data_t*)data_info)->TaskHandle);
 				NewDTaskControlBlock->xQueue = ((Distributed_Data_t*)data_info)->xQueue;
 				#if(PrintSendRecv > 0)
 					printf("1 xQueue: 0x%lX\r\n", (uint32_t)(((Distributed_Data_t*)data_info)->xQueue));
@@ -1833,6 +1838,7 @@ FrameTypeDef Pkt_Handle(void){
 }
 
 void eth_handler(void){
+	uint32_t uxSavedInterruptStatus  = (uint32_t)taskENTER_CRITICAL_FROM_ISR();
 	/* Handles all the received frames */
 	/* check if any packet received */
 	FrameTypeDef frame;
@@ -2140,6 +2146,8 @@ void eth_handler(void){
 					if(Lastnode != NULL){
 						printf("\r\n\r\nSubtask in the DFinish list\r\n\r\n");
 						//SubtaskfinishFlag = (uint32_t)Lastnode;
+						Distributed_NodeResponseSubtaskFinish(Sour, subtask_id);
+						printf("Response Distributed_NodeResponseSubtaskFinish, and the node is not in dstart\r\n");
 					}
 					else{
 						printf("\r\n\r\nNo Subtask Here, Task id: 0x%lX, Subtak id: 0x%lX\r\n\r\n", task_id, subtask_id);
@@ -2147,9 +2155,9 @@ void eth_handler(void){
 						No_Node_ID = Sour;
 						No_Task_ID = task_id;
 						No_Subtask_ID = subtask_id;
-
+						Distributed_NodeRemoveTask(Global_Node_id, task_id);
+						printf("Response Distributed_NodeRemoveTask, and the node is not in dstart\r\n");
 					}
-					Distributed_NodeResponseSubtaskFinish(Sour, subtask_id);
 					//printf("Can't find task_id: 0x%lX, subtask_id: 0x%lX in DTCB List in final\r\n", task_id, subtask_id);
 				}
 				#if(PrintSendRecv > 0)
@@ -2223,6 +2231,7 @@ void eth_handler(void){
 			Distributed_TaskHandle_List_t* pre_Lastnode = DFinish;
 			while(Lastnode != NULL){
 				if((Lastnode->Source_Processor_id == processor_id) && (Lastnode->DTask_id == task_id)){
+					ResponseSubtaskFinishFlag = Lastnode->DSubTask_id;
 					//printf("God node, Subtask_id: 0x%lX\r\n", Lastnode->DSubTask_id);
 					if(Lastnode == DFinish){
 						DFinish = Lastnode->Next_TaskHandle_List;
@@ -2256,6 +2265,7 @@ void eth_handler(void){
 		}
 		//printf("Node_id: 0x%lX, Node_count: 0x%lX, Master: 0x%lX, Backup_Master: 0x%lX, Dest: 0x%lX, Sour: 0x%lX\r\n", Global_Node_id, Global_Node_count, Global_Node_Master, Global_Node_Backup_Master, Dest, Sour);
 	}
+	taskEXIT_CRITICAL_FROM_ISR(uxSavedInterruptStatus);
 	/* Clear the Eth DMA Rx IT pending bits */
 	SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, RS);
 	SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, NIS);
@@ -2865,6 +2875,12 @@ void Distributed_ManageTask(){
 
 							}
 							else{
+								/*
+								if((ConfirmResultFlag == Resultnode->Source_Processor_id) && (RemainThResultFlag != (Remain_th+1)))
+									printf("Dame Remain_th is wrong, Remain_th here: 0x%lX, Remain_th+1: 0x%lX, RemainThResultFlag: 0x%lX\r\n", Remain_th, (Remain_th+1), RemainThResultFlag);
+								else
+									printf("Dame ConfirmResultFlag is wrong, ConfirmResultFlag: 0x%lX, Resultnode->Source_Processor_id: 0x%lX\r\n", ConfirmResultFlag, Resultnode->Source_Processor_id);
+								*/
 								DebugFlag = 512 + 58;
 								//printf("Timeout, ConfirmResultFlag: 0x%lX, Source_Processor_id: 0x%lX, RemainThResultFlag: 0x%lX, Remain_th: 0x%lX\r\n", ConfirmResultFlag, Resultnode->Source_Processor_id, RemainThResultFlag, Remain_th);
 								;
@@ -2921,6 +2937,7 @@ void Distributed_ManageTask(){
 								//while(!PublishFlag);
 								DebugFlag = 512 + 66;
 								//printf("Distributed_NodeSubtaskFinish\r\n");
+								ResponseSubtaskFinishFlag = 0;
 								Distributed_NodeSubtaskFinish(tmp_NewDTaskControlBlock->Source_Processor_id, tmp_NewDTaskControlBlock->DTask_id, tmp_NewDTaskControlBlock->DSubTask_id, tmp_NewDTaskControlBlock->Data_number);
 								vPortExitCritical();
 								critial_count--;
@@ -3037,6 +3054,7 @@ void Distributed_ManageTask(){
 								Send_S->Data_addr = pvPortMalloc(Total_result_size*sizeof(uint32_t));;
 								Send_S->Data_size = Total_result_size;
 								Send_S->xQueue = Subtask_node_zero->xQueue;
+								Send_S->TaskHandle = (TaskHandle_t)Subtask_node_zero->TaskHandlex;
 								#if (PrintSendRecv > 0)
 									printf("Send_S->xQueue: 0x%lX\r\n", (uint32_t)Subtask_node_zero->xQueue);
 								#endif
@@ -3107,6 +3125,12 @@ void Distributed_ManageTask(){
 											else{
 												DebugFlag = 512 + 94;
 												;
+												/*
+												if((RequestResultFlag == target_node_array[i]->Destinate_Processor_id) && (RemainThResultFlag != Remain_th))
+													printf("Wrong RemainThResultFlag: 0x%lX, Remain_th: 0x%lX\r\n", RemainThResultFlag, Remain_th);
+												else
+													printf("Wrong RequestResultFlag: 0x%lX, target_node_array[i]->Destinate_Processor_id: 0x%lX\r\n", RequestResultFlag, target_node_array[i]->Destinate_Processor_id);
+												*/
 												//printf("Timeout, RequestResultFlag: 0x%lX, Destinate_Processor_id: 0x%lX, RemainThResultFlag: 0x%lX, Remain_th: 0x%lX\r\n", RequestResultFlag, target_node_array[i]->Destinate_Processor_id, RemainThResultFlag, Remain_th);
 											}
 										}
@@ -3163,6 +3187,8 @@ void Distributed_ManageTask(){
 								critial_count--;
 								printf("xQueueSendToBack, critial_count: 0x%lX\r\n", critial_count);
 								xQueueSendToBack(*((QueueHandle_t*)Send_S->xQueue), (void*)&Send_S, 0);
+								vTaskResume(Send_S->TaskHandle);
+								printf("Send_S->TaskHandle: 0x%lX\r\n", (uint32_t)Send_S->TaskHandle);
 								vPortEnterCritical();
 								critial_count++;
 								DebugFlag = 512 + 101;
@@ -3272,7 +3298,6 @@ void UserDefine_Task(){
 				printf("Distributed task Duration: 0x%lX s		=========================\r\n", distributed_task_duration_tick);
 				printf("Return from Distributed_CreateTask\r\n");
 				*/
-
 				while(1){
 					uint32_t base_tick = xTaskGetTickCount();
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x3000, 1);
