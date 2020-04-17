@@ -28,6 +28,7 @@ typedef struct Distributed_TaskHandle_List {
 	uint32_t Destinate_Processor_id;
     uint32_t DTask_id;
 	uint32_t DSubTask_id;
+	uint32_t DSubTask_number;
     uint32_t* Instruction_addr;
 	uint32_t* Instruction_addr_end;
     uint32_t* Data_addr;
