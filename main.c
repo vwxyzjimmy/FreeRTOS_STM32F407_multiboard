@@ -2613,7 +2613,6 @@ void Distributed_ManageTask(){
 								Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
 							}
 							DebugFlag = 512 + 27;
-							printf("ReceiveSubtaskFlag\r\n");
 							vPortExitCritical();
 							xTaskCreate((void*)NewDTaskControlBlock->Instruction_addr, "Distributed task", (NewDTaskControlBlock->Stack_size), NULL, 1, NewDTaskControlBlock->TaskHandlex);
 							vPortEnterCritical();
@@ -2621,7 +2620,7 @@ void Distributed_ManageTask(){
 						vPortExitCritical();
 						DebugFlag = 512 + 28;
 					}
-					else if(RecvFreeBlockFlag > 0){
+					else if((RecvFreeBlockFlag > 0) && (PublishFlag > 0)){
 						DebugFlag = 512 + 35;
 						vPortEnterCritical();
 						#if(PrintSendRecv > 0)
@@ -2783,7 +2782,6 @@ void Distributed_ManageTask(){
 					else if(unmerge_finish_distributed_task > 0){
 						DebugFlag = 512 + 60;
 						vPortEnterCritical();
-
 						Distributed_TaskHandle_List_t* Lastnode = DFinish;
 						Distributed_TaskHandle_List_t* pre_Lastnode = DFinish;
 						while((Lastnode != NULL) && (Lastnode->Finish_Flag != 0)){
@@ -2824,6 +2822,7 @@ void Distributed_ManageTask(){
 								WaitForFlag(&ResponseSubtaskFinishFlag, 10);
 								vPortEnterCritical();
 								if(ResponseSubtaskFinishFlag == tmp_NewDTaskControlBlock->DSubTask_id){
+									printf("SubtaskFinish, DTask_id: 0x%lX, DSubTask_id: 0x%lX\r\n", tmp_NewDTaskControlBlock->DTask_id, tmp_NewDTaskControlBlock->DSubTask_id);
 									DebugFlag = 512 + 67;
 									ResponseSubtaskFinishFlag = 0;
 									DebugFlag = 512 + 68;
@@ -3092,7 +3091,7 @@ void Distributed_ManageTask(){
 						DebugFlag = 512 + 106;
 					}
 
-					else if(BlockChangeFlag > 0){
+					else if((BlockChangeFlag > 0) && (PublishFlag > 0)){
 						DebugFlag = 512 + 107;
 						if((Check_Sendable())){
 							vPortEnterCritical();
@@ -3146,18 +3145,6 @@ void UserDefine_Task(){
 					//*(((uint32_t*)0x10001000)+i) = i;
 					//*(((uint32_t*)0x10002000)+i) = i;
 				}
-				/*
-				uint32_t base_tick = xTaskGetTickCount();
-				Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x3000, 1);
-				//Distributed_AddTargetData(data_info, (uint32_t*)0x10001000, 0x400, 1);
-				//Distributed_AddTargetData(data_info, (uint32_t*)0x10002000, 0x400, 1);
-				Distributed_CreateTask(UserDefine_Distributed_Task, data_info, 1000);
-				uint32_t duration_time = (xTaskGetTickCount() - base_tick);
-				printf("Distributed task total Duration: 0x%lX s=========================\r\n", duration_time);
-				printf("Distributed task Duration: 0x%lX s		=========================\r\n", distributed_task_duration_tick);
-				printf("Return from Distributed_CreateTask\r\n");
-				*/
-
 				while(1){
 					uint32_t base_tick = xTaskGetTickCount();
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x3000, 1);
@@ -3165,8 +3152,7 @@ void UserDefine_Task(){
 					//Distributed_AddTargetData(data_info, (uint32_t*)0x10002000, 0x400, 1);
 					Distributed_CreateTask(UserDefine_Distributed_Task, data_info, 1000);
 					uint32_t duration_time = (xTaskGetTickCount() - base_tick);
-					printf("Distributed_task Duration: 0x%lX s	=========================\r\n", duration_time);
-					printf("Distributed task Duration: 0x%lX s		=========================\r\n", distributed_task_duration_tick);
+					printf("Distributed_task: 0x%lX, Duration: 0x%lX s	=========================\r\n", Global_Task_id, duration_time);
 				}
 			}
 		}
@@ -3835,7 +3821,10 @@ uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
 		}
 	}
 	uint32_t duration_tick = xTaskGetTickCount() - record_tick;
-	printf("Distributed_NodeRequestReleaseSequence Duration: 0x%lX\r\n", duration_tick);
+	if(DisableEnableFlag == 0)
+		printf("Distributed_NodeRequestReleaseSequence Request Duration: 0x%lX\r\n", duration_tick);
+	else
+		printf("Distributed_NodeRequestReleaseSequence Release Duration: 0x%lX\r\n", duration_tick);
 	return	1;
 }
 
