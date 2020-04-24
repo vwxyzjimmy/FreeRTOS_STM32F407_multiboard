@@ -644,7 +644,7 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 						BlockChangeFlag = 0;
 					*/
 					vPortExitCritical();
-					uint8_t timeout_flag = Distributed_NodeCheckSizeTimeout(10*timeout_tick_count, Distributed_dispatch_node[split_num_th], Distributed_data_need_size[split_num_th]);
+					uint8_t timeout_flag = Distributed_NodeCheckSizeTimeout(20*timeout_tick_count, Distributed_dispatch_node[split_num_th], Distributed_data_need_size[split_num_th]);
 					vPortEnterCritical();
 					if(timeout_flag == 0xFF){																//	0xFF mean node not response, not exist
 						#if(PrintSendRecv > 0)
@@ -2415,7 +2415,7 @@ void Distributed_ManageTask(){
 							uint8_t timeout_flag = 0;
 							if(Allfreeblocknode[i] != Global_Node_id){
 								vPortExitCritical();
-								timeout_flag = Distributed_NodeCheckSizeTimeout(10*timeout_tick_count, Allfreeblocknode[i], 0);
+								timeout_flag = Distributed_NodeCheckSizeTimeout(20*timeout_tick_count, Allfreeblocknode[i], 0);
 								vPortEnterCritical();
 								if(timeout_flag != 0xff)
 									printf("Got response: 0x%lX\r\n",  (uint32_t)timeout_flag);
@@ -2454,7 +2454,7 @@ void Distributed_ManageTask(){
 					}
 					if(CheckMasterNodeFlag == 1){
 						DebugFlag = 512 + 1;
-						uint8_t timeout_flag = Distributed_NodeCheckSizeTimeout(10*timeout_tick_count, Global_Node_Master, 0);
+						uint8_t timeout_flag = Distributed_NodeCheckSizeTimeout(20*timeout_tick_count, Global_Node_Master, 0);
 						DebugFlag = 512 + 2;
 						if(timeout_flag == 0xff){
 							DebugFlag = 512 + 3;
@@ -2536,71 +2536,51 @@ void Distributed_ManageTask(){
 								Data_Dest_ptr += Recv_Data_Number;
 								Remain_Data_number -= Recv_Data_Number;
 								DebugFlag = 512 + 14;
-								if(Remain_Data_number > 0){
-									while(Remain_Data_number > 0){
-										ReceiveSubtaskFlag = 0;
-										if(Remain_th == 1){
-											Distributed_NodeRecvSubtask(Source_node);
-										}
-										else{
-											Distributed_NodeRecvRemainSubtask(Source_node, Remain_th);
-										}
-										DebugFlag = 512 + 15;
-										vPortExitCritical();
-										WaitForFlag(&ReceiveSubtaskFlag, 10);
-										vPortEnterCritical();
-										DebugFlag = 512 + 16;
-										if((ReceiveSubtaskFlag == NewDTaskControlBlock->Source_Processor_id) && (RemainThFlag == Remain_th)){
-											Source_node = ReceiveSubtaskFlag;
-											frame_addr = (uint8_t*)((DMA_RX_FRAME_infos->FS_Rx_Desc)->Buffer1Addr);
-											uint32_t Distributed_NodeSendRemainSubtask_Header_Size = 17;
-											uint8_t* tmp_Data_addr = ((uint8_t*)frame_addr+Distributed_NodeSendRemainSubtask_Header_Size);
-											Recv_Data_Number = (ETH_FRAM_SIZE - Distributed_NodeSendRemainSubtask_Header_Size);
-											if(Recv_Data_Number > Remain_Data_number)
-												Recv_Data_Number = Remain_Data_number;
-											for(uint32_t i=0;i<Recv_Data_Number;i++)
-												*(Data_Dest_ptr+i) = *(tmp_Data_addr+i);
-											Data_Dest_ptr = (uint8_t*)Data_Dest_ptr + Recv_Data_Number;
-											#if(PrintSendRecv > 0)
-												package_stop_addr = (uint32_t*)(Data_Dest_ptr-4);
-											#endif
-											Remain_Data_number -= Recv_Data_Number;
-											Remain_th++;
-											if(Remain_Data_number <= 0){
-												Distributed_NodeRecvRemainSubtask(Source_node, Remain_th);
-												SendCompleteFlag = 0;
-												vPortExitCritical();
-												DebugFlag = 512 + 18;
-												uint8_t Flag = 0;
-												while(Flag == 0){
-													Flag = Distributed_NodeRecvCompleteSequence(Source_node);
-													if(Flag == 0)
-														Distributed_NodeRecvRemainSubtask(Source_node, Remain_th);
-												}
-												vPortEnterCritical();
-											}
-										}
+								while(Remain_Data_number > 0){
+									ReceiveSubtaskFlag = 0;
+									if(Remain_th == 1){
+										Distributed_NodeRecvSubtask(Source_node);
 									}
-									DebugFlag = 512 + 17;
-
-									DebugFlag = 512 + 19;
-								}
-								/*
-								else{
-									DebugFlag = 512 + 20;
-									SendCompleteFlag = 0;
-									Distributed_NodeRecvSubtask(Source_node);
+									else{
+										Distributed_NodeRecvRemainSubtask(Source_node, Remain_th);
+									}
+									DebugFlag = 512 + 15;
 									vPortExitCritical();
-									uint8_t Flag = 0;
-									while(Flag == 0){
-										Flag = Distributed_NodeRecvCompleteSequence(Source_node);
-										if(Flag == 0)
-											Distributed_NodeRecvSubtask(Source_node);
-									}
+									WaitForFlag(&ReceiveSubtaskFlag, 10);
 									vPortEnterCritical();
-									DebugFlag = 512 + 21;
+									DebugFlag = 512 + 16;
+									if((ReceiveSubtaskFlag == NewDTaskControlBlock->Source_Processor_id) && (RemainThFlag == Remain_th)){
+										Source_node = ReceiveSubtaskFlag;
+										frame_addr = (uint8_t*)((DMA_RX_FRAME_infos->FS_Rx_Desc)->Buffer1Addr);
+										uint32_t Distributed_NodeSendRemainSubtask_Header_Size = 17;
+										uint8_t* tmp_Data_addr = ((uint8_t*)frame_addr+Distributed_NodeSendRemainSubtask_Header_Size);
+										Recv_Data_Number = (ETH_FRAM_SIZE - Distributed_NodeSendRemainSubtask_Header_Size);
+										if(Recv_Data_Number > Remain_Data_number)
+											Recv_Data_Number = Remain_Data_number;
+										for(uint32_t i=0;i<Recv_Data_Number;i++)
+											*(Data_Dest_ptr+i) = *(tmp_Data_addr+i);
+										Data_Dest_ptr = (uint8_t*)Data_Dest_ptr + Recv_Data_Number;
+										#if(PrintSendRecv > 0)
+											package_stop_addr = (uint32_t*)(Data_Dest_ptr-4);
+										#endif
+										Remain_Data_number -= Recv_Data_Number;
+										Remain_th++;
+										if(Remain_Data_number <= 0){
+											Distributed_NodeRecvRemainSubtask(Source_node, Remain_th);
+											SendCompleteFlag = 0;
+											vPortExitCritical();
+											DebugFlag = 512 + 18;
+											uint8_t Flag = 0;
+											while(Flag == 0){
+												Flag = Distributed_NodeRecvCompleteSequence(Source_node);
+												if(Flag == 0)
+													Distributed_NodeRecvRemainSubtask(Source_node, Remain_th);
+											}
+											vPortEnterCritical();
+										}
+									}
 								}
-								*/
+								DebugFlag = 512 + 17;
 							}
 							else{
 								DebugFlag = 512 + 22;
@@ -3822,7 +3802,7 @@ uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
 	}
 	return	1;
 }
-
+/*
 uint8_t Distributed_NodeSendCompleteSequence(uint32_t Target_Node_id){
 	vPortEnterCritical();
 	uint8_t Remain_th = 1;
@@ -3865,7 +3845,7 @@ uint8_t Distributed_NodeSendCompleteSequence(uint32_t Target_Node_id){
 		}
 		SendCompleteFlag = 0;
 		vPortExitCritical();
-		return 1;
+		return Remain_th;
 	}
 	else{
 		SendCompleteFlag = 0;
@@ -3932,7 +3912,65 @@ uint8_t Distributed_NodeRecvCompleteSequence(uint32_t Target_Node_id){
 		}
 		SendCompleteFlag = 0;
 		vPortExitCritical();
-		return 1;
+		return Remain_th;
+	}
+	else{
+		SendCompleteFlag = 0;
+		vPortExitCritical();
+		return 0;
+	}
+}
+*/
+uint8_t Distributed_NodeSendCompleteSequence(uint32_t Target_Node_id){
+	vPortEnterCritical();
+	uint8_t Remain_th = 1;
+	SendCompleteFlag = 0;
+	Distributed_NodeSendComplete(Target_Node_id, Remain_th);
+	vPortExitCritical();
+	WaitForFlag(&SendCompleteFlag, 1);
+	vPortEnterCritical();
+	if(SendCompleteFlag > Remain_th){
+		Remain_th = SendCompleteFlag + 1;
+		Distributed_NodeSendComplete(Target_Node_id, Remain_th);
+		SendCompleteFlag = 0;
+		vPortExitCritical();
+		return Remain_th;
+	}
+	else{
+		SendCompleteFlag = 0;
+		vPortExitCritical();
+		return 0;
+	}
+}
+
+uint8_t Distributed_NodeRecvCompleteSequence(uint32_t Target_Node_id){
+	WaitForFlag(&SendCompleteFlag, 1);
+	vPortEnterCritical();
+	uint8_t Remain_th = 0;
+	if(SendCompleteFlag > Remain_th){
+		Remain_th = SendCompleteFlag + 1;
+		SendCompleteFlag = 0;
+		uint32_t recv_complete_count = 0;
+		uint32_t recv_complete_limit = 5;
+		while(1){
+			Distributed_NodeSendComplete(Target_Node_id, Remain_th);
+			vPortExitCritical();
+			WaitForFlag(&SendCompleteFlag, 1);
+			vPortEnterCritical();
+			if(SendCompleteFlag > Remain_th){
+				Remain_th = SendCompleteFlag + 1;
+				break;
+			}
+			else{
+				recv_complete_count++;
+				if(recv_complete_count > recv_complete_limit){
+					break;
+				}
+			}
+		}
+		SendCompleteFlag = 0;
+		vPortExitCritical();
+		return Remain_th;
 	}
 	else{
 		SendCompleteFlag = 0;
