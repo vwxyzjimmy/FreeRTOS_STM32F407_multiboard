@@ -2083,8 +2083,9 @@ void eth_handler(void){
 		}
 		else if (Msg_event == Distributed_NodeRequestKey_MSG){
 			if(Global_Node_id == Global_Node_Master){
-				if((RequestKeyFlag == 0) || (RequestKeyFlag = Sour)){
+				if((RequestKeyFlag == 0) || (RequestKeyFlag == Sour)){
 					Distributed_NodeResponseKey(Sour, 1);
+					printf("Response Key to Node: 0x%lX, RequestKeyFlag from 0x%lX to 0x%lX\r\n", Sour, RequestKeyFlag, (uint32_t)Sour);
 					RequestKeyFlag = Sour;
 					PublishFlag = 0;
 					#if(PrintSendRecv > 0)
@@ -2093,8 +2094,9 @@ void eth_handler(void){
 				}
 				else{
 					Distributed_NodeResponseKey(Sour, 0);
+					printf("Not Response Key to Node: 0x%lX, Node: 0x%lX Occupy the Key\r\n", Sour, RequestKeyFlag);
 					#if(PrintSendRecv > 0)
-						printf("Not Request Key from Node: 0x%lX, Node : 0x%lX occupy the key\r\n", Sour, RequestKeyFlag);
+						printf("Not Request Key from Node: 0x%lX, Node: 0x%lX occupy the key\r\n", Sour, RequestKeyFlag);
 					#endif
 				}
 				#if(PrintSendRecv > 0)
@@ -2106,6 +2108,7 @@ void eth_handler(void){
 			if(Global_Node_id == Global_Node_Master){
 				if((RequestKeyFlag == Sour) || (RequestKeyFlag == 0)){
 					Distributed_NodeResponseKey(Sour, 1);
+					printf("Response Key from Node: 0x%lX, RequestKeyFlag from 0x%lX to 0x%lX\r\n", Sour, RequestKeyFlag, (uint32_t)0);
 					RequestKeyFlag = 0;
 					PublishFlag = 1;
 					#if(PrintSendRecv > 0)
@@ -2114,6 +2117,7 @@ void eth_handler(void){
 				}
 				else{
 					Distributed_NodeResponseKey(Sour, 0);
+					printf("Not Response Key from Node: 0x%lX, Node: 0x%lX occupy the key\r\n", Sour, RequestKeyFlag);
 					#if(PrintSendRecv > 0)
 						printf("Not Release Key from Node: 0x%lX, Node : 0x%lX occupy the key\r\n", Sour, RequestKeyFlag);
 					#endif
@@ -3941,12 +3945,15 @@ uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
 	if(DisableEnableFlag == 0){
 		while(1){
 			if(Global_Node_id == Global_Node_Master){
-				if(RequestKeyFlag != 0)												//	RequestKeyFlag is occupy
+				vPortEnterCritical();
+				if((RequestKeyFlag != 0) && (RequestKeyFlag != Global_Node_id))			//	RequestKeyFlag is occupy
 					ResponseKeyFlag = Global_Node_count + 1;
 				else{
-					ResponseKeyFlag = Global_Node_id;								//	Request RequestKeyFlag
+					ResponseKeyFlag = Global_Node_id;									//	Request RequestKeyFlag
 					RequestKeyFlag = Global_Node_id;
+					printf("Master request RequestKeyFlag: 0x%lX\r\n", RequestKeyFlag);
 				}
+				vPortExitCritical();
 			}
 			else{																		//	Local node is not Master, try to request or release by communication
 				ResponseKeyFlag = 0;
@@ -4067,12 +4074,15 @@ uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
 		}
 		while(1){
 			if(Global_Node_id == Global_Node_Master){
-				if(RequestKeyFlag != Global_Node_id)								//	Not the RequestKeyFlag occupy node
+				vPortEnterCritical();
+				if((RequestKeyFlag != Global_Node_id) && (RequestKeyFlag != 0))		//	Not the RequestKeyFlag occupy node
 					ResponseKeyFlag = Global_Node_count + 1;
 				else{																//	Release RequestKeyFlag
 					ResponseKeyFlag = Global_Node_id;
 					RequestKeyFlag = 0;
+					printf("Master release RequestKeyFlag: 0x%lX\r\n", RequestKeyFlag);
 				}
+				portEXIT_CRITICAL();
 			}
 			else{																		//	Local node is not Master, try to request or release by communication
 				ResponseKeyFlag = 0;
