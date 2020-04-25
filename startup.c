@@ -8,7 +8,6 @@ extern uint32_t read_psp();
 extern uint32_t DebugFlag;
 extern uint32_t SendFlag;
 extern uint32_t RecvFlag;
-extern uint32_t complete_Remain_th;
 extern uint32_t fuck;
 extern uint32_t global_pxBlockToInsert;
 uint32_t SystemCoreClock = 168000000;

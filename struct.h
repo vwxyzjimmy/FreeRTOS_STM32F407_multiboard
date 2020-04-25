@@ -129,6 +129,3 @@ volatile ETH_DMA_Rx_Frame_infos *DMA_RX_FRAME_infos;
 #define Request 0x00
 #define Release 0x01
 #define ETH_FRAM_SIZE 1500
-
-extern uint32_t SystemTICK_RATE_HZ;
-#define Time_Out_Tick_Count (SystemTICK_RATE_HZ/1)
