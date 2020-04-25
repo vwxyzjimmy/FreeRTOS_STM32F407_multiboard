@@ -359,6 +359,7 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 		Get_key = Distributed_NodeRequestReleaseSequence(Request);
 	}
 	vPortEnterCritical();
+	printf("Distributed_NodeRequestReleaseSequence(Request) in Distributed_DispatchTask\r\n");
 	DebugFlag = 1;
 	Global_Task_id++;
 	uint32_t Data_number = 0;
@@ -925,12 +926,13 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 					DispatchSuccessFlag = 0;
 					if(Send_Addr == Distributed_Send_Addr){
 						Distributed_NodeSendSubtask(Distributed_dispatch_node[split_num_th], Send_Addr, Send_Size);	//	Dispatch by ethernet
-						DebugFlag = 1024 + Distributed_dispatch_node[split_num_th]*100 + NewDTaskControlBlock->DTask_id*10;
+						//DebugFlag = 1024 + Distributed_dispatch_node[split_num_th]*100 + NewDTaskControlBlock->DTask_id*10;
 					}
 					else{
 						Distributed_NodeSendRemainSubtask(Distributed_dispatch_node[split_num_th], Send_Addr, Send_Size, Remain_th);	//	Dispatch by ethernet
-						DebugFlag = 1024 + Distributed_dispatch_node[split_num_th]*100 + NewDTaskControlBlock->DTask_id*10 + Remain_th;
+						//DebugFlag = 1024 + Distributed_dispatch_node[split_num_th]*100 + NewDTaskControlBlock->DTask_id*10 + Remain_th;
 					}
+					DebugFlag = 1024;
 					vPortExitCritical();
 					WaitForFlag(&DispatchSuccessFlag, 10);
 					vPortEnterCritical();
@@ -1025,6 +1027,7 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 	Get_key = 0;
 	while(Get_key == 0)
 		Get_key = Distributed_NodeRequestReleaseSequence(Release);
+	printf("Distributed_NodeRequestReleaseSequence(Release) in Distributed_DispatchTask\r\n");
 	DebugFlag = 44;
 	return Subscriber_task;
 }
@@ -2080,7 +2083,7 @@ void eth_handler(void){
 		}
 		else if (Msg_event == Distributed_NodeRequestKey_MSG){
 			if(Global_Node_id == Global_Node_Master){
-				if(RequestKeyFlag == 0){
+				if((RequestKeyFlag == 0) || (RequestKeyFlag = Sour)){
 					Distributed_NodeResponseKey(Sour, 1);
 					RequestKeyFlag = Sour;
 					PublishFlag = 0;
@@ -2751,14 +2754,16 @@ void Distributed_ManageTask(){
 									Send_Size = Send_Remain_Size;
 							}
 							DebugFlag = 512 + 55;
+							ConfirmResultFlag = 0;
 							if(Remain_th == 1){
 								Distributed_NodeResponseResult(Resultnode->Source_Processor_id, Send_Addr, Send_Size);
-								DebugFlag = 1024 + Resultnode->Source_Processor_id*100 + Resultnode->DTask_id*10;
+								//DebugFlag = 1024 + Resultnode->Source_Processor_id*100 + Resultnode->DTask_id*10;
 							}
 							else{
 								Distributed_NodeResponseRemainResult(Resultnode->Source_Processor_id, Send_Addr, Send_Size, Remain_th);
-								DebugFlag = 1024 + Resultnode->Source_Processor_id*100 + Resultnode->DTask_id*10 + Remain_th;
+								//DebugFlag = 1024 + Resultnode->Source_Processor_id*100 + Resultnode->DTask_id*10 + Remain_th;
 							}
+							DebugFlag = 1025;
 							vPortExitCritical();
 							//DebugFlag = 512 + 56;
 							WaitForFlag(&ConfirmResultFlag, 1);
@@ -2858,6 +2863,7 @@ void Distributed_ManageTask(){
 						Get_key = Distributed_NodeRequestReleaseSequence(Request);
 						DebugFlag = 512 + 75;
 						if(Get_key != 0){
+							printf("Distributed_NodeRequestReleaseSequence(Request) in TaskDoneFlag\r\n");
 							vPortEnterCritical();
 							DebugFlag = 512 + 76;
 							Distributed_TaskHandle_List_t* Lastnode = DFinish;																//	Ready to recycle task_id = TaskDoneFlag result
@@ -3045,6 +3051,7 @@ void Distributed_ManageTask(){
 							while(Get_key == 0){
 								Get_key = Distributed_NodeRequestReleaseSequence(Release);
 							}
+							printf("Distributed_NodeRequestReleaseSequence(Release) in TaskDoneFlag\r\n");
 						}
 						else{
 							printf("Key is occupy, try again in future\r\n");
@@ -3715,11 +3722,225 @@ uint8_t Distributed_NodeCheckSizeTimeout(uint32_t tick, uint32_t Target_Node_id,
 		return 0xff;
 	}
 }
-
+/*
 uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
-	while(1){
-		if(Global_Node_id == Global_Node_Master){									//	Local node is Master
-			if(DisableEnableFlag == 0){												//	Request
+	if(DisableEnableFlag == 0){
+		while(1){
+			if(Global_Node_id == Global_Node_Master){
+				if(DisableEnableFlag == 0){												//	Request
+					if(RequestKeyFlag != 0)												//	RequestKeyFlag is occupy
+						ResponseKeyFlag = Global_Node_count + 1;
+					else{
+						ResponseKeyFlag = Global_Node_id;								//	Request RequestKeyFlag
+						RequestKeyFlag = Global_Node_id;
+					}
+				}
+				else{																	//	Release
+					if(RequestKeyFlag != Global_Node_id)								//	Not the RequestKeyFlag occupy node
+						ResponseKeyFlag = Global_Node_count + 1;
+					else{																//	Release RequestKeyFlag
+						ResponseKeyFlag = Global_Node_id;
+						RequestKeyFlag = 0;
+					}
+				}
+				//vPortExitCritical();
+			}
+			else{																		//	Local node is not Master, try to request or release by communication
+				ResponseKeyFlag = 0;
+				while(ResponseKeyFlag == 0){
+					//while(!Check_Sendable_Without_Limit());
+					if(DisableEnableFlag == 0){
+						Distributed_NodeRequestKey();								//	Request by communication
+					}
+					else{
+						Distributed_NodeReleaseKey();								//	Release by communication
+					}
+					WaitForFlag(&ResponseKeyFlag, 10);
+				}
+				#if(PrintSendRecv > 0)
+					if(DisableEnableFlag == 0)
+						printf("Distributed_NodeRequestKey Got response\r\n");
+					else
+						printf("Distributed_NodeReleaseKey Got response\r\n");
+				#endif
+			}
+			if(ResponseKeyFlag > Global_Node_count){									//	RequestKeyFlag is occupy, clear ResponseKeyFlag
+				#if(PrintSendRecv > 0)
+					if(DisableEnableFlag == 0)
+						printf("Not Request the Key, RequestKeyFlag is occupy\r\n");
+					else
+						printf("Not Release the Key, RequestKeyFlag is occupy\r\n");
+				#endif
+				ResponseKeyFlag = 0;													//	Not Get the Key
+				return	0;
+			}
+			else{																		//	occupy RequestKeyFlag, clear ResponseKeyFlag
+				ResponseKeyFlag = 0;
+				break;
+			}
+		}
+		for(uint32_t i=1;i<=Global_Node_count;i++){										//	Disable/Enable all node
+			if((i != Global_Node_Master) && (i != Global_Node_id)){
+				uint32_t Timeout_count_limit = 10;
+				uint32_t Timeout_count = 0;
+				while(PublishResponseFlag != i){
+					while(!Check_Sendable_Without_Limit());
+					PublishResponseFlag = 0;
+					if(DisableEnableFlag == 0){
+						Distributed_NodeDisablePublish(i);
+					}
+					else{
+						Distributed_NodeEnablePublish(i);
+					}
+					WaitForFlag(&PublishResponseFlag, 10);
+					if(PublishResponseFlag == i){										//	Got ResponsePublish
+						#if(PrintSendRecv > 0)
+							if(DisableEnableFlag == 0)
+								printf("Success disable, Node id: 0x%lX\r\n", i);
+							else
+								printf("Success enable, Node id: 0x%lX\r\n", i);
+						#endif
+						break;
+					}
+					else{
+						#if(PrintSendRecv > 0)
+							if(DisableEnableFlag == 0)
+								printf("Timeout in Distributed_NodeDisablePublish, Node id: 0x%lX\r\n", i);
+							else
+								printf("Timeout in Distributed_NodeEnablePublish, Node id: 0x%lX\r\n", i);
+						#endif
+						//	Should publish Invalid Node
+						//	??????
+						Timeout_count++;
+						if(Timeout_count > Timeout_count_limit){
+							//printf("Over time out limit: 0x%lX\r\n", Timeout_count_limit);
+							break;
+						}
+					}
+				}
+			}
+			else if (i == Global_Node_id){
+				if(DisableEnableFlag == 0)
+					PublishFlag = 0;
+				else
+					PublishFlag = 1;
+			}
+		}
+	}
+	else{
+		for(uint32_t i=1;i<=Global_Node_count;i++){										//	Disable/Enable all node
+			if((i != Global_Node_Master) && (i != Global_Node_id)){
+				uint32_t Timeout_count_limit = 10;
+				uint32_t Timeout_count = 0;
+				while(PublishResponseFlag != i){
+					//while(!Check_Sendable_Without_Limit());
+					PublishResponseFlag = 0;
+					if(DisableEnableFlag == 0){
+						Distributed_NodeDisablePublish(i);
+						printf("Distributed_NodeDisablePublish: 1, 0x%lX\r\n", (uint32_t)DisableEnableFlag);
+					}
+					else{
+						Distributed_NodeEnablePublish(i);
+						printf("Distributed_NodeEnablePublish: 1, 0x%lX\r\n", (uint32_t)DisableEnableFlag);
+					}
+					WaitForFlag(&PublishResponseFlag, 10);
+					if(PublishResponseFlag == i){										//	Got ResponsePublish
+						#if(PrintSendRecv > 0)
+							if(DisableEnableFlag == 0)
+								printf("Success disable, Node id: 0x%lX\r\n", i);
+							else
+								printf("Success enable, Node id: 0x%lX\r\n", i);
+						#endif
+						printf("Success disable, Node id: 0x%lX\r\n", i);
+						break;
+					}
+					else{
+						#if(PrintSendRecv > 0)
+							if(DisableEnableFlag == 0)
+								printf("Timeout in Distributed_NodeDisablePublish, Node id: 0x%lX\r\n", i);
+							else
+								printf("Timeout in Distributed_NodeEnablePublish, Node id: 0x%lX\r\n", i);
+						#endif
+						//	Should publish Invalid Node
+						//	??????
+						printf("Timeout in Distributed_NodeEnablePublish, Node id: 0x%lX\r\n", i);
+						Timeout_count++;
+						if(Timeout_count > Timeout_count_limit){
+							printf("Over time out limit: 0x%lX\r\n", Timeout_count_limit);
+							break;
+						}
+					}
+				}
+			}
+			else if (i == Global_Node_id){
+				if(DisableEnableFlag == 0)
+					PublishFlag = 0;
+				else
+					PublishFlag = 1;
+			}
+		}
+		while(1){
+			if(Global_Node_id == Global_Node_Master){
+																						//	Local node is Master
+				if(DisableEnableFlag == 0){												//	Request
+					if(RequestKeyFlag != 0)												//	RequestKeyFlag is occupy
+						ResponseKeyFlag = Global_Node_count + 1;
+					else{
+						ResponseKeyFlag = Global_Node_id;								//	Request RequestKeyFlag
+						RequestKeyFlag = Global_Node_id;
+					}
+				}
+				else{																	//	Release
+					if(RequestKeyFlag != Global_Node_id)								//	Not the RequestKeyFlag occupy node
+						ResponseKeyFlag = Global_Node_count + 1;
+					else{																//	Release RequestKeyFlag
+						ResponseKeyFlag = Global_Node_id;
+						RequestKeyFlag = 0;
+					}
+				}
+			}
+			else{																		//	Local node is not Master, try to request or release by communication
+				ResponseKeyFlag = 0;
+				while(ResponseKeyFlag == 0){
+					//while(!Check_Sendable_Without_Limit());
+					if(DisableEnableFlag == 0){
+						Distributed_NodeRequestKey();								//	Request by communication
+					}
+					else{
+						Distributed_NodeReleaseKey();								//	Release by communication
+					}
+					WaitForFlag(&ResponseKeyFlag, 10);
+				}
+				#if(PrintSendRecv > 0)
+					if(DisableEnableFlag == 0)
+						printf("Distributed_NodeRequestKey Got response\r\n");
+					else
+						printf("Distributed_NodeReleaseKey Got response\r\n");
+				#endif
+			}
+			if(ResponseKeyFlag > Global_Node_count){									//	RequestKeyFlag is occupy, clear ResponseKeyFlag
+				#if(PrintSendRecv > 0)
+					if(DisableEnableFlag == 0)
+						printf("Not Request the Key, RequestKeyFlag is occupy\r\n");
+					else
+						printf("Not Release the Key, RequestKeyFlag is occupy\r\n");
+				#endif
+				ResponseKeyFlag = 0;													//	Not Get the Key
+				return	0;
+			}
+			else{																		//	occupy RequestKeyFlag, clear ResponseKeyFlag
+				ResponseKeyFlag = 0;
+				break;
+			}
+		}
+	}
+	return	1;
+}
+*/
+uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
+	if(DisableEnableFlag == 0){
+		while(1){
+			if(Global_Node_id == Global_Node_Master){
 				if(RequestKeyFlag != 0)												//	RequestKeyFlag is occupy
 					ResponseKeyFlag = Global_Node_count + 1;
 				else{
@@ -3727,7 +3948,125 @@ uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
 					RequestKeyFlag = Global_Node_id;
 				}
 			}
-			else{																	//	Release
+			else{																		//	Local node is not Master, try to request or release by communication
+				ResponseKeyFlag = 0;
+				while(ResponseKeyFlag == 0){
+					//while(!Check_Sendable_Without_Limit());
+					if(DisableEnableFlag == 0)
+						Distributed_NodeRequestKey();								//	Request by communication
+					WaitForFlag(&ResponseKeyFlag, 10);
+				}
+				#if(PrintSendRecv > 0)
+					if(DisableEnableFlag == 0)
+						printf("Distributed_NodeRequestKey Got response\r\n");
+					else
+						printf("Distributed_NodeReleaseKey Got response\r\n");
+				#endif
+			}
+			if(ResponseKeyFlag > Global_Node_count){									//	RequestKeyFlag is occupy, clear ResponseKeyFlag
+				#if(PrintSendRecv > 0)
+					if(DisableEnableFlag == 0)
+						printf("Not Request the Key, RequestKeyFlag is occupy\r\n");
+					else
+						printf("Not Release the Key, RequestKeyFlag is occupy\r\n");
+				#endif
+				ResponseKeyFlag = 0;													//	Not Get the Key
+				return	0;
+			}
+			else{																		//	occupy RequestKeyFlag, clear ResponseKeyFlag
+				ResponseKeyFlag = 0;
+				break;
+			}
+		}
+		for(uint32_t i=1;i<=Global_Node_count;i++){										//	Disable/Enable all node
+			if((i != Global_Node_Master) && (i != Global_Node_id)){
+				uint32_t Timeout_count_limit = 10;
+				uint32_t Timeout_count = 0;
+				while(PublishResponseFlag != i){
+					while(!Check_Sendable_Without_Limit());
+					PublishResponseFlag = 0;
+					if(DisableEnableFlag == 0)
+						Distributed_NodeDisablePublish(i);
+					WaitForFlag(&PublishResponseFlag, 10);
+					if(PublishResponseFlag == i){										//	Got ResponsePublish
+						#if(PrintSendRecv > 0)
+							if(DisableEnableFlag == 0)
+								printf("Success disable, Node id: 0x%lX\r\n", i);
+							else
+								printf("Success enable, Node id: 0x%lX\r\n", i);
+						#endif
+						break;
+					}
+					else{
+						#if(PrintSendRecv > 0)
+							if(DisableEnableFlag == 0)
+								printf("Timeout in Distributed_NodeDisablePublish, Node id: 0x%lX\r\n", i);
+							else
+								printf("Timeout in Distributed_NodeEnablePublish, Node id: 0x%lX\r\n", i);
+						#endif
+						//	Should publish Invalid Node
+						//	??????
+						Timeout_count++;
+						if(Timeout_count > Timeout_count_limit){
+							//printf("Over time out limit: 0x%lX\r\n", Timeout_count_limit);
+							break;
+						}
+					}
+				}
+			}
+			else if (i == Global_Node_id){
+				if(DisableEnableFlag == 0)
+					PublishFlag = 0;
+				else
+					PublishFlag = 1;
+			}
+		}
+	}
+	else{
+		for(uint32_t i=1;i<=Global_Node_count;i++){										//	Disable/Enable all node
+			if((i != Global_Node_Master) && (i != Global_Node_id)){
+				uint32_t Timeout_count_limit = 10;
+				uint32_t Timeout_count = 0;
+				while(PublishResponseFlag != i){
+					//while(!Check_Sendable_Without_Limit());
+					PublishResponseFlag = 0;
+					Distributed_NodeEnablePublish(i);
+					WaitForFlag(&PublishResponseFlag, 10);
+					if(PublishResponseFlag == i){										//	Got ResponsePublish
+						#if(PrintSendRecv > 0)
+							if(DisableEnableFlag == 0)
+								printf("Success disable, Node id: 0x%lX\r\n", i);
+							else
+								printf("Success enable, Node id: 0x%lX\r\n", i);
+						#endif
+						break;
+					}
+					else{
+						#if(PrintSendRecv > 0)
+							if(DisableEnableFlag == 0)
+								printf("Timeout in Distributed_NodeDisablePublish, Node id: 0x%lX\r\n", i);
+							else
+								printf("Timeout in Distributed_NodeEnablePublish, Node id: 0x%lX\r\n", i);
+						#endif
+						//	Should publish Invalid Node
+						//	??????
+						Timeout_count++;
+						if(Timeout_count > Timeout_count_limit){
+							printf("Over time out limit: 0x%lX\r\n", Timeout_count_limit);
+							break;
+						}
+					}
+				}
+			}
+			else if (i == Global_Node_id){
+				if(DisableEnableFlag == 0)
+					PublishFlag = 0;
+				else
+					PublishFlag = 1;
+			}
+		}
+		while(1){
+			if(Global_Node_id == Global_Node_Master){
 				if(RequestKeyFlag != Global_Node_id)								//	Not the RequestKeyFlag occupy node
 					ResponseKeyFlag = Global_Node_count + 1;
 				else{																//	Release RequestKeyFlag
@@ -3735,83 +4074,33 @@ uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
 					RequestKeyFlag = 0;
 				}
 			}
-		}
-		else{																		//	Local node is not Master, try to request or release by communication
-			ResponseKeyFlag = 0;
-			while(ResponseKeyFlag == 0){
-				while(!Check_Sendable_Without_Limit());
-				if(DisableEnableFlag == 0){
-					Distributed_NodeRequestKey();								//	Request by communication
+			else{																		//	Local node is not Master, try to request or release by communication
+				ResponseKeyFlag = 0;
+				while(ResponseKeyFlag == 0){
+					Distributed_NodeReleaseKey();									//	Release by communication
+					WaitForFlag(&ResponseKeyFlag, 10);
 				}
-				else{
-					Distributed_NodeReleaseKey();								//	Release by communication
-				}
-				WaitForFlag(&ResponseKeyFlag, 10);
+				#if(PrintSendRecv > 0)
+					if(DisableEnableFlag == 0)
+						printf("Distributed_NodeRequestKey Got response\r\n");
+					else
+						printf("Distributed_NodeReleaseKey Got response\r\n");
+				#endif
 			}
-			#if(PrintSendRecv > 0)
-				if(DisableEnableFlag == 0)
-					printf("Distributed_NodeRequestKey Got response\r\n");
-				else
-					printf("Distributed_NodeReleaseKey Got response\r\n");
-			#endif
-		}
-		if(ResponseKeyFlag > Global_Node_count){									//	RequestKeyFlag is occupy, clear ResponseKeyFlag
-			#if(PrintSendRecv > 0)
-				if(DisableEnableFlag == 0)
-					printf("Not Request the Key, RequestKeyFlag is occupy\r\n");
-				else
-					printf("Not Release the Key, RequestKeyFlag is occupy\r\n");
-			#endif
-			ResponseKeyFlag = 0;													//	Not Get the Key
-			return	0;
-		}
-		else{																		//	occupy RequestKeyFlag, clear ResponseKeyFlag
-			ResponseKeyFlag = 0;
-			break;
-		}
-	}
-
-	for(uint32_t i=1;i<=Global_Node_count;i++){										//	Disable/Enable all node
-		if((i != Global_Node_Master) && (i != Global_Node_id)){
-			uint32_t Timeout_count_limit = 10;
-			uint32_t Timeout_count = 0;
-			while(PublishResponseFlag != i){
-				while(!Check_Sendable_Without_Limit());
-				if(DisableEnableFlag == 0)
-					Distributed_NodeDisablePublish(i);
-				else
-					Distributed_NodeEnablePublish(i);
-				WaitForFlag(&PublishResponseFlag, 10);
-				if(PublishResponseFlag == i){										//	Got ResponsePublish
-					#if(PrintSendRecv > 0)
-						if(DisableEnableFlag == 0)
-							printf("Success disable, Node id: 0x%lX\r\n", i);
-						else
-							printf("Success enable, Node id: 0x%lX\r\n", i);
-					#endif
-				}
-				else{
-					#if(PrintSendRecv > 0)
-						if(DisableEnableFlag == 0)
-							printf("Timeout in Distributed_NodeDisablePublish, Node id: 0x%lX\r\n", i);
-						else
-							printf("Timeout in Distributed_NodeEnablePublish, Node id: 0x%lX\r\n", i);
-					#endif
-					//	Should publish Invalid Node
-					//	??????
-					Timeout_count++;
-					if(Timeout_count > Timeout_count_limit){
-						//printf("Over time out limit: 0x%lX\r\n", Timeout_count_limit);
-						break;
-					}
-				}
+			if(ResponseKeyFlag > Global_Node_count){									//	RequestKeyFlag is occupy, clear ResponseKeyFlag
+				#if(PrintSendRecv > 0)
+					if(DisableEnableFlag == 0)
+						printf("Not Request the Key, RequestKeyFlag is occupy\r\n");
+					else
+						printf("Not Release the Key, RequestKeyFlag is occupy\r\n");
+				#endif
+				ResponseKeyFlag = 0;													//	Not Get the Key
+				return	0;
 			}
-		}
-		else if (i == Global_Node_id){
-			if(DisableEnableFlag == 0)
-				PublishFlag = 0;
-			else
-				PublishFlag = 1;
+			else{																		//	occupy RequestKeyFlag, clear ResponseKeyFlag
+				ResponseKeyFlag = 0;
+				break;
+			}
 		}
 	}
 	return	1;
