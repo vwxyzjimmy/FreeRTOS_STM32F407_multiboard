@@ -2146,11 +2146,12 @@ void eth_handler(void){
 			uint32_t size = *((uint32_t*)((uint8_t*)frame.buffer+21));
 			Distributed_TaskHandle_List_t* Lastnode = DStart;
 			Distributed_TaskHandle_List_t* pre_Lastnode;
-			while((!((Lastnode->DTask_id == task_id)&&(Lastnode->DSubTask_id == subtask_id))) && (Lastnode != NULL)){					//	Remove subtask TCB from DStart list
+			while((!((Lastnode->Destinate_Processor_id == Sour)&&(Lastnode->DTask_id == task_id)&&(Lastnode->DSubTask_id == subtask_id))) && (Lastnode != NULL)){					//	Remove subtask TCB from DStart list
 				pre_Lastnode = Lastnode;
 				Lastnode = Lastnode->Next_TaskHandle_List;
 			}
 			if(Lastnode != NULL){
+				printf("in DStart, Destinate_Processor_id: 0x%lX 0x%lX, DTask_id: 0x%lX 0x%lX,  DSubTask_id: 0x%lX 0x%lX\r\n", Lastnode->Destinate_Processor_id, Sour, Lastnode->DTask_id, task_id, Lastnode->DSubTask_id, subtask_id);
 				if(Lastnode == DStart)
 					DStart = DStart->Next_TaskHandle_List;
 				else
@@ -2177,14 +2178,16 @@ void eth_handler(void){
 			}
 			else{
 				Lastnode = DFinish;
-				while((!((Lastnode->DTask_id == task_id)&&(Lastnode->DSubTask_id == subtask_id))) && (Lastnode != NULL)){					//	Remove subtask TCB from DStart list
+				while((!((Lastnode->Destinate_Processor_id == Sour)&&(Lastnode->DTask_id == task_id)&&(Lastnode->DSubTask_id == subtask_id))) && (Lastnode != NULL)){					//	Remove subtask TCB from DStart list
 					Lastnode = Lastnode->Next_TaskHandle_List;
 				}
 				if(Lastnode != NULL){
+					printf("in DFinish, Destinate_Processor_id: 0x%lX 0x%lX, DTask_id: 0x%lX 0x%lX,  DSubTask_id: 0x%lX 0x%lX\r\n", Lastnode->Destinate_Processor_id, Sour, Lastnode->DTask_id, task_id, Lastnode->DSubTask_id, subtask_id);
 					//printf("Subtask in the DFinish list, not in dstart, Sour: 0x%lX, DTask_id: 0x%lX, DSubTask_id: 0x%lX\r\n", Sour, task_id, subtask_id);
 					Distributed_NodeResponseSubtaskFinish(Sour, subtask_id);
 				}
 				else{
+					printf("Not here, Destinate_Processor_id: 0x%lX, DTask_id: 0x%lX,  DSubTask_id: 0x%lX\r\n", Sour, task_id, subtask_id);
 					No_Node_ID = Sour;
 					No_Task_ID = task_id;
 					No_Subtask_ID = subtask_id;
@@ -2217,7 +2220,7 @@ void eth_handler(void){
 			while(!((Lastnode->Source_Processor_id == Sour) && (Lastnode->DTask_id == task_id) && (Lastnode->DSubTask_id == subtask_id)) && (Lastnode != NULL))
 				Lastnode = Lastnode->Next_TaskHandle_List;
 			if(Lastnode != NULL){
-				printf("Source_Processor_id: 0x%lX 0x%lX, task_id: 0x%lX 0x%lX, subtask_id: 0x%lX 0x%lX, \r\n", Lastnode->Source_Processor_id, Sour, Lastnode->DTask_id, task_id, Lastnode->DSubTask_id, subtask_id);
+				//printf("Source_Processor_id: 0x%lX 0x%lX, task_id: 0x%lX 0x%lX, subtask_id: 0x%lX 0x%lX, \r\n", Lastnode->Source_Processor_id, Sour, Lastnode->DTask_id, task_id, Lastnode->DSubTask_id, subtask_id);
 				ResponseResultFlag = (uint32_t)Lastnode;
 				/*
 				ConfirmResultFlag = Sour;
@@ -3055,7 +3058,8 @@ void Distributed_ManageTask(){
 							}
 						}
 						else{
-							printf("Key is occupy, try again in future\r\n");
+							//printf("Key is occupy, try again in future\r\n");
+							;
 						}
 					}
 
