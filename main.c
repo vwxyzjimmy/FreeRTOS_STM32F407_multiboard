@@ -356,10 +356,10 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 	DebugFlag = 0;
 	uint8_t Get_key = 0;
 	while(Get_key == 0){
-		Get_key = Distributed_NodeRequestReleaseSequence(Request);
+		if(PublishFlag != 0)
+			Get_key = Distributed_NodeRequestReleaseSequence(Request);
 	}
 	vPortEnterCritical();
-	printf("Distributed_NodeRequestReleaseSequence(Request) in Distributed_DispatchTask\r\n");
 	DebugFlag = 1;
 	Global_Task_id++;
 	uint32_t Data_number = 0;
@@ -1027,7 +1027,6 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 	Get_key = 0;
 	while(Get_key == 0)
 		Get_key = Distributed_NodeRequestReleaseSequence(Release);
-	printf("Distributed_NodeRequestReleaseSequence(Release) in Distributed_DispatchTask\r\n");
 	DebugFlag = 44;
 	return Subscriber_task;
 }
@@ -2085,7 +2084,6 @@ void eth_handler(void){
 			if(Global_Node_id == Global_Node_Master){
 				if((RequestKeyFlag == 0) || (RequestKeyFlag == Sour)){
 					Distributed_NodeResponseKey(Sour, 1);
-					printf("Response Key to Node: 0x%lX, RequestKeyFlag from 0x%lX to 0x%lX\r\n", Sour, RequestKeyFlag, (uint32_t)Sour);
 					RequestKeyFlag = Sour;
 					PublishFlag = 0;
 					#if(PrintSendRecv > 0)
@@ -2094,7 +2092,6 @@ void eth_handler(void){
 				}
 				else{
 					Distributed_NodeResponseKey(Sour, 0);
-					printf("Not Response Key to Node: 0x%lX, Node: 0x%lX Occupy the Key\r\n", Sour, RequestKeyFlag);
 					#if(PrintSendRecv > 0)
 						printf("Not Request Key from Node: 0x%lX, Node: 0x%lX occupy the key\r\n", Sour, RequestKeyFlag);
 					#endif
@@ -2108,7 +2105,6 @@ void eth_handler(void){
 			if(Global_Node_id == Global_Node_Master){
 				if((RequestKeyFlag == Sour) || (RequestKeyFlag == 0)){
 					Distributed_NodeResponseKey(Sour, 1);
-					printf("Response Key from Node: 0x%lX, RequestKeyFlag from 0x%lX to 0x%lX\r\n", Sour, RequestKeyFlag, (uint32_t)0);
 					RequestKeyFlag = 0;
 					PublishFlag = 1;
 					#if(PrintSendRecv > 0)
@@ -2117,7 +2113,6 @@ void eth_handler(void){
 				}
 				else{
 					Distributed_NodeResponseKey(Sour, 0);
-					printf("Not Response Key from Node: 0x%lX, Node: 0x%lX occupy the key\r\n", Sour, RequestKeyFlag);
 					#if(PrintSendRecv > 0)
 						printf("Not Release Key from Node: 0x%lX, Node : 0x%lX occupy the key\r\n", Sour, RequestKeyFlag);
 					#endif
@@ -2219,9 +2214,10 @@ void eth_handler(void){
 			uint32_t task_id = *((uint32_t*)((uint8_t*)frame.buffer+13));
 			uint32_t subtask_id = *((uint32_t*)((uint8_t*)frame.buffer+17));
 			Distributed_TaskHandle_List_t* Lastnode = DFinish;
-			while((Lastnode->Source_Processor_id != Sour) && (Lastnode->DTask_id != task_id) && (Lastnode->DSubTask_id != subtask_id) && (Lastnode != NULL))
+			while(!((Lastnode->Source_Processor_id == Sour) && (Lastnode->DTask_id == task_id) && (Lastnode->DSubTask_id == subtask_id)) && (Lastnode != NULL))
 				Lastnode = Lastnode->Next_TaskHandle_List;
 			if(Lastnode != NULL){
+				printf("Source_Processor_id: 0x%lX 0x%lX, task_id: 0x%lX 0x%lX, subtask_id: 0x%lX 0x%lX, \r\n", Lastnode->Source_Processor_id, Sour, Lastnode->DTask_id, task_id, Lastnode->DSubTask_id, subtask_id);
 				ResponseResultFlag = (uint32_t)Lastnode;
 				/*
 				ConfirmResultFlag = Sour;
@@ -2760,6 +2756,7 @@ void Distributed_ManageTask(){
 							DebugFlag = 512 + 55;
 							ConfirmResultFlag = 0;
 							if(Remain_th == 1){
+								//printf("NodeResponseResult, Source_Processor_id: 0x%lX, DTask_id: 0x%lX, DSubTask_id: 0x%lX\r\n", Resultnode->Source_Processor_id, Resultnode->DTask_id, Resultnode->DSubTask_id);
 								Distributed_NodeResponseResult(Resultnode->Source_Processor_id, Send_Addr, Send_Size);
 								//DebugFlag = 1024 + Resultnode->Source_Processor_id*100 + Resultnode->DTask_id*10;
 							}
@@ -2867,7 +2864,6 @@ void Distributed_ManageTask(){
 						Get_key = Distributed_NodeRequestReleaseSequence(Request);
 						DebugFlag = 512 + 75;
 						if(Get_key != 0){
-							printf("Distributed_NodeRequestReleaseSequence(Request) in TaskDoneFlag\r\n");
 							vPortEnterCritical();
 							DebugFlag = 512 + 76;
 							Distributed_TaskHandle_List_t* Lastnode = DFinish;																//	Ready to recycle task_id = TaskDoneFlag result
@@ -2971,8 +2967,10 @@ void Distributed_ManageTask(){
 												Recv_Size = Recv_Remain_Size;
 											RequestResultFlag = 0;
 											RemainThResultFlag = 0;
-											if(Remain_th == 0)
+											if(Remain_th == 0){
+												//printf("NodeRequestResult, Destinate_Processor_id: 0x%lX, DTask_id: 0x%lX, DSubTask_id: 0x%lX\r\n", target_node_array[i]->Destinate_Processor_id, target_node_array[i]->DTask_id, target_node_array[i]->DSubTask_id);
 												Distributed_NodeRequestResult(target_node_array[i]->Destinate_Processor_id, target_node_array[i]->DTask_id, target_node_array[i]->DSubTask_id);
+											}
 											else{
 												Distributed_NodeRequestRemainResult(target_node_array[i]->Destinate_Processor_id, Remain_th);
 											}
@@ -3055,7 +3053,6 @@ void Distributed_ManageTask(){
 							while(Get_key == 0){
 								Get_key = Distributed_NodeRequestReleaseSequence(Release);
 							}
-							printf("Distributed_NodeRequestReleaseSequence(Release) in TaskDoneFlag\r\n");
 						}
 						else{
 							printf("Key is occupy, try again in future\r\n");
@@ -3951,7 +3948,6 @@ uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
 				else{
 					ResponseKeyFlag = Global_Node_id;									//	Request RequestKeyFlag
 					RequestKeyFlag = Global_Node_id;
-					printf("Master request RequestKeyFlag: 0x%lX\r\n", RequestKeyFlag);
 				}
 				vPortExitCritical();
 			}
@@ -4080,7 +4076,6 @@ uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
 				else{																//	Release RequestKeyFlag
 					ResponseKeyFlag = Global_Node_id;
 					RequestKeyFlag = 0;
-					printf("Master release RequestKeyFlag: 0x%lX\r\n", RequestKeyFlag);
 				}
 				portEXIT_CRITICAL();
 			}
