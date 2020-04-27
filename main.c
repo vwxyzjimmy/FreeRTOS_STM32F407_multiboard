@@ -926,7 +926,7 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 					DispatchSuccessFlag = 0;
 					if(Send_Addr == Distributed_Send_Addr){
 						Distributed_NodeSendSubtask(Distributed_dispatch_node[split_num_th], Send_Addr, Send_Size);	//	Dispatch by ethernet
-						//DebugFlag = 1024 + Distributed_dispatch_node[split_num_th]*100 + NewDTaskControlBlock->DTask_id*10;
+						DebugFlag = 1024 + Distributed_dispatch_node[split_num_th]*100 + NewDTaskControlBlock->DTask_id*10;
 					}
 					else{
 						Distributed_NodeSendRemainSubtask(Distributed_dispatch_node[split_num_th], Send_Addr, Send_Size, Remain_th);	//	Dispatch by ethernet
@@ -2151,7 +2151,7 @@ void eth_handler(void){
 				Lastnode = Lastnode->Next_TaskHandle_List;
 			}
 			if(Lastnode != NULL){
-				printf("in DStart, Destinate_Processor_id: 0x%lX 0x%lX, DTask_id: 0x%lX 0x%lX,  DSubTask_id: 0x%lX 0x%lX\r\n", Lastnode->Destinate_Processor_id, Sour, Lastnode->DTask_id, task_id, Lastnode->DSubTask_id, subtask_id);
+				//printf("in DStart, Destinate_Processor_id: 0x%lX 0x%lX, DTask_id: 0x%lX 0x%lX,  DSubTask_id: 0x%lX 0x%lX\r\n", Lastnode->Destinate_Processor_id, Sour, Lastnode->DTask_id, task_id, Lastnode->DSubTask_id, subtask_id);
 				if(Lastnode == DStart)
 					DStart = DStart->Next_TaskHandle_List;
 				else
@@ -2182,12 +2182,11 @@ void eth_handler(void){
 					Lastnode = Lastnode->Next_TaskHandle_List;
 				}
 				if(Lastnode != NULL){
-					printf("in DFinish, Destinate_Processor_id: 0x%lX 0x%lX, DTask_id: 0x%lX 0x%lX,  DSubTask_id: 0x%lX 0x%lX\r\n", Lastnode->Destinate_Processor_id, Sour, Lastnode->DTask_id, task_id, Lastnode->DSubTask_id, subtask_id);
-					//printf("Subtask in the DFinish list, not in dstart, Sour: 0x%lX, DTask_id: 0x%lX, DSubTask_id: 0x%lX\r\n", Sour, task_id, subtask_id);
+					//printf("in DFinish, Destinate_Processor_id: 0x%lX 0x%lX, DTask_id: 0x%lX 0x%lX,  DSubTask_id: 0x%lX 0x%lX\r\n", Lastnode->Destinate_Processor_id, Sour, Lastnode->DTask_id, task_id, Lastnode->DSubTask_id, subtask_id);
 					Distributed_NodeResponseSubtaskFinish(Sour, subtask_id);
 				}
 				else{
-					printf("Not here, Destinate_Processor_id: 0x%lX, DTask_id: 0x%lX,  DSubTask_id: 0x%lX\r\n", Sour, task_id, subtask_id);
+					//printf("Not here, Destinate_Processor_id: 0x%lX, DTask_id: 0x%lX,  DSubTask_id: 0x%lX\r\n", Sour, task_id, subtask_id);
 					No_Node_ID = Sour;
 					No_Task_ID = task_id;
 					No_Subtask_ID = subtask_id;
@@ -2647,6 +2646,7 @@ void Distributed_ManageTask(){
 							xTaskCreate((void*)NewDTaskControlBlock->Instruction_addr, "Distributed task", (NewDTaskControlBlock->Stack_size), NULL, 1, NewDTaskControlBlock->TaskHandlex);
 							vPortEnterCritical();
 						}
+						ReceiveSubtaskFlag = 0;
 						vPortExitCritical();
 						DebugFlag = 512 + 28;
 					}
@@ -2732,9 +2732,8 @@ void Distributed_ManageTask(){
 					else if(ResponseResultFlag != 0){
 						DebugFlag = 512 + 53;
 						vPortEnterCritical();
-
 						Distributed_TaskHandle_List_t* Resultnode = (Distributed_TaskHandle_List_t*)ResponseResultFlag;
-						ResponseResultFlag = 0;
+						//ResponseResultFlag = 0;
 						uint8_t* Send_Addr = ((uint8_t*)Resultnode->Data_addr-13);
 						uint32_t Send_Total_Size = (13+Resultnode->Data_number*sizeof(uint32_t));
 						uint32_t Send_Remain_Size = Send_Total_Size;
@@ -2769,10 +2768,8 @@ void Distributed_ManageTask(){
 							}
 							DebugFlag = 1025;
 							vPortExitCritical();
-							//DebugFlag = 512 + 56;
 							WaitForFlag(&ConfirmResultFlag, 1);
 							vPortEnterCritical();
-							//DebugFlag = 512 + 57;
 							if((ConfirmResultFlag == Resultnode->Source_Processor_id) && (RemainThResultFlag == (Remain_th))){
 								ConfirmResultFlag = 0;
 								RemainThResultFlag = 0;
@@ -2789,6 +2786,7 @@ void Distributed_ManageTask(){
 								}
 							}
 						}
+						ResponseResultFlag = 0;
 						DebugFlag = 512 + 59;
 						vPortExitCritical();
 					}
@@ -2829,6 +2827,7 @@ void Distributed_ManageTask(){
 								DebugFlag = 512 + 66;
 								ResponseSubtaskFinishFlag = 0;
 								Distributed_NodeSubtaskFinish(tmp_NewDTaskControlBlock->Source_Processor_id, tmp_NewDTaskControlBlock->DTask_id, tmp_NewDTaskControlBlock->DSubTask_id, tmp_NewDTaskControlBlock->Data_number);
+								//printf("Distributed_NodeSubtaskFinish: Source_Processor_id: 0x%lX, DTask_id: 0x%lX, DSubTask_id: 0x%lX\r\n", tmp_NewDTaskControlBlock->Source_Processor_id, tmp_NewDTaskControlBlock->DTask_id, tmp_NewDTaskControlBlock->DSubTask_id);
 								vPortExitCritical();
 								WaitForFlag(&ResponseSubtaskFinishFlag, 10);
 								vPortEnterCritical();
@@ -4123,7 +4122,7 @@ uint8_t Distributed_NodeSendCompleteSequence(uint32_t Target_Node_id){
 	vPortExitCritical();
 	WaitForFlag(&SendCompleteFlag, 1);
 	vPortEnterCritical();
-	if(SendCompleteFlag > Remain_th){
+	if(SendCompleteFlag == (Remain_th+1)){
 		Remain_th = SendCompleteFlag + 1;
 		Distributed_NodeSendComplete(Target_Node_id, Remain_th);
 		SendCompleteFlag = 0;
@@ -4141,7 +4140,7 @@ uint8_t Distributed_NodeRecvCompleteSequence(uint32_t Target_Node_id){
 	WaitForFlag(&SendCompleteFlag, 1);
 	vPortEnterCritical();
 	uint8_t Remain_th = 0;
-	if(SendCompleteFlag > Remain_th){
+	if(SendCompleteFlag == (Remain_th+1)){
 		Remain_th = SendCompleteFlag + 1;
 		SendCompleteFlag = 0;
 		uint32_t recv_complete_count = 0;
@@ -4151,7 +4150,7 @@ uint8_t Distributed_NodeRecvCompleteSequence(uint32_t Target_Node_id){
 			vPortExitCritical();
 			WaitForFlag(&SendCompleteFlag, 1);
 			vPortEnterCritical();
-			if(SendCompleteFlag > Remain_th){
+			if(SendCompleteFlag == (Remain_th+1)){
 				Remain_th = SendCompleteFlag + 1;
 				break;
 			}

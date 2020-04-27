@@ -8,7 +8,6 @@ extern uint32_t read_psp();
 extern uint32_t DebugFlag;
 extern uint32_t SendFlag;
 extern uint32_t RecvFlag;
-extern uint32_t fuck;
 extern uint32_t global_pxBlockToInsert;
 uint32_t SystemCoreClock = 168000000;
 uint32_t SystemTICK_RATE_HZ = 184320;								//	168000	//184320
@@ -65,7 +64,7 @@ void hardfault_handler_c(uint32_t LR, uint32_t MSP)
 	}
 	uint32_t stacked_return_addr = *(stack_frame_ptr+6);
 	uint32_t stacked_LR = *(stack_frame_ptr+5);
-	printf("stacked_return_addr: 0x%X, stacked_LR: 0x%lX, DebugFlag: 0x%lX, SendFlag: 0x%lX, RecvFlag: 0x%lX, fuck: 0x%lX, pxBlockToInsert: 0x%lX\r\n", (unsigned int)stacked_return_addr, stacked_LR, DebugFlag, SendFlag, RecvFlag, fuck, global_pxBlockToInsert);
+	printf("stacked_return_addr: 0x%X, stacked_LR: 0x%lX, DebugFlag: 0x%lX, SendFlag: 0x%lX, RecvFlag: 0x%lX, pxBlockToInsert: 0x%lX\r\n", (unsigned int)stacked_return_addr, stacked_LR, DebugFlag, SendFlag, RecvFlag, global_pxBlockToInsert);
 	blink(LED_RED);
 }
 
