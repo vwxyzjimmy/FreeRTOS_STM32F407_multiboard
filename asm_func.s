@@ -75,7 +75,6 @@ Distributed_Start:
 	pop		{lr}
 	bx		lr
 
-
 .type svc_handler, %function
 .global svc_handler
 svc_handler:

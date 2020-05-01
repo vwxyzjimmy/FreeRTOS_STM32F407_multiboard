@@ -3,8 +3,26 @@ do {                			 									\
 	s->Data_addr = target_addr;										\
 	s->Data_number = target_size;									\
 	__asm volatile ("svc	#0x2	\n");							\
-	Distributed_LocalSubtaskDone(s, target_addr, target_size);	\
+	Distributed_LocalSubtaskDone(s, target_addr, target_size);		\
 } while (0)
+
+#define Distributed_pvPortMalloc(malloc_addr, malloc_size)		 									\
+do {																						\
+	__asm (	"push 	{r0}				\n");												\
+	__asm (	"mov	r0,	%0				\n"	::"r"(malloc_size));							\
+	__asm (	"svc	#0x4				\n");												\
+	__asm (	"mov	%0,	r0				\n"	:"=r"(malloc_addr):);							\
+	__asm (	"pop	{r0}				\n");												\
+} while (0)
+
+#define Distributed_vPortFree(malloc_addr)		 													\
+do {																						\
+	__asm (	"push 	{r0}				\n");												\
+	__asm (	"mov	r0,	%0				\n"	::"r"(malloc_addr));							\
+	__asm (	"svc	#0x5				\n");												\
+	__asm (	"pop	{r0}				\n");												\
+} while (0)
+
 
 typedef struct Distributed_Data{
     uint32_t* Data_addr;
@@ -34,6 +52,7 @@ typedef struct Distributed_TaskHandle_List {
     uint32_t* Data_addr;
     uint32_t* Data_size;
 	uint32_t* Data_Max_size;
+	uint32_t Subtask_all_size;
 	uint32_t Data_number;
 	uint32_t Remain_Data_number;
 	uint32_t Stack_size;
@@ -42,6 +61,12 @@ typedef struct Distributed_TaskHandle_List {
 	QueueHandle_t* xQueue;
 	Distributed_Data_t* Distributed_Data_List;
 } Distributed_TaskHandle_List_t;
+
+typedef struct Distributed_Result {
+	QueueHandle_t* Queue;
+	TaskHandle_t* TaskHandle;
+	Distributed_Data_t** Distributed_Data;
+}Distributed_Result;
 
 typedef struct A_BLOCK_LINK {
 	struct A_BLOCK_LINK *pxNextFreeBlock;
@@ -55,7 +80,7 @@ typedef struct A_BLOCK_LINK {
 		for(uint32_t Data_number_i=0;Data_number_i<s->Remain_Data_number;Data_number_i++){			\
 			tmp_array = tmp_array->Next_Distributed_Data;											\
 		}																							\
-		s->Remain_Data_number = s->Remain_Data_number + 1;										\
+		s->Remain_Data_number = s->Remain_Data_number + 1;											\
 	}																								\
 	tmp_array;																						\
 })
