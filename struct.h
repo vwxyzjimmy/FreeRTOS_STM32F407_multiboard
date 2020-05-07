@@ -28,6 +28,7 @@ typedef struct Distributed_Data{
     uint32_t* Data_addr;
     uint32_t Data_size;
 	uint32_t Split_size;
+	uint32_t Barrier;
 	QueueHandle_t* xQueue;
 	TaskHandle_t TaskHandle;
 	struct Distributed_Data* Next_Distributed_Data;
@@ -57,6 +58,7 @@ typedef struct Distributed_TaskHandle_List {
 	uint32_t Remain_Data_number;
 	uint32_t Stack_size;
     uint32_t Finish_Flag;
+	uint32_t Barrier;
     TaskHandle_t* TaskHandlex;
 	QueueHandle_t* xQueue;
 	Distributed_Data_t* Distributed_Data_List;
