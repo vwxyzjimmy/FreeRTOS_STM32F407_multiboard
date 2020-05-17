@@ -29,6 +29,7 @@ typedef struct Distributed_Data{
     uint32_t Data_size;
 	uint32_t Split_size;
 	uint32_t Barrier;
+	uint32_t* barrier_flag;
 	QueueHandle_t* xQueue;
 	TaskHandle_t TaskHandle;
 	struct Distributed_Data* Next_Distributed_Data;
@@ -59,6 +60,7 @@ typedef struct Distributed_TaskHandle_List {
 	uint32_t Stack_size;
     uint32_t Finish_Flag;
 	uint32_t Barrier;
+	uint32_t* barrier_flag;
     TaskHandle_t* TaskHandlex;
 	QueueHandle_t* xQueue;
 	Distributed_Data_t* Distributed_Data_List;
@@ -67,6 +69,7 @@ typedef struct Distributed_TaskHandle_List {
 typedef struct Distributed_Result {
 	QueueHandle_t* Queue;
 	TaskHandle_t* TaskHandle;
+	uint32_t* barrier_flag;
 	Distributed_Data_t** Distributed_Data;
 }Distributed_Result;
 
@@ -155,4 +158,6 @@ volatile ETH_DMA_Rx_Frame_infos *DMA_RX_FRAME_infos;
 
 #define Request 0x00
 #define Release 0x01
+#define WithBarrier 0x0
+#define WithoutBarrier 0x01
 #define ETH_FRAM_SIZE 1500

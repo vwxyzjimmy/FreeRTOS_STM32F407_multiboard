@@ -217,10 +217,16 @@ void ListFreeBlock(){
 Distributed_Result* Distributed_CreateTask(void* task, Distributed_Data_t* data_info, uint32_t Stack_size, uint32_t barrier){
 	TaskHandle_t Now_TaskHandle = xTaskGetCurrentTaskHandle();
 	QueueHandle_t* xQueue = pvPortMalloc(sizeof(QueueHandle_t));
+	uint32_t* barrier_flag = NULL;
+	if(barrier == 0){
+		barrier_flag = pvPortMalloc(sizeof(uint32_t));
+		*(barrier_flag) = 0;
+	}
 	*(xQueue) = xQueueCreate(1, sizeof(uint32_t*));
 	data_info->TaskHandle = Now_TaskHandle;
 	data_info->xQueue = xQueue;
 	data_info->Barrier = barrier;
+	data_info->barrier_flag = barrier_flag;
 	TaskHandle_t* TaskHandle = pvPortMalloc(sizeof(TaskHandle_t));
 	xTaskCreate(task, "Dtask", Stack_size, data_info, 1, TaskHandle);
 	vTaskSuspend(NULL);
@@ -229,11 +235,30 @@ Distributed_Result* Distributed_CreateTask(void* task, Distributed_Data_t* data_
 	Result->Queue = xQueue;
 	Result->TaskHandle = TaskHandle;
 	Result->Distributed_Data = Recv_S;
+	Result->barrier_flag = barrier_flag;
 	return Result;
 }
 
 Distributed_Data_t* Distributed_GetResult(Distributed_Result* Result){
-
+	portENTER_CRITICAL();
+	if(Result->barrier_flag != NULL){
+		if(*(Result->barrier_flag) == 0){
+			*(Result->barrier_flag) = 1;
+		}
+		else if(*(Result->barrier_flag) == 2){
+			Distributed_TaskHandle_List_t* check_Lastnode = DFinish;
+			while(check_Lastnode != NULL){
+				if(check_Lastnode->barrier_flag == Result->barrier_flag){
+					TaskDoneFlag = check_Lastnode->DTask_id;
+					*(Result->barrier_flag) = 1;
+					//printf("TaskDoneFlag in Distributed_GetResult: 0x%lX\r\n", TaskDoneFlag);
+					break;
+				}
+				check_Lastnode = check_Lastnode->Next_TaskHandle_List;
+			}
+		}
+	}
+	portEXIT_CRITICAL();
 	if(	xQueueReceive(*(Result->Queue), (Result->Distributed_Data), 0) != 0){
 		vTaskDelete(*(Result->TaskHandle));
 		vPortFree(Result->TaskHandle);
@@ -241,6 +266,9 @@ Distributed_Data_t* Distributed_GetResult(Distributed_Result* Result){
 		vPortFree(Result->Queue);
 		Distributed_Data_t* tmp_result = *(Result->Distributed_Data);
 		vPortFree(Result->Distributed_Data);
+		if(Result->barrier_flag != NULL){
+			vPortFree(Result->barrier_flag);
+		}
 		vPortFree(Result);
 		return tmp_result;
 	}
@@ -312,8 +340,16 @@ void Distributed_LocalSubtaskDone(Distributed_TaskHandle_List_t* s, uint32_t* Re
 				if(tmp_count >= tmp_NewDTaskControlBlock->DSubTask_number){
 					if(tmp_NewDTaskControlBlock->Barrier > 0)
 						allsubtaskdoneflag = 1;
-					else
-						TaskDoneFlag = tmp_NewDTaskControlBlock->DTask_id;
+					else{
+						if(*(tmp_NewDTaskControlBlock->barrier_flag) == 1){
+							TaskDoneFlag = tmp_NewDTaskControlBlock->DTask_id;	//	???	Should add with distributed_getresult
+							//printf("TaskDoneFlag in Distributed_LocalSubtaskDone: 0x%lX, barrier_flag: 0x%lX, *(barrier_flag): 0x%lX\r\n", TaskDoneFlag, (uint32_t)tmp_NewDTaskControlBlock->barrier_flag, *(tmp_NewDTaskControlBlock->barrier_flag));
+						}
+						else{
+							*(tmp_NewDTaskControlBlock->barrier_flag) = 2;
+						}
+
+					}
 					break;
 				}
 			}
@@ -345,7 +381,7 @@ void Distributed_LocalSubtaskDone(Distributed_TaskHandle_List_t* s, uint32_t* Re
 			check_Lastnode = check_Lastnode->Next_TaskHandle_List;
 		}
 		TaskDoneFlag = tmp_NewDTaskControlBlock->DTask_id;
-		printf("TaskDoneFlag in LocalSubtaskDone: 0x%lX\r\n", TaskDoneFlag);
+		//printf("TaskDoneFlag in LocalSubtaskDone: 0x%lX\r\n", TaskDoneFlag);
 	}
 	/*
 	printf("Subtask 0x%lX finish, Addr: 0x%lX, Size: 0x%lX\r\n", (uint32_t)tmp_NewDTaskControlBlock->DSubTask_id, (uint32_t)tmp_NewDTaskControlBlock->Data_addr, (uint32_t)tmp_NewDTaskControlBlock->Data_size);
@@ -897,6 +933,7 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 			NewDTaskControlBlock->Stack_size = stack_size;
 			NewDTaskControlBlock->Finish_Flag = 0;
 			NewDTaskControlBlock->Barrier = ((Distributed_Data_t*)data_info)->Barrier;
+			NewDTaskControlBlock->barrier_flag = ((Distributed_Data_t*)data_info)->barrier_flag;
 			NewDTaskControlBlock->TaskHandlex = Subtask_handler;
 			NewDTaskControlBlock->Distributed_Data_List = Start_Distributed_Data_List;
 			NewDTaskControlBlock->Next_TaskHandle_List = NULL;
@@ -2181,7 +2218,6 @@ void eth_handler(void){
 				if(Lastnode->Barrier == 0){
 					Lastnode->Finish_Flag = 1;
 					Distributed_InsertFinishNode(Lastnode);
-					printf("Distributed_InsertFinishNode: DSubTask_id: 0x%lX\r\n", Lastnode->DSubTask_id);
 					if(Lastnode->Source_Processor_id == Global_Node_id){							//	Check Task done, DStart list without Lastnode->DTask_id(all subtask done)
 						uint32_t tmp_count = 0;
 						Distributed_TaskHandle_List_t* check_Lastnode = DFinish;
@@ -2189,8 +2225,13 @@ void eth_handler(void){
 							if((check_Lastnode->DTask_id == Lastnode->DTask_id) && (check_Lastnode->Source_Processor_id == Global_Node_id)){
 								tmp_count++;
 								if(tmp_count >= Lastnode->DSubTask_number){
-									TaskDoneFlag = Lastnode->DTask_id;
-									printf("TaskDoneFlag in Subtaskfinish_msg: 0x%lX\r\n", TaskDoneFlag);
+									if(*(Lastnode->barrier_flag) == 1){
+										TaskDoneFlag = Lastnode->DTask_id;			//	???	Should add with distributed_getresult
+										//printf("TaskDoneFlag in Distributed_LocalSubtaskDone: 0x%lX, barrier_flag: 0x%lX, *(barrier_flag): 0x%lX\r\n", TaskDoneFlag, (uint32_t)Lastnode->barrier_flag, *(Lastnode->barrier_flag));
+									}
+									else{
+										*(Lastnode->barrier_flag) = 2;
+									}
 									break;
 								}
 							}
@@ -3264,7 +3305,7 @@ void Distributed_ManageTask(){
 								SubtaskFinishArray[Lastnode->Destinate_Processor_id-1]++;
 								if(allsubtaskdoneflag > 0){
 									TaskDoneFlag = Lastnode->DTask_id;
-									printf("TaskDoneFlag in DRequest 1: 0x%lX\r\n", TaskDoneFlag);
+									//printf("TaskDoneFlag in DRequest 1: 0x%lX\r\n", TaskDoneFlag);
 								}
 								else{
 									tmp_count = 0;
@@ -3306,14 +3347,9 @@ void Distributed_ManageTask(){
 											check_Lastnode = check_Lastnode->Next_TaskHandle_List;
 										}
 										TaskDoneFlag = Lastnode->DTask_id;
-										printf("TaskDoneFlag in DRequest 2: 0x%lX\r\n", TaskDoneFlag);
+										//printf("TaskDoneFlag in DRequest 2: 0x%lX\r\n", TaskDoneFlag);
 									}
 								}
-								/*
-								printf("Subtask 0x%lX finish, Addr: 0x%lX, Size: 0x%lX\r\n", (uint32_t)Lastnode->DSubTask_id, (uint32_t)Lastnode->Data_addr, (uint32_t)Lastnode->Data_number);
-								for(uint32_t i=0;i<5;i++)
-									printf("%d, 0x%lX, 0x%lX, %d, 0x%lX, 0x%lX\r\n", (int)i, (uint32_t)(Lastnode->Data_addr+i), *(Lastnode->Data_addr+i), (int)(Lastnode->Data_number-5+i), (uint32_t)(Lastnode->Data_addr+Lastnode->Data_number-5+i), *(Lastnode->Data_addr+Lastnode->Data_number-5+i));
-								*/
 							}
 							vPortExitCritical();
 							DRequest_before = xTaskGetTickCount() - global_record_time;
@@ -3414,6 +3450,7 @@ void UserDefine_Task(){
 					*(((uint32_t*)0x10001000)+i) = i;
 					*(((uint32_t*)0x10002000)+i) = i;
 				}
+
 				uint32_t Count = 0;
 				for(uint32_t i=0;i<4;i++)
 					SubtaskFinishArray[i] = 0;
@@ -3423,7 +3460,7 @@ void UserDefine_Task(){
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x400, 1);
 					Distributed_AddTargetData(data_info, (uint32_t*)0x10001000, 0x400, 1);
 					Distributed_AddTargetData(data_info, (uint32_t*)0x10002000, 0x400, 1);
-					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task, data_info, 1000, 0);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task, data_info, 1000, WithoutBarrier);
 					Distributed_Data_t* Result_data = NULL;
 					while(Result_data == NULL)
 						Result_data = Distributed_GetResult(Result);
@@ -3435,7 +3472,7 @@ void UserDefine_Task(){
 				printf("Duration: %u ticks	=\r\n", (unsigned int)duration_time);
 				for(uint32_t i=0;i<4;i++)
 					printf("Node: %u, Subtask Finish Count: %u\r\n", (unsigned int)i, (unsigned int)SubtaskFinishArray[i]);
-
+				/*
 				printf("Middleware Dispatch: %u, %u, Recycle:  %u, %u, ticks\r\n", (unsigned int)global_record_time_dispatch_array[0], (unsigned int)global_record_time_dispatch_array[1], (unsigned int)global_record_time_dispatch_array[2], (unsigned int)global_record_time_dispatch_array[3]);
 				printf("Dispatch Request: %u, %u, Release: %u, %u, ticks\r\n", (unsigned int)global_record_time_dispatch_array[4], (unsigned int)global_record_time_dispatch_array[5], (unsigned int)global_record_time_dispatch_array[6], (unsigned int)global_record_time_dispatch_array[7]);
 				for(uint32_t i=0;i<4;i++)
@@ -3447,7 +3484,7 @@ void UserDefine_Task(){
 					printf("Subtask Send: %u, Send done: %u, ticks\r\n", (unsigned int)global_record_time_dispatch_array[36+i], (unsigned int)global_record_time_dispatch_array[40+i]);
 				for(uint32_t i=0;i<4;i++)
 					printf("Request Result: %u, Result done: %u, ticks\r\n", (unsigned int)global_record_time_dispatch_array[44+i], (unsigned int)global_record_time_dispatch_array[48+i]);
-
+				*/
 				/*
 				//uint32_t Transmit_time = 0;
 				for(uint32_t i=0;i<24;i++){
