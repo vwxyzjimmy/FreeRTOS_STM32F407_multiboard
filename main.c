@@ -135,6 +135,7 @@ volatile uint32_t ReceiveSubtaskFlag = 0;
 volatile uint32_t PublishFlag = 1;
 volatile uint32_t PublishResponseFlag = 0;
 volatile uint32_t RequestKeyFlag = 0;
+volatile uint32_t Local_RequestKeyFlag = 0;
 volatile uint32_t ResponseKeyFlag = 0;
 volatile uint32_t TaskDoneFlag = 0;
 volatile uint32_t RequestResultFlag = 0;
@@ -460,9 +461,10 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 	global_record_time_dispatch_array[0] = xTaskGetTickCount() - global_record_time;
 	global_record_time_dispatch_array[4] = xTaskGetTickCount() - global_record_time;
 	while(Get_key == 0){
-		if(PublishFlag != 0)
+		if((PublishFlag != 0) && (Local_RequestKeyFlag == 0))
 			Get_key = Distributed_NodeRequestReleaseSequence(Request);
 	}
+	Local_RequestKeyFlag = 1;
 	global_record_time_dispatch_array[5] = xTaskGetTickCount() - global_record_time;
 	vPortEnterCritical();
 	Global_Task_id++;
@@ -1069,6 +1071,7 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 	Get_key = 0;
 	while(Get_key == 0)
 		Get_key = Distributed_NodeRequestReleaseSequence(Release);
+	Local_RequestKeyFlag = 0;
 	global_record_time_dispatch_array[7] = xTaskGetTickCount() - global_record_time;
 	global_record_time_dispatch_array[1] = xTaskGetTickCount() - global_record_time;
 	vTaskResume((TaskHandle_t)Subscriber_task->TaskHandlex);
@@ -2847,14 +2850,12 @@ void Distributed_ManageTask(){
 								if(Send_Remain_Size <= 0){
 									vPortExitCritical();
 									uint8_t Flag = 0;
-									DebugFlag = 3;
 									uint32_t start_tickcount = xTaskGetTickCount();
 									uint32_t stop_tickcount = 0;
 									while((Flag == 0) && (stop_tickcount < 1)){
 										Flag = Distributed_NodeSendCompleteSequence(Resultnode->Source_Processor_id);
 										stop_tickcount = (xTaskGetTickCount() - start_tickcount)/SystemTICK_RATE_HZ;
 									}
-									DebugFlag = 4;
 									vPortEnterCritical();
 								}
 							}
@@ -2936,8 +2937,12 @@ void Distributed_ManageTask(){
 								Get_key = 1;
 								Barrier = 1;
 							}
-							else
-								Get_key = Distributed_NodeRequestReleaseSequence(Request);
+							else{
+								if((PublishFlag != 0) && (Local_RequestKeyFlag == 0))
+									Get_key = Distributed_NodeRequestReleaseSequence(Request);
+								if(Get_key != 0)
+									Local_RequestKeyFlag = 1;
+							}
 						}
 						if(Get_key != 0){
 							global_record_time_dispatch_array[33] = xTaskGetTickCount() - global_record_time;
@@ -3120,6 +3125,7 @@ void Distributed_ManageTask(){
 								Get_key = 0;
 								while(Get_key == 0)
 									Get_key = Distributed_NodeRequestReleaseSequence(Release);
+								Local_RequestKeyFlag = 0;
 							}
 							global_record_time_dispatch_array[35] = xTaskGetTickCount() - global_record_time;
 						}
@@ -3195,7 +3201,11 @@ void Distributed_ManageTask(){
 						//	should request result
 						//	get result and insert dtcb to finish list
 						uint32_t DRequest_before = xTaskGetTickCount() - global_record_time;
-						uint32_t Get_key = Distributed_NodeRequestReleaseSequence(Request);
+						uint32_t Get_key = 0;
+						if((PublishFlag != 0) && (Local_RequestKeyFlag == 0))
+							Get_key = Distributed_NodeRequestReleaseSequence(Request);
+						if(Get_key != 0)
+							Local_RequestKeyFlag = 1;
 						uint32_t DRequest_after = xTaskGetTickCount() - global_record_time;
 						if(Get_key > 0){
 							vPortEnterCritical();
@@ -3365,6 +3375,7 @@ void Distributed_ManageTask(){
 							Get_key = 0;
 							while(Get_key == 0)
 								Get_key = Distributed_NodeRequestReleaseSequence(Release);
+							Local_RequestKeyFlag = 0;
 							DRequest_after = xTaskGetTickCount() - global_record_time;
 							for(uint32_t i=0;i<4;i++){
 								if(global_record_time_dispatch_array[8+i] != 0){
@@ -4107,25 +4118,14 @@ uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
 				ResponseKeyFlag = 0;
 				while(ResponseKeyFlag == 0){
 					//while(!Check_Sendable_Without_Limit());
-					if(DisableEnableFlag == 0)
-						Distributed_NodeRequestKey();								//	Request by communication
+					Distributed_NodeRequestKey();								//	Request by communication
 					WaitForFlag(&ResponseKeyFlag, 1);
 				}
-				#if(PrintSendRecv > 0)
-					if(DisableEnableFlag == 0)
-						printf("Distributed_NodeRequestKey Got response\r\n");
-					else
-						printf("Distributed_NodeReleaseKey Got response\r\n");
-				#endif
+
 			}
 			if(ResponseKeyFlag > Global_Node_count){									//	RequestKeyFlag is occupy, clear ResponseKeyFlag
-				#if(PrintSendRecv > 0)
-					if(DisableEnableFlag == 0)
-						printf("Not Request the Key, RequestKeyFlag is occupy\r\n");
-					else
-						printf("Not Release the Key, RequestKeyFlag is occupy\r\n");
-				#endif
 				ResponseKeyFlag = 0;													//	Not Get the Key
+				PublishFlag = 0;
 				return	0;
 			}
 			else{																		//	occupy RequestKeyFlag, clear ResponseKeyFlag
@@ -4140,26 +4140,13 @@ uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
 				while(PublishResponseFlag != i){
 					///while(!Check_Sendable_Without_Limit());
 					PublishResponseFlag = 0;
-					if(DisableEnableFlag == 0)
-						Distributed_NodeDisablePublish(i);
+					Distributed_NodeDisablePublish(i);
 					WaitForFlag(&PublishResponseFlag, 1);
 					if(PublishResponseFlag == i){										//	Got ResponsePublish
-						#if(PrintSendRecv > 0)
-							if(DisableEnableFlag == 0)
-								printf("Success disable, Node id: 0x%lX\r\n", i);
-							else
-								printf("Success enable, Node id: 0x%lX\r\n", i);
-						#endif
 						break;
 					}
 					else{
 						global_record_requestrelease_fail_count[i-1]++;
-						#if(PrintSendRecv > 0)
-							if(DisableEnableFlag == 0)
-								printf("Timeout in Distributed_NodeDisablePublish, Node id: 0x%lX\r\n", i);
-							else
-								printf("Timeout in Distributed_NodeEnablePublish, Node id: 0x%lX\r\n", i);
-						#endif
 						//	Should publish Invalid Node
 						//	??????
 						Timeout_count++;
@@ -4171,10 +4158,7 @@ uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
 				}
 			}
 			else if (i == Global_Node_id){
-				if(DisableEnableFlag == 0)
-					PublishFlag = 0;
-				else
-					PublishFlag = 1;
+				PublishFlag = 0;
 			}
 		}
 	}
@@ -4189,22 +4173,10 @@ uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
 					Distributed_NodeEnablePublish(i);
 					WaitForFlag(&PublishResponseFlag, 1);
 					if(PublishResponseFlag == i){										//	Got ResponsePublish
-						#if(PrintSendRecv > 0)
-							if(DisableEnableFlag == 0)
-								printf("Success disable, Node id: 0x%lX\r\n", i);
-							else
-								printf("Success enable, Node id: 0x%lX\r\n", i);
-						#endif
 						break;
 					}
 					else{
 						global_record_requestrelease_fail_count[i-1]++;
-						#if(PrintSendRecv > 0)
-							if(DisableEnableFlag == 0)
-								printf("Timeout in Distributed_NodeDisablePublish, Node id: 0x%lX\r\n", i);
-							else
-								printf("Timeout in Distributed_NodeEnablePublish, Node id: 0x%lX\r\n", i);
-						#endif
 						//	Should publish Invalid Node
 						//	??????
 						Timeout_count++;
@@ -4216,10 +4188,7 @@ uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
 				}
 			}
 			else if (i == Global_Node_id){
-				if(DisableEnableFlag == 0)
-					PublishFlag = 0;
-				else
-					PublishFlag = 1;
+				PublishFlag = 1;
 			}
 		}
 		while(1){
@@ -4239,13 +4208,8 @@ uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
 					Distributed_NodeReleaseKey();									//	Release by communication
 					WaitForFlag(&ResponseKeyFlag, 1);
 				}
-				#if(PrintSendRecv > 0)
-					if(DisableEnableFlag == 0)
-						printf("Distributed_NodeRequestKey Got response\r\n");
-					else
-						printf("Distributed_NodeReleaseKey Got response\r\n");
-				#endif
 			}
+			/*
 			if(ResponseKeyFlag > Global_Node_count){									//	RequestKeyFlag is occupy, clear ResponseKeyFlag
 				#if(PrintSendRecv > 0)
 					if(DisableEnableFlag == 0)
@@ -4260,6 +4224,11 @@ uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
 				ResponseKeyFlag = 0;
 				break;
 			}
+			*/
+			if(ResponseKeyFlag > Global_Node_count)
+				PublishFlag = 0;
+			ResponseKeyFlag = 0;
+			break;
 		}
 	}
 	return	1;
