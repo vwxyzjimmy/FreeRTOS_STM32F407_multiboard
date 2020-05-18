@@ -1010,8 +1010,12 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 						if(Remain_Send_Size <= 0){
 							vPortExitCritical();
 							uint8_t Flag = 0;
-							while(Flag == 0)
+							uint32_t start_tickcount = xTaskGetTickCount();
+							uint32_t stop_tickcount = 0;
+							while((Flag == 0) && (stop_tickcount < 1)){
 								Flag = Distributed_NodeSendCompleteSequence(Distributed_dispatch_node[split_num_th]);
+								stop_tickcount = (xTaskGetTickCount() - start_tickcount)/SystemTICK_RATE_HZ;
+							}
 							vPortEnterCritical();
 						}
 					}
@@ -2843,9 +2847,14 @@ void Distributed_ManageTask(){
 								if(Send_Remain_Size <= 0){
 									vPortExitCritical();
 									uint8_t Flag = 0;
-									while(Flag == 0){
+									DebugFlag = 3;
+									uint32_t start_tickcount = xTaskGetTickCount();
+									uint32_t stop_tickcount = 0;
+									while((Flag == 0) && (stop_tickcount < 1)){
 										Flag = Distributed_NodeSendCompleteSequence(Resultnode->Source_Processor_id);
+										stop_tickcount = (xTaskGetTickCount() - start_tickcount)/SystemTICK_RATE_HZ;
 									}
+									DebugFlag = 4;
 									vPortEnterCritical();
 								}
 							}
@@ -3456,7 +3465,8 @@ void UserDefine_Task(){
 					SubtaskFinishArray[i] = 0;
 
 				uint32_t Total_base_tick = xTaskGetTickCount();
-				while(Count < 1){
+				/*
+				while(Count < 100){
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x400, 1);
 					Distributed_AddTargetData(data_info, (uint32_t*)0x10001000, 0x400, 1);
 					Distributed_AddTargetData(data_info, (uint32_t*)0x10002000, 0x400, 1);
@@ -3467,6 +3477,20 @@ void UserDefine_Task(){
 					Distributed_FreeResult(Result_data);
 					Count++;
 				}
+				*/
+				while(1){
+					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x400, 1);
+					Distributed_AddTargetData(data_info, (uint32_t*)0x10001000, 0x400, 1);
+					Distributed_AddTargetData(data_info, (uint32_t*)0x10002000, 0x400, 1);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task, data_info, 1000, WithoutBarrier);
+					Distributed_Data_t* Result_data = NULL;
+					while(Result_data == NULL)
+						Result_data = Distributed_GetResult(Result);
+					Distributed_FreeResult(Result_data);
+					Count++;
+					printf("Task: %u ticks	=\r\n", (unsigned int)Count);
+				}
+
 				uint32_t duration_time = (xTaskGetTickCount() - Total_base_tick);
 
 				printf("Duration: %u ticks	=\r\n", (unsigned int)duration_time);
