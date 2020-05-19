@@ -281,8 +281,10 @@ Distributed_Data_t* Distributed_GetResult(Distributed_Result* Result){
 }
 
 void Distributed_FreeResult(Distributed_Data_t* Distributed_Data){
+	portENTER_CRITICAL();
 	vPortFree(Distributed_Data);
 	vPortFree(Distributed_Data->Data_addr);
+	portEXIT_CRITICAL();
 }
 
 void Distributed_LocalSubtaskDone(Distributed_TaskHandle_List_t* s, uint32_t* Result_Data_addr, uint32_t Result_Data_size){
@@ -984,6 +986,7 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 				uint8_t* Send_Addr = Distributed_Send_Addr;
 				uint32_t Remain_th = 0;
 				global_record_time_dispatch_array[36+NewDTaskControlBlock->DSubTask_id] = xTaskGetTickCount() - global_record_time;
+				uint32_t tmp_count = 0;
 				while(Remain_Send_Size > 0){
 					uint32_t Compare_Size = ETH_FRAM_SIZE;
 					if(Send_Addr != Distributed_Send_Addr)						//	Not the first Package
@@ -1003,6 +1006,7 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 					WaitForFlag(&DispatchSuccessFlag, 1);
 					vPortEnterCritical();
 					if((DispatchSuccessFlag == Distributed_dispatch_node[split_num_th]) && (RemainThFlag == (Remain_th+1))){
+						tmp_count = 0;
 						DispatchSuccessFlag = 0;
 						RemainThFlag = 0;
 						Remain_Send_Size -= Send_Size;
@@ -1025,6 +1029,10 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 					}
 					else{
 						global_record_fail_count[Distributed_dispatch_node[split_num_th]-1] = global_record_fail_count[Distributed_dispatch_node[split_num_th]-1]+1;
+					}
+					tmp_count++;
+					if((tmp_count%100) == 0){
+						printf("Dame, die in sendsubatask, tmp_count: 0x%lX, Target Node: 0x%lX, Remain_th: 0x%lX\r\n", tmp_count, Distributed_dispatch_node[split_num_th], Remain_th);
 					}
 				}
 				global_record_time_dispatch_array[40+NewDTaskControlBlock->DSubTask_id] = xTaskGetTickCount() - global_record_time;
