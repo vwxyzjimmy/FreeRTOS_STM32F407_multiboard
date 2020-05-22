@@ -2,11 +2,13 @@
 do {                			 									\
 	s->Data_addr = target_addr;										\
 	s->Data_number = target_size;									\
+	for(uint32_t tmp_COUNT=0;tmp_COUNT<1;tmp_COUNT++)				\
+		;															\
 	__asm volatile ("svc	#0x2	\n");							\
 	Distributed_LocalSubtaskDone(s, target_addr, target_size);		\
 } while (0)
 
-#define Distributed_pvPortMalloc(malloc_addr, malloc_size)		 									\
+#define Distributed_pvPortMalloc(malloc_addr, malloc_size)		 							\
 do {																						\
 	__asm (	"push 	{r0}				\n");												\
 	__asm (	"mov	r0,	%0				\n"	::"r"(malloc_size));							\
@@ -15,7 +17,7 @@ do {																						\
 	__asm (	"pop	{r0}				\n");												\
 } while (0)
 
-#define Distributed_vPortFree(malloc_addr)		 													\
+#define Distributed_vPortFree(malloc_addr)		 											\
 do {																						\
 	__asm (	"push 	{r0}				\n");												\
 	__asm (	"mov	r0,	%0				\n"	::"r"(malloc_addr));							\
