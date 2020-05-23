@@ -95,8 +95,11 @@ Distributed_FreeBlock* GetFreeBlockNode(uint32_t Node_id);
 void Distributed_Show_FreeBlock();
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 void Distributed_ManageTask();
-void UserDefine_Distributed_Task();
-void Compare_UserDefine_Distributed_Task();
+void UserDefine_Distributed_Task(void *task_info);
+void UserDefine_Distributed_Task_do_nothing(void *task_info);
+void UserDefine_Distributed_Task_multiple(void *task_info);
+void UserDefine_Distributed_Task_2d_array_convolution(void *task_info);
+
 void UserDefine_Task();
 void LED_BLUE_TASK();
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1134,6 +1137,7 @@ void svc_handler_c(uint32_t LR, uint32_t MSP){
 		uint32_t Malloc_Size = *(stack_frame_ptr);
 		uint32_t* Malloc_Addr = (uint32_t*)pvPortMalloc_From_ISR(Malloc_Size);
 		*(stack_frame_ptr) = (uint32_t)Malloc_Addr;
+		printf("*(stack_frame_ptr): 0x%lX\r\n", *(stack_frame_ptr));
 	}
 	else if (svc_num == 5){
 		uint32_t* Free_Addr = (uint32_t*)*(stack_frame_ptr);
@@ -2912,6 +2916,7 @@ void Distributed_ManageTask(){
 							for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++){
 								*((uint8_t*)tmp_NewDTaskControlBlock+i) = *((uint8_t*)Lastnode+i);
 							}
+							printf("Lastnode: 0x%lX, 0x%lX, tmp_NewDTaskControlBlock: 0x%lX, 0x%lX\r\n", (uint32_t)Lastnode->Data_addr, *(Lastnode->Data_addr), (uint32_t)tmp_NewDTaskControlBlock->Data_addr, *(tmp_NewDTaskControlBlock->Data_addr));
 							tmp_NewDTaskControlBlock->Data_addr = (uint32_t*)((uint8_t*)tmp_NewDTaskControlBlock + sizeof(Distributed_TaskHandle_List_t) + 13);
 							tmp_NewDTaskControlBlock->Data_number = Lastnode->Data_number;
 							for(uint32_t i=0;i<Lastnode->Data_number;i++){
@@ -3051,6 +3056,8 @@ void Distributed_ManageTask(){
 								else{
 									Send_S->Data_addr = pvPortMalloc(Total_result_size*sizeof(uint32_t));
 									Send_S->Data_size = Total_result_size;
+									if(Send_S->Data_addr == NULL)
+										printf("Dame 0, not enough size, need: 0x%lX bytes\r\n", (Total_result_size*sizeof(uint32_t)));
 									#if (PrintSendRecv > 0)
 										printf("Send_S->xQueue: 0x%lX\r\n", (uint32_t)Subtask_node_zero->xQueue);
 									#endif
@@ -3160,6 +3167,10 @@ void Distributed_ManageTask(){
 									Lastnode = Lastnode->Next_TaskHandle_List;
 									vPortFree(tmp_node);
 								}
+								/*
+								for(uint32_t i=0;i<Send_S->Data_size;i++)
+									printf("Send_S, 0x%lX, 0x%lX\r\n", (uint32_t)(Send_S->Data_addr+i), *(Send_S->Data_addr+i));
+								*/
 								vPortExitCritical();
 								xQueueSendToBack(*((QueueHandle_t*)Send_S->xQueue), (void*)&Send_S, 0);
 								vPortEnterCritical();
@@ -3282,6 +3293,8 @@ void Distributed_ManageTask(){
 								}
 								if(allsubtaskdoneflag > 0){
 									Result_addr = pvPortMalloc(Result_size*sizeof(uint32_t));
+									if(Result_addr == NULL)
+										printf("Dame 1, not enough size, need: 0x%lX bytes\r\n", (Result_size*sizeof(uint32_t)));
 									uint32_t Subtask_id_size[Lastnode->DSubTask_number];
 									check_Lastnode = DFinish;
 									while(check_Lastnode != NULL){
@@ -3311,8 +3324,11 @@ void Distributed_ManageTask(){
 										unrecycle_Result_addr += Subtask_id_size[i];
 								}
 
-								if(unrecycle_Result_addr == NULL)
+								if(unrecycle_Result_addr == NULL){
 									unrecycle_Result_addr = pvPortMalloc(Lastnode->Data_number*sizeof(uint32_t));
+									if(unrecycle_Result_addr == NULL)
+										printf("Dame 2, not enough size, need: 0x%lX bytes\r\n", (Lastnode->Data_number*sizeof(uint32_t)));
+								}
 								Lastnode->Data_addr = unrecycle_Result_addr;
 								uint32_t Recv_Total_Size = Lastnode->Data_number*sizeof(uint32_t);
 								uint32_t Recv_Remain_Size = Recv_Total_Size;
@@ -3393,6 +3409,8 @@ void Distributed_ManageTask(){
 									}
 									if(allsubtaskdoneflag > 0){
 										Result_addr = pvPortMalloc(Result_size*sizeof(uint32_t));
+										if(Result_addr == NULL)
+											printf("Dame 3, not enough size, need: 0x%lX bytes\r\n", (Result_size*sizeof(uint32_t)));
 										uint32_t Subtask_id_size[Lastnode->DSubTask_number];
 										check_Lastnode = DFinish;
 										while(check_Lastnode != NULL){
@@ -3465,6 +3483,7 @@ void Distributed_ManageTask(){
 void UserDefine_Distributed_Task(void *task_info){
 	Distributed_TaskHandle_List_t *data_info = Distributed_Start(task_info);
 	Distributed_Data_t* array1 = Distributed_GetTragetData(data_info);
+
 	/*
 	Distributed_Data_t* array2 = Distributed_GetTragetData(data_info);
 	Distributed_Data_t* array3 = Distributed_GetTragetData(data_info);
@@ -3488,20 +3507,54 @@ void UserDefine_Distributed_Task(void *task_info){
 	Distributed_End(data_info, array1->Data_addr, array1->Data_size);
 }
 
-void Compare_UserDefine_Distributed_Task(){
-	uint32_t count = 0;
-	uint32_t base_tick = xTaskGetTickCount();
-	while(count<100){
-		for(uint32_t i=0;i<0x400;i++)
-			*((uint32_t*)0x10000000+i) = *((uint32_t*)0x10000000+i)*2;
-		for(uint32_t i=0;i<0x400;i++)
-			*((uint32_t*)0x10001000+i) = *((uint32_t*)0x10001000+i)*3;
-		for(uint32_t i=0;i<0x400;i++)
-			*((uint32_t*)0x10002000+i) = *((uint32_t*)0x10002000+i)*4;
-		count++;
+void UserDefine_Distributed_Task_do_nothing(void *task_info){
+	Distributed_TaskHandle_List_t *data_info = Distributed_Start(task_info);
+	Distributed_Data_t* array1 = Distributed_GetTragetData(data_info);
+	Distributed_End(data_info, array1->Data_addr, array1->Data_size);
+}
+
+void UserDefine_Distributed_Task_multiple(void *task_info){
+	Distributed_TaskHandle_List_t *data_info = Distributed_Start(task_info);
+	Distributed_Data_t* array1 = Distributed_GetTragetData(data_info);
+	for(uint32_t i=0;i<array1->Data_size;i++)
+		*(array1->Data_addr + i) = *(array1->Data_addr + i)*2;
+	Distributed_End(data_info, array1->Data_addr, array1->Data_size);
+}
+
+void UserDefine_Distributed_Task_2d_array_convolution(void *task_info){
+	Distributed_TaskHandle_List_t* data_info = Distributed_Start(task_info);
+	Distributed_Data_t* array = Distributed_GetTragetData(data_info);
+	Distributed_Data_t* array_column = Distributed_GetTragetData(data_info);
+	Distributed_Data_t* kernel = Distributed_GetTragetData(data_info);
+	Distributed_Data_t* kernel_column = Distributed_GetTragetData(data_info);
+	uint32_t array_a_column = *(array_column->Data_addr);
+	uint32_t kernel_a_column = *(kernel_column->Data_addr);
+
+	uint32_t* malloc_addr = NULL;
+	uint32_t malloc_size = array->Data_size;
+	Distributed_pvPortMalloc(malloc_addr, malloc_size*sizeof(uint32_t));
+	for(uint32_t i=0;i<array->Data_size;i++){
+		int operator[] = {0, 0};
+		uint32_t tmp_sum = 0;
+		for(int j=-1;j<2;j++){
+			for(int k=-1;k<2;k++){
+				operator[0] = j;
+				operator[1] = k;
+				if((i<array_a_column)&&(operator[0] == -1))
+					operator[0] = 1;
+				if((i>=(array->Data_size-array_a_column))&&(operator[0] == 1))
+					operator[0] = -1;
+				if(((i%array_a_column)==0)&&(operator[1] == -1))
+					operator[1] = 1;
+				if((((i+1)%array_a_column)==0)&&(operator[1] == 1))
+					operator[1] = -1;
+				uint32_t tmp_index = (uint32_t)((int)i + operator[0]*array_a_column + operator[1]);
+				tmp_sum += (*(array->Data_addr+tmp_index))*(*(kernel->Data_addr+(j+1)*kernel_a_column+(k+1)));
+			}
+		}
+		*(malloc_addr+i) = tmp_sum;
 	}
-	uint32_t duration = xTaskGetTickCount() - base_tick;
-	printf("Compare_UserDefine_Distributed_Task Duration: %u ticks\r\n", (unsigned int)duration);
+	Distributed_End(data_info, malloc_addr, malloc_size);
 }
 
 void UserDefine_Task(){
@@ -3520,36 +3573,100 @@ void UserDefine_Task(){
 				for(uint32_t i=0;i<52;i++)
 					global_record_time_dispatch_array[i] = 0;
 				printf("Distributed task test start\r\n");
+				/*
 				for(uint32_t i=0;i<0x400;i++){
-					*(((uint32_t*)0x10000000)+i) = i;
-					*(((uint32_t*)0x10001000)+i) = i;
-					*(((uint32_t*)0x10002000)+i) = i;
+					*(((uint32_t*)0x10000000)+i) = 1;
+					*(((uint32_t*)0x10001000)+i) = 1;
+					*(((uint32_t*)0x10002000)+i) = 1;
 				}
-
+				*/
+				for(uint32_t i=0;i<0x3000;i++){
+					*(((uint32_t*)0x10000000)+i) = 1;
+				}
 				uint32_t Count = 0;
 				for(uint32_t i=0;i<4;i++)
 					SubtaskFinishArray[i] = 0;
-
 				uint32_t Total_base_tick = xTaskGetTickCount();
 
+				/*
 				while(Count < 100){
-					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x400, 1);
-					//Distributed_AddTargetData(data_info, (uint32_t*)0x10001000, 0x400, 1);
-					//Distributed_AddTargetData(data_info, (uint32_t*)0x10002000, 0x400, 1);
+					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x3000, 1);
 					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task, data_info, 1000, WithBarrier);
 					Distributed_Data_t* Result_data = NULL;
 					while(Result_data == NULL)
 						Result_data = Distributed_GetResult(Result);
 					Distributed_FreeResult(Result_data);
 					Count++;
-					printf("Task: %u th Task	=\r\n", (unsigned int)Count);
+				}
+				*/
+				/*	//	UserDefine_Distributed_Task_do_nothing, less data
+				while(Count < 100){
+					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x4, 1);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_do_nothing, data_info, 1000, WithBarrier);
+					Distributed_Data_t* Result_data = NULL;
+					while(Result_data == NULL)
+						Result_data = Distributed_GetResult(Result);
+					Distributed_FreeResult(Result_data);
+					Count++;
+				}
+				*/
+				/*	//	UserDefine_Distributed_Task_do_nothing, large data
+				while(Count < 100){
+					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x3000, 1);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_do_nothing, data_info, 1000, WithBarrier);
+					Distributed_Data_t* Result_data = NULL;
+					while(Result_data == NULL)
+						Result_data = Distributed_GetResult(Result);
+					Distributed_FreeResult(Result_data);
+					Count++;
+				}
+				*/
+				/*	//	UserDefine_Distributed_Task_multiple, large data
+				while(Count < 100){
+					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x3000, 1);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_multiple, data_info, 1000, WithBarrier);
+					Distributed_Data_t* Result_data = NULL;
+					while(Result_data == NULL)
+						Result_data = Distributed_GetResult(Result);
+					Distributed_FreeResult(Result_data);
+					Count++;
+				}
+				*/
+					//	UserDefine_Distributed_Task_2d_array_convolution
+				while(Count < 1){
+					uint32_t array_column = 32;
+					uint32_t kernel[] = {2, 2, 2, 2, 2, 2, 2, 2, 2};
+					uint32_t kernel_column = 3;
+					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x1000, 32);
+					Distributed_AddTargetData(data_info, &array_column, 1, 0);
+					Distributed_AddTargetData(data_info, kernel, 9, 0);
+					Distributed_AddTargetData(data_info, &kernel_column, 1, 0);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_2d_array_convolution, data_info, 1000, WithoutBarrier);
+					Distributed_Data_t* Result_data = NULL;
+					while(Result_data == NULL)
+						Result_data = Distributed_GetResult(Result);
+
+					uint32_t all_right = 1;
+					for(uint32_t i=0;i<Result_data->Data_size;i++){
+						if(*(Result_data->Data_addr+i) != 0x12){
+							all_right = 0;
+						}
+					}
+					if(all_right == 1)
+						printf("All answer right\r\n");
+					else{
+						printf("Some answer is wrong\r\n");
+					}
+					printf("Result_data Data_size: 0x%lX\r\n", Result_data->Data_size);
+					Distributed_FreeResult(Result_data);
+					Count++;
 				}
 				/*
 				while(1){
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x400, 1);
 					Distributed_AddTargetData(data_info, (uint32_t*)0x10001000, 0x400, 1);
 					Distributed_AddTargetData(data_info, (uint32_t*)0x10002000, 0x400, 1);
-					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task, data_info, 1000, WithoutBarrier);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task, data_info, 1000, WithBarrier);
 					Distributed_Data_t* Result_data = NULL;
 					while(Result_data == NULL)
 						Result_data = Distributed_GetResult(Result);
