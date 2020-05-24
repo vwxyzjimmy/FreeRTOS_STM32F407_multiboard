@@ -165,3 +165,5 @@ volatile ETH_DMA_Rx_Frame_infos *DMA_RX_FRAME_infos;
 #define ETH_FRAM_SIZE 1500
 
 #define Broadcast_Node_id 0xFFFFFFFF
+
+#define Compaction 1
