@@ -95,10 +95,12 @@ Distributed_FreeBlock* GetFreeBlockNode(uint32_t Node_id);
 void Distributed_Show_FreeBlock();
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 void Distributed_ManageTask();
+void test_inline()__attribute__((always_inline));
 void UserDefine_Distributed_Task(void *task_info);
 void UserDefine_Distributed_Task_do_nothing(void *task_info);
 void UserDefine_Distributed_Task_multiple(void *task_info);
 void UserDefine_Distributed_Task_2d_array_convolution(void *task_info);
+//void UserDefine_Local_Task_2d_array_convolution(uint32_t rec_Count);
 
 void UserDefine_Task();
 void LED_BLUE_TASK();
@@ -175,6 +177,9 @@ uint32_t checksize_count = 0;
 uint32_t record_subtask_time;
 uint32_t record_subtask_end_time;
 uint32_t global_record_data[8];
+uint32_t send_recv_data_time[8];
+uint32_t send_recv_data_time_count = 4;
+
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Distributed_Data_t* Distributed_SetTargetData(uint32_t* data_addr, uint32_t data_size, uint32_t split_size){
 	Distributed_Data_t* data_info = pvPortMalloc(sizeof(Distributed_Data_t));
@@ -501,15 +506,40 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 	lr_addr = (uint32_t *)((lr & 0xFFFFFFFE)-4);								//	Get return addr
 
 	uint32_t tmp_lr = lr & 0xFFFFFFFE;
-	while(*((uint16_t *)tmp_lr) != 0xb580){										//	To find the first push	{r7, sp} instruction	as the begin of distributed task text section
+	//while(*((uint16_t *)tmp_lr) != 0xb580){										//	To find the first push	{r7, sp} instruction	as the begin of distributed task text section
+	while(1){										//	To find the first push	{r7, sp} instruction	as the begin of distributed task text section
 		stack_size = stack_size + Got_sp_minus_immediate(tmp_lr);				//	decode to find sp_minus_immediate instruction and accumulate the stack_size
 		tmp_lr = (uint32_t)((uint16_t *)tmp_lr-1);
+		if(*((uint16_t *)tmp_lr) == 0xe92d){
+			printf("tmp_lr: 0x%lX\r\n", (uint32_t)tmp_lr);
+			break;
+		}
+		else{
+			uint16_t tmp = (*((uint16_t *)tmp_lr) & 0xFF0F);
+			if((tmp == 0xb500) || (tmp == 0xb400)){
+				printf("tmp_lr: 0x%lX\r\n", (uint32_t)tmp_lr);
+				break;
+			}
+		}
 	}
 	pc_start = (((uint32_t*)tmp_lr));											//	To find the secnod push	{r7, sp} instruction 	as the end of distributed task text section
 	tmp_lr = lr & 0xFFFFFFFE;
-	while(*((uint16_t *)tmp_lr)!= 0xb580){
+	//while(*((uint16_t *)tmp_lr)!= 0xb580){
+	while(1){
 		tmp_lr = (uint32_t)((uint16_t *)tmp_lr+1);
+		if(*((uint16_t *)tmp_lr) == 0xe92d){
+			printf("tmp_lr: 0x%lX\r\n", (uint32_t)tmp_lr);
+			break;
+		}
+		else{
+			uint16_t tmp = (*((uint16_t *)tmp_lr) & 0xFF0F);
+			if((tmp == 0xb500) || (tmp == 0xb400)){
+				printf("tmp_lr: 0x%lX\r\n", (uint32_t)tmp_lr);
+				break;
+			}
+		}
 	}
+	printf("pass here\r\n");
 	pc_end = (uint32_t*)((uint16_t *)tmp_lr);
 	uint32_t instruction_size = ((uint32_t)pc_end-(uint32_t)pc_start);			//	Get the size of distributed task text section
 	Distributed_TaskHandle_List_t* Subscriber_task;
@@ -1042,6 +1072,7 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 				global_record_time_dispatch_array[40+NewDTaskControlBlock->DSubTask_id] = tmp_get_tickcount - global_record_time;
 				global_record_time_dispatch_array[24+NewDTaskControlBlock->DSubTask_id] = tmp_get_tickcount - global_record_time;
 				global_record_data[3] += tmp_get_tickcount - tmp_global_record_data_3;
+				send_recv_data_time[split_num_th] += tmp_get_tickcount - tmp_global_record_data_3;
 				//printf("All Send to 0x%lX, Distributed_Send_Size: 0x%lX Done\r\n", Distributed_dispatch_node[split_num_th], Distributed_Send_Size);
 				#if(PrintSendRecv > 0)
 					uint32_t package_size = (uint32_t)package_stop_addr - (uint32_t)package_start_addr;
@@ -1151,6 +1182,9 @@ void svc_handler_c(uint32_t LR, uint32_t MSP){
 	else if (svc_num == 5){
 		uint32_t* Free_Addr = (uint32_t*)*(stack_frame_ptr);
 		vPortFree_From_ISR(Free_Addr);
+	}
+	else if (svc_num == 6){
+		printf("Inline code success svc\r\n");
 	}
 }
 
@@ -2006,6 +2040,7 @@ void eth_handler(void){
 	if ((Dest == 0xffffffff) || (Dest == Global_Node_id)){
 		Msg_event = *((uint8_t*)frame.buffer+12);
 		RecvFlag = Msg_event;
+
 		if (Msg_event == Distributed_NodeGetID_MSG){
 			if((Global_Node_Master == Global_Node_id) && (Global_Node_Master != 0)){
 				//printf("Get Distributed_NodeGetID\r\n");
@@ -2948,6 +2983,7 @@ void Distributed_ManageTask(){
 							vPortEnterCritical();
 							vPortFree(Lastnode);
 
+
 							while(1){
 								ResponseSubtaskFinishFlag = 0;
 								//if(PublishFlag != 0)
@@ -2973,6 +3009,7 @@ void Distributed_ManageTask(){
 									break;
 								}
 							}
+
 							//printf("SubtaskFinish, DTask_id: 0x%lX, DSubTask_id: 0x%lX\r\n", tmp_NewDTaskControlBlock->DTask_id, tmp_NewDTaskControlBlock->DSubTask_id);
 							Unmerge_Finish_Distributed_task--;
 						}
@@ -3183,7 +3220,8 @@ void Distributed_ManageTask(){
 													}
 												}
 												global_record_data[4] += xTaskGetTickCount() - tmp_global_record_data_4;
-
+												send_recv_data_time[send_recv_data_time_count] += xTaskGetTickCount() - tmp_global_record_data_4;
+												send_recv_data_time_count++;
 												global_record_time_dispatch_array[48+target_node_array[i]->DSubTask_id] = xTaskGetTickCount() - global_record_time;
 											}
 											/*
@@ -3436,6 +3474,8 @@ void Distributed_ManageTask(){
 								}
 								global_record_data[4] += xTaskGetTickCount() - tmp_global_record_data_4;
 								global_record_time_dispatch_array[48+Lastnode->DSubTask_id] = xTaskGetTickCount() - global_record_time;
+								send_recv_data_time[send_recv_data_time_count] += xTaskGetTickCount() - tmp_global_record_data_4;
+								send_recv_data_time_count++;
 
 								DRequest = Lastnode->Next_TaskHandle_List;
 								Lastnode->Next_TaskHandle_List = NULL;
@@ -3535,6 +3575,10 @@ void Distributed_ManageTask(){
 	}
 }
 
+void test_inline(){
+	__asm (	"svc	#0x6				\n");
+}
+
 void UserDefine_Distributed_Task(void *task_info){
 	Distributed_TaskHandle_List_t *data_info = Distributed_Start(task_info);
 	Distributed_Data_t* array1 = Distributed_GetTragetData(data_info);
@@ -3564,6 +3608,7 @@ void UserDefine_Distributed_Task(void *task_info){
 
 void UserDefine_Distributed_Task_do_nothing(void *task_info){
 	Distributed_TaskHandle_List_t *data_info = Distributed_Start(task_info);
+	// test_inline();
 	uint32_t tmp_get_tickcount = 0;
 	if(data_info->DSubTask_id == 0)
 		tmp_get_tickcount = xTaskGetTickCount();
@@ -3588,9 +3633,11 @@ void UserDefine_Distributed_Task_multiple(void *task_info){
 
 void UserDefine_Distributed_Task_2d_array_convolution(void *task_info){
 	Distributed_TaskHandle_List_t* data_info = Distributed_Start(task_info);
+
 	uint32_t tmp_get_tickcount = 0;
 	if(data_info->DSubTask_id == 0)
 		tmp_get_tickcount = xTaskGetTickCount();
+
 	Distributed_Data_t* array = Distributed_GetTragetData(data_info);
 	Distributed_Data_t* array_column = Distributed_GetTragetData(data_info);
 	Distributed_Data_t* kernel = Distributed_GetTragetData(data_info);
@@ -3621,11 +3668,55 @@ void UserDefine_Distributed_Task_2d_array_convolution(void *task_info){
 		}
 		*(malloc_addr+i) = tmp_sum;
 	}
+
 	if(data_info->DSubTask_id == 0)
 		global_record_data[5] += (xTaskGetTickCount() - tmp_get_tickcount);
+
 	Distributed_End(data_info, malloc_addr, malloc_size);
 }
 
+/*
+void UserDefine_Local_Task_2d_array_convolution(uint32_t rec_Count){
+	uint32_t kernel_Data_addr[] = {2, 2, 2, 2, 2, 2, 2, 2, 2};
+	uint32_t array_a_column = 128;
+	uint32_t kernel_a_column = 3;
+	uint32_t* array_Data_addr = (uint32_t*)0x10000000;
+	uint32_t array_Data_size = 0x1000;
+	for(uint32_t i=0;i<array_Data_size;i++)
+		*(array_Data_addr+i) = 1;
+	uint32_t tmp_get_tickcount = xTaskGetTickCount();
+	uint32_t Count = 0;
+	while(Count < rec_Count){
+		uint32_t* malloc_addr = pvPortMalloc(array_Data_size*sizeof(uint32_t));
+		for(uint32_t i=0;i<array_Data_size;i++){
+			int operator[] = {0, 0};
+			uint32_t tmp_sum = 0;
+			for(int j=-1;j<2;j++){
+				for(int k=-1;k<2;k++){
+					operator[0] = j;
+					operator[1] = k;
+					if((i<array_a_column)&&(operator[0] == -1))
+						operator[0] = 1;
+					if((i>=(array_Data_size-array_a_column))&&(operator[0] == 1))
+						operator[0] = -1;
+					if(((i%array_a_column)==0)&&(operator[1] == -1))
+						operator[1] = 1;
+					if((((i+1)%array_a_column)==0)&&(operator[1] == 1))
+						operator[1] = -1;
+					uint32_t tmp_index = (uint32_t)((int)i + operator[0]*array_a_column + operator[1]);
+					tmp_sum += (*(malloc_addr+tmp_index))*(*(kernel_Data_addr+(j+1)*kernel_a_column+(k+1)));
+				}
+			}
+			*(malloc_addr+i) = tmp_sum;
+		}
+		vPortFree(malloc_addr);
+		DebugFlag = Count;
+		Count++;
+	}
+	uint32_t Local_Task_2d_array_tick = xTaskGetTickCount() - tmp_get_tickcount;
+	printf("array_Data_size: %u, Local_Task_2d_array_tick: %u\r\n", (unsigned int)array_Data_size, (unsigned int)Local_Task_2d_array_tick);
+}
+*/
 void UserDefine_Task(){
 	while(1){
 		if ((READ_BIT(USART1_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART1_BASE + USART_SR_OFFSET, ORE_BIT))){
@@ -3658,6 +3749,9 @@ void UserDefine_Task(){
 				uint32_t Count = 0;
 				for(uint32_t i=0;i<4;i++)
 					SubtaskFinishArray[i] = 0;
+				for(uint32_t i=0;i<8;i++)
+					send_recv_data_time[i] = 0;
+				send_recv_data_time_count = 4;
 				uint32_t Total_base_tick = xTaskGetTickCount();
 				/*
 				while(Count < 100){
@@ -3686,24 +3780,26 @@ void UserDefine_Task(){
 				}
 				*/
 				/*	//	UserDefine_Distributed_Task_do_nothing, large data
-				while(Count < 1){
+				while(Count < 100){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x1000, 1);
-					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_do_nothing, data_info, 1000, WithBarrier);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_do_nothing, data_info, 1000, WithoutBarrier);
 					Distributed_Data_t* Result_data = NULL;
 					while(Result_data == NULL)
 						Result_data = Distributed_GetResult(Result);
 					Distributed_FreeResult(Result_data);
 					DebugFlag = Count;
 					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
+					send_recv_data_time_count = 4;
 					Count++;
 				}
 				*/
-				/*	//	UserDefine_Distributed_Task_multiple, large data
-				while(Count < 1){
+					//	UserDefine_Distributed_Task_multiple, large data
+				/*
+				while(Count < 100){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x1000, 1);
-					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_multiple, data_info, 1000, WithBarrier);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_multiple, data_info, 1000, WithoutBarrier);
 					Distributed_Data_t* Result_data = NULL;
 					while(Result_data == NULL)
 						Result_data = Distributed_GetResult(Result);
@@ -3711,11 +3807,12 @@ void UserDefine_Task(){
 					DebugFlag = Count;
 					//printf("Task: %u done	=\r\n", (unsigned int)Count);
 					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
+					send_recv_data_time_count = 4;
 					Count++;
 				}
 				*/
 					//	UserDefine_Distributed_Task_2d_array_convolution
-				while(Count < 100){
+				while(Count < 1){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
 					uint32_t array_column = 32;
 					uint32_t kernel[] = {2, 2, 2, 2, 2, 2, 2, 2, 2};
@@ -3741,11 +3838,11 @@ void UserDefine_Task(){
 					//else{
 					//	printf("Count: 0x%lX, Some answer is wrong\r\n", Count);
 					//}
-
 					//printf("Result_data Data_size: 0x%lX\r\n", Result_data->Data_size);
 					Distributed_FreeResult(Result_data);
 					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
 					DebugFlag = Count;
+					send_recv_data_time_count = 4;
 					Count++;
 				}
 
@@ -3763,14 +3860,21 @@ void UserDefine_Task(){
 					printf("Task: %u ticks	=\r\n", (unsigned int)Count);
 				}
 				*/
+
 				uint32_t duration_time = (xTaskGetTickCount() - Total_base_tick);
 				printf("Duration: %u ticks	=\r\n", (unsigned int)duration_time);
+
 				for(uint32_t i=0;i<4;i++)
 					printf("Node: %u, Subtask Finish Count: %u\r\n", (unsigned int)i, (unsigned int)SubtaskFinishArray[i]);
 
 				for(uint32_t i=0;i<8;i++)
 					printf("global_record_data[%u]: %u\r\n", (unsigned int)i, (unsigned int)global_record_data[i]);
+				for(uint32_t i=0;i<8;i++)
+					printf("send_recv_data_time[%u]: %u\r\n", (unsigned int)i, (unsigned int)send_recv_data_time[i]);
 
+				//UserDefine_Local_Task_2d_array_convolution(10000);
+
+				/*
 				printf("Middleware Dispatch: %u, %u, Recycle:  %u, %u, ticks\r\n", (unsigned int)global_record_time_dispatch_array[0], (unsigned int)global_record_time_dispatch_array[1], (unsigned int)global_record_time_dispatch_array[2], (unsigned int)global_record_time_dispatch_array[3]);
 				printf("Dispatch Request: %u, %u, Release: %u, %u, ticks\r\n", (unsigned int)global_record_time_dispatch_array[4], (unsigned int)global_record_time_dispatch_array[5], (unsigned int)global_record_time_dispatch_array[6], (unsigned int)global_record_time_dispatch_array[7]);
 				for(uint32_t i=0;i<4;i++)
@@ -3782,7 +3886,7 @@ void UserDefine_Task(){
 					printf("Subtask Send: %u, Send done: %u, ticks\r\n", (unsigned int)global_record_time_dispatch_array[36+i], (unsigned int)global_record_time_dispatch_array[40+i]);
 				for(uint32_t i=0;i<4;i++)
 					printf("Request Result: %u, Result done: %u, ticks\r\n", (unsigned int)global_record_time_dispatch_array[44+i], (unsigned int)global_record_time_dispatch_array[48+i]);
-
+				*/
 				/*
 				//uint32_t Transmit_time = 0;
 				for(uint32_t i=0;i<24;i++){
@@ -4351,6 +4455,7 @@ uint8_t Distributed_NodeCheckSizeTimeout(uint32_t tick, uint32_t Target_Node_id,
 					bool_timeout_flag = 1;
 			}
 		}
+
 		if(DisrtibutedNodeCheckIDFlag == 0){
 			success_flag = CheckbackFlag;
 		}
