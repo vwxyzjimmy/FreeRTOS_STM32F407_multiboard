@@ -506,40 +506,33 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 	lr_addr = (uint32_t *)((lr & 0xFFFFFFFE)-4);								//	Get return addr
 
 	uint32_t tmp_lr = lr & 0xFFFFFFFE;
-	//while(*((uint16_t *)tmp_lr) != 0xb580){										//	To find the first push	{r7, sp} instruction	as the begin of distributed task text section
 	while(1){										//	To find the first push	{r7, sp} instruction	as the begin of distributed task text section
 		stack_size = stack_size + Got_sp_minus_immediate(tmp_lr);				//	decode to find sp_minus_immediate instruction and accumulate the stack_size
 		tmp_lr = (uint32_t)((uint16_t *)tmp_lr-1);
 		if(*((uint16_t *)tmp_lr) == 0xe92d){
-			printf("tmp_lr: 0x%lX\r\n", (uint32_t)tmp_lr);
 			break;
 		}
 		else{
-			uint16_t tmp = (*((uint16_t *)tmp_lr) & 0xFF0F);
+			uint16_t tmp = (*((uint16_t *)tmp_lr) & 0xFF0F);					//	See thumb-2 Push and STMDB instruction, r0~r3 may used to calculate, so if push them, it should not the begin of function
 			if((tmp == 0xb500) || (tmp == 0xb400)){
-				printf("tmp_lr: 0x%lX\r\n", (uint32_t)tmp_lr);
 				break;
 			}
 		}
 	}
 	pc_start = (((uint32_t*)tmp_lr));											//	To find the secnod push	{r7, sp} instruction 	as the end of distributed task text section
 	tmp_lr = lr & 0xFFFFFFFE;
-	//while(*((uint16_t *)tmp_lr)!= 0xb580){
 	while(1){
 		tmp_lr = (uint32_t)((uint16_t *)tmp_lr+1);
 		if(*((uint16_t *)tmp_lr) == 0xe92d){
-			printf("tmp_lr: 0x%lX\r\n", (uint32_t)tmp_lr);
 			break;
 		}
 		else{
-			uint16_t tmp = (*((uint16_t *)tmp_lr) & 0xFF0F);
+			uint16_t tmp = (*((uint16_t *)tmp_lr) & 0xFF0F);					//	See thumb-2 Push and STMDB instruction, r0~r3 may used to calculate, so if push them, it should not the begin of function
 			if((tmp == 0xb500) || (tmp == 0xb400)){
-				printf("tmp_lr: 0x%lX\r\n", (uint32_t)tmp_lr);
 				break;
 			}
 		}
 	}
-	printf("pass here\r\n");
 	pc_end = (uint32_t*)((uint16_t *)tmp_lr);
 	uint32_t instruction_size = ((uint32_t)pc_end-(uint32_t)pc_start);			//	Get the size of distributed task text section
 	Distributed_TaskHandle_List_t* Subscriber_task;
@@ -3812,7 +3805,7 @@ void UserDefine_Task(){
 				}
 				*/
 					//	UserDefine_Distributed_Task_2d_array_convolution
-				while(Count < 1){
+				while(Count < 100){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
 					uint32_t array_column = 32;
 					uint32_t kernel[] = {2, 2, 2, 2, 2, 2, 2, 2, 2};
@@ -3821,7 +3814,7 @@ void UserDefine_Task(){
 					Distributed_AddTargetData(data_info, &array_column, 1, 0);
 					Distributed_AddTargetData(data_info, kernel, 9, 0);
 					Distributed_AddTargetData(data_info, &kernel_column, 1, 0);
-					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_2d_array_convolution, data_info, 1000, WithoutBarrier);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_2d_array_convolution, data_info, 1000, WithBarrier);
 					Distributed_Data_t* Result_data = NULL;
 					while(Result_data == NULL)
 						Result_data = Distributed_GetResult(Result);
