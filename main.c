@@ -11,7 +11,6 @@
 #include "struct.h"
 #define HEAP_MAX (32 * 1024) 	// 128 KB
 
-
 extern void vPortSVCHandler();
 void vApplicationTickHook() {;}
 void vApplicationStackOverflowHook() {;}
@@ -100,7 +99,16 @@ void UserDefine_Distributed_Task(void *task_info);
 void UserDefine_Distributed_Task_do_nothing(void *task_info);
 void UserDefine_Distributed_Task_multiple(void *task_info);
 void UserDefine_Distributed_Task_2d_array_convolution(void *task_info);
+void UserDefine_Distributed_Task_argb_gray_convolution(void *task_info);
+void UserDefine_Distributed_Task_RSA(void *task_info);
+
 //void UserDefine_Local_Task_2d_array_convolution(uint32_t rec_Count);
+void UserDefine_Local_Task_RSA(uint32_t rec_Count, uint32_t e_d, uint32_t n, uint32_t array_Data_size);
+
+uint32_t checkPrime(uint32_t n)__attribute__((always_inline));
+uint32_t findGCD(uint32_t n1, uint32_t n2)__attribute__((always_inline));
+uint32_t powMod(uint32_t a, uint32_t b, uint32_t n)__attribute__((always_inline));
+void public_key(uint32_t* e, uint32_t* d, uint32_t* n, uint32_t p, uint32_t q)__attribute__((always_inline));
 
 void UserDefine_Task();
 void LED_BLUE_TASK();
@@ -123,6 +131,8 @@ Distributed_TaskHandle_List_t* DStart = NULL;											//	Distributed_task list
 Distributed_TaskHandle_List_t* DRequest = NULL;											//	Distributed_task list
 Distributed_TaskHandle_List_t* DFinish = NULL;											//	Distributed_task Finish list
 Distributed_TaskHandle_List_t* DDelete = NULL;											//	Distributed_task Delete list
+Distributed_TaskHandle_List_t* DSendFinish = NULL;										//	Distributed_task DSendFinish list
+
 uint8_t Msg_event = 0;
 uint32_t Global_Node_id = 0;
 uint32_t Global_Node_count = 0;
@@ -271,6 +281,7 @@ Distributed_Data_t* Distributed_GetResult(Distributed_Result* Result){
 	portEXIT_CRITICAL();
 	if(	xQueueReceive(*(Result->Queue), (Result->Distributed_Data), 0) != 0){
 		vTaskDelete(*(Result->TaskHandle));
+		portENTER_CRITICAL();
 		vPortFree(Result->TaskHandle);
 		vQueueDelete(*(Result->Queue));
 		vPortFree(Result->Queue);
@@ -280,6 +291,7 @@ Distributed_Data_t* Distributed_GetResult(Distributed_Result* Result){
 			vPortFree(Result->barrier_flag);
 		}
 		vPortFree(Result);
+		portEXIT_CRITICAL();
 		return tmp_result;
 	}
 	else{
@@ -333,7 +345,7 @@ void Distributed_LocalSubtaskDone(Distributed_TaskHandle_List_t* s, uint32_t* Re
 		*(tmp_NewDTaskControlBlock->Data_addr+i) = *(Result_Data_addr+i);
 
 	if (!(((uint32_t)Result_Data_addr < (Subtask_star_addr+Subtask_total_size) ) && ((uint32_t)Result_Data_addr >= Subtask_star_addr))){
-		Distributed_vPortFree(Result_Data_addr);
+		vPortFree(Result_Data_addr);
 	}
 
 	uint32_t* Result_addr = 0;
@@ -2360,6 +2372,23 @@ void eth_handler(void){
 				RemainThResultFlag = 1;
 				*/
 			}
+			else{
+				Lastnode = DSendFinish;
+				Distributed_TaskHandle_List_t* pre_Lastnode = DSendFinish;
+				while(!((Lastnode->Source_Processor_id == Sour) && (Lastnode->DTask_id == task_id) && (Lastnode->DSubTask_id == subtask_id)) && (Lastnode != NULL)){
+					pre_Lastnode = Lastnode;
+					Lastnode = Lastnode->Next_TaskHandle_List;
+				}
+				if(Lastnode != NULL){
+					if(Lastnode == DSendFinish)
+						DSendFinish = Lastnode->Next_TaskHandle_List;
+					else
+						pre_Lastnode->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
+					Lastnode->Next_TaskHandle_List = NULL;
+					Distributed_InsertFinishNode(Lastnode);
+					ResponseResultFlag = (uint32_t)Lastnode;
+				}
+			}
 			#if(PrintSendRecv > 0)
 				printf("Get Distributed_NodeRequestResult\r\n");
 			#endif
@@ -2406,17 +2435,14 @@ void eth_handler(void){
 						while(Insert_Lastnode->Next_TaskHandle_List != NULL){
 							Insert_Lastnode = Insert_Lastnode->Next_TaskHandle_List;
 						}
-					}
-					if(DDelete == NULL)
-						DDelete = Lastnode;
-					else
 						Insert_Lastnode->Next_TaskHandle_List = Lastnode;
-					Insert_Lastnode = Lastnode;
-					Lastnode = pre_Lastnode;
+					}
+					else
+						DDelete = Lastnode;
+					break;
 				}
 				pre_Lastnode = Lastnode;
-				if(Lastnode != NULL)
-					Lastnode = Lastnode->Next_TaskHandle_List;
+				Lastnode = Lastnode->Next_TaskHandle_List;
 			}
 			#if(PrintSendRecv > 0)
 				printf("Get Distributed_NodeRemoveTask\r\n");
@@ -2543,6 +2569,20 @@ void Distributed_ManageTask(){
 						rec_cmd = '\0';
 					}
 
+					if (rec_cmd == 'r'){
+						vPortEnterCritical();
+						Distributed_TaskHandle_List_t* Lastnode = DSendFinish;
+						uint32_t tmp_count = 0;
+						printf("DSendFinish task List:\r\n");
+						while(Lastnode != NULL){
+							printf("%d, Source_Processor_id: 0x%lX, Destinate_Processor_id: 0x%lX, DTask_id: 0x%lX, DSubTask_id: 0x%lX\r\n", (int)tmp_count, Lastnode->Source_Processor_id, Lastnode->Destinate_Processor_id, Lastnode->DTask_id, Lastnode->DSubTask_id);
+							tmp_count++;
+							Lastnode = Lastnode->Next_TaskHandle_List;
+						}
+						vPortExitCritical();
+						rec_cmd = '\0';
+					}
+
 					if (rec_cmd == 's'){										//	Distributed_Show_FreeBlock
 						Distributed_Show_FreeBlock();
 						rec_cmd = '\0';
@@ -2645,6 +2685,7 @@ void Distributed_ManageTask(){
 					}
 
 					if(ReceiveSubtaskFlag > 0){
+						DebugFlag = 512;
 						vPortEnterCritical();
 						uint32_t Source_node = ReceiveSubtaskFlag;
 						ReceiveSubtaskFlag = 0;
@@ -2793,9 +2834,11 @@ void Distributed_ManageTask(){
 						}
 						ReceiveSubtaskFlag = 0;
 						vPortExitCritical();
+						DebugFlag = 0;
 					}
 
 					else if((RecvFreeBlockFlag > 0) && (PublishFlag > 0)){
+						DebugFlag = 513;
 						vPortEnterCritical();
 						#if(PrintSendRecv > 0)
 							printf("In RecvFreeBlockFlag\r\n");
@@ -2855,9 +2898,11 @@ void Distributed_ManageTask(){
 						#if(PrintSendRecv > 0)
 							printf("RecvFreeBlockFlag\r\n");
 						#endif
+						DebugFlag = 0;
 					}
 
 					else if(ResponseResultFlag != 0){
+						DebugFlag = 514;
 						vPortEnterCritical();
 						Distributed_TaskHandle_List_t* Resultnode = (Distributed_TaskHandle_List_t*)ResponseResultFlag;
 						//ResponseResultFlag = 0;
@@ -2922,7 +2967,7 @@ void Distributed_ManageTask(){
 						}
 						if(Lastnode != NULL){
 							if(Lastnode == DFinish)
-								DFinish = DFinish->Next_TaskHandle_List;
+								DFinish = Lastnode->Next_TaskHandle_List;
 							else
 								pre_Lastnode->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
 							Lastnode->Next_TaskHandle_List = NULL;
@@ -2932,51 +2977,75 @@ void Distributed_ManageTask(){
 								while(Insert_Lastnode->Next_TaskHandle_List != NULL){
 									Insert_Lastnode = Insert_Lastnode->Next_TaskHandle_List;
 								}
-								Insert_Lastnode->Next_TaskHandle_List = Resultnode;
+								Insert_Lastnode->Next_TaskHandle_List = Lastnode;
 							}
 							else
-								DDelete = Resultnode;
+								DDelete = Lastnode;
 						}
-
 						vPortExitCritical();
+						DebugFlag = 0;
 					}
 
 					else if(Unmerge_Finish_Distributed_task > 0){
+						DebugFlag = 515;
 						vPortEnterCritical();
 						Distributed_TaskHandle_List_t* Lastnode = DFinish;
 						Distributed_TaskHandle_List_t* pre_Lastnode = DFinish;
-						while((Lastnode != NULL) && (Lastnode->Finish_Flag != 0)){
+						while(Lastnode != NULL){
+							if(Lastnode->Finish_Flag == 0)
+								break;
 							pre_Lastnode = Lastnode;
 							Lastnode = Lastnode->Next_TaskHandle_List;
 						}
+						DebugFlag = 256;
 						if(Lastnode != NULL){
+							DebugFlag = 257;
 							uint32_t Total_malloc_size = sizeof(Distributed_TaskHandle_List_t) + (uint32_t)(Lastnode->Data_number)*sizeof(uint32_t) + 13;
 							Distributed_TaskHandle_List_t* tmp_NewDTaskControlBlock = pvPortMalloc(Total_malloc_size);
 							for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++){
 								*((uint8_t*)tmp_NewDTaskControlBlock+i) = *((uint8_t*)Lastnode+i);
 							}
+							DebugFlag = 258;
 							tmp_NewDTaskControlBlock->Data_addr = (uint32_t*)((uint8_t*)tmp_NewDTaskControlBlock + sizeof(Distributed_TaskHandle_List_t) + 13);
 							tmp_NewDTaskControlBlock->Data_number = Lastnode->Data_number;
 							for(uint32_t i=0;i<Lastnode->Data_number;i++){
 								*(tmp_NewDTaskControlBlock->Data_addr+i) = *(Lastnode->Data_addr+i);
 							}
+							DebugFlag = 259;
 							tmp_NewDTaskControlBlock->Finish_Flag = 1;
-							tmp_NewDTaskControlBlock->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
+							//tmp_NewDTaskControlBlock->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
 
 							if(Lastnode == DFinish)
-								DFinish = tmp_NewDTaskControlBlock;
+								//DFinish = tmp_NewDTaskControlBlock;
+								DFinish = Lastnode->Next_TaskHandle_List;
 							else
-								pre_Lastnode->Next_TaskHandle_List = tmp_NewDTaskControlBlock;
+								//pre_Lastnode->Next_TaskHandle_List = tmp_NewDTaskControlBlock;
+								pre_Lastnode->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
+							DebugFlag = 260;
 							ResponseSubtaskFinishFlag = 0;
 							if (!(((uint32_t)(Lastnode->Data_addr) < (uint32_t)((uint8_t*)Lastnode + Lastnode->Subtask_all_size)) && ((uint32_t)(Lastnode->Data_addr) >= (uint32_t)((uint8_t*)Lastnode)))){
-								Distributed_vPortFree(Lastnode->Data_addr);
+								vPortFree(Lastnode->Data_addr);
 							}
+							DebugFlag = 261;
 							vPortExitCritical();
 							vTaskDelete(*(Lastnode->TaskHandlex));
 							vPortEnterCritical();
+							DebugFlag = 262;
 							vPortFree(Lastnode);
-
-
+							DebugFlag = 263;
+							Lastnode = DSendFinish;
+							pre_Lastnode = DSendFinish;
+							while(Lastnode != NULL){
+								pre_Lastnode = Lastnode;
+								Lastnode = Lastnode->Next_TaskHandle_List;
+							}
+							DebugFlag = 264;
+							if(Lastnode == DSendFinish)
+								DSendFinish = tmp_NewDTaskControlBlock;
+							else
+								pre_Lastnode->Next_TaskHandle_List = tmp_NewDTaskControlBlock;
+							tmp_NewDTaskControlBlock->Next_TaskHandle_List = NULL;
+							/*
 							while(1){
 								ResponseSubtaskFinishFlag = 0;
 								//if(PublishFlag != 0)
@@ -3002,7 +3071,7 @@ void Distributed_ManageTask(){
 									break;
 								}
 							}
-
+							*/
 							//printf("SubtaskFinish, DTask_id: 0x%lX, DSubTask_id: 0x%lX\r\n", tmp_NewDTaskControlBlock->DTask_id, tmp_NewDTaskControlBlock->DSubTask_id);
 							Unmerge_Finish_Distributed_task--;
 						}
@@ -3011,9 +3080,11 @@ void Distributed_ManageTask(){
 							//printf("Can't find Unmerge_Finish_Distributed_task: 0x%lX\r\n", Unmerge_Finish_Distributed_task);
 						}
 						vPortExitCritical();
+						DebugFlag = 0;
 					}
 
 					else if((TaskDoneFlag > 0) && (PublishFlag > 0)){
+						DebugFlag = 516;
 						uint32_t TaskDoneFlag_tickcount = xTaskGetTickCount();
 						global_record_time_dispatch_array[2] = TaskDoneFlag_tickcount - global_record_time;
 						global_record_time_dispatch_array[32] = TaskDoneFlag_tickcount - global_record_time;
@@ -3227,7 +3298,7 @@ void Distributed_ManageTask(){
 										}
 									}
 								}
-								Distributed_NodeRemoveTask(Broadcast_Node_id, Global_Node_id, Targetnodehead->DTask_id);
+								//Distributed_NodeRemoveTask(Broadcast_Node_id, Global_Node_id, Targetnodehead->DTask_id);
 								if(compact_flag == 1)
 									vPortFree(Targetnodehead);						//	After compact nodes info, just free the first node
 								else{
@@ -3271,6 +3342,7 @@ void Distributed_ManageTask(){
 						global_record_time_dispatch_array[3] = xTaskGetTickCount() - global_record_time;
 						if(get_key_flag > 0)
 							global_record_data[6] += (xTaskGetTickCount()-tmp_global_record_data_6);
+						DebugFlag = 0;
 					}
 
 					/*
@@ -3334,6 +3406,7 @@ void Distributed_ManageTask(){
 					}
 					*/
 					else if((DRequest != NULL) && (PublishFlag > 0)){
+						DebugFlag = 517;
 						//	have insert to request result list
 						//	check WHETHER the last finish node, (check finish node same subtask number)
 						//	should request result
@@ -3541,24 +3614,89 @@ void Distributed_ManageTask(){
 						}
 						if(get_key_flag > 0)
 							global_record_data[6] += (xTaskGetTickCount() - tmp_global_record_data_6);
+						DebugFlag = 0;
 					}
 
-					else if(DDelete != NULL){
-						while(DDelete != NULL){
+					else if((DSendFinish != NULL) && (PublishFlag > 0)){
+						DebugFlag = 518;
+						vPortEnterCritical();
+						Distributed_TaskHandle_List_t* Lastnode = DSendFinish;
+						Distributed_TaskHandle_List_t* pre_Lastnode = DSendFinish;
+						while(Lastnode != NULL){
+							ResponseSubtaskFinishFlag = 0;
+							//if(PublishFlag != 0)
+							Distributed_NodeSubtaskFinish(Lastnode->Source_Processor_id, Lastnode->DTask_id, Lastnode->DSubTask_id, Lastnode->Data_number);
+							vPortExitCritical();
+							WaitForFlag(&ResponseSubtaskFinishFlag, 1);
 							vPortEnterCritical();
 
+							if(ResponseSubtaskFinishFlag == Lastnode->Source_Processor_id){
+								ResponseSubtaskFinishFlag = 0;
+								if((ResponseSubtaskFinishTaskFlag == Lastnode->DTask_id) && (ResponseSubtaskFinishSubtaskFlag == Lastnode->DSubTask_id)){
+									ResponseSubtaskFinishTaskFlag = 0;
+									ResponseSubtaskFinishSubtaskFlag = 0;
+									Distributed_TaskHandle_List_t* tmp_Lastnode = DSendFinish;
+									while(tmp_Lastnode != NULL){
+										if(tmp_Lastnode == Lastnode)
+											break;
+										tmp_Lastnode = tmp_Lastnode->Next_TaskHandle_List;
+									}
+									if(tmp_Lastnode != NULL){
+										if(Lastnode == DSendFinish)
+											DSendFinish = Lastnode->Next_TaskHandle_List;
+										else
+											pre_Lastnode->Next_TaskHandle_List = Lastnode->Next_TaskHandle_List;
+										Lastnode->Next_TaskHandle_List = NULL;
+										Distributed_InsertFinishNode(Lastnode);
+									}
+									else{
+										tmp_Lastnode = DFinish;
+										while(tmp_Lastnode != NULL){
+											if(tmp_Lastnode == Lastnode)
+												break;
+											tmp_Lastnode = tmp_Lastnode->Next_TaskHandle_List;
+										}
+										if(tmp_Lastnode != NULL)
+											printf("Lastnode has in DFinish\r\n");
+										else
+											printf("Lost Lastnode\r\n");
+									}
+									break;
+								}
+							}
+							else{
+								//printf("Timeout in Distributed_NodeSubtaskFinish\r\n");
+								;
+							}
+							if(Lastnode->Source_Processor_id > Global_Node_count){		//Dame, Source_Processor_id is invalid
+								//printf("Dame, Source_Processor_id is invalid: 0x%lX, DTask_id: 0x%lX, DSubTask_id: 0x%lX\r\n", Lastnode->Source_Processor_id, Lastnode->DTask_id, Lastnode->DSubTask_id);
+								;
+							}
+							pre_Lastnode = Lastnode;
+							Lastnode = Lastnode->Next_TaskHandle_List;
+						}
+						vPortExitCritical();
+						DebugFlag = 0;
+					}
+					else if(DDelete != NULL){
+						DebugFlag = 519;
+						vPortEnterCritical();
+						while(DDelete != NULL){
 							Distributed_TaskHandle_List_t* remove_node = DDelete;
 							DDelete = DDelete->Next_TaskHandle_List;
 							vPortFree(remove_node);
-							vPortExitCritical();
 						}
+						vPortExitCritical();
+						DebugFlag = 0;
 					}
 
 					else if((BlockChangeFlag > 0) && (PublishFlag > 0)){
+						DebugFlag = 520;
 						if((Check_Sendable())){
 							vPortEnterCritical();
 							Distributed_NodeSendFreeBlock(0xffffffff, Global_Node_id);
 							vPortExitCritical();
+							DebugFlag = 0;
 						}
 					}
 				}
@@ -3668,6 +3806,109 @@ void UserDefine_Distributed_Task_2d_array_convolution(void *task_info){
 	Distributed_End(data_info, malloc_addr, malloc_size);
 }
 
+void UserDefine_Distributed_Task_argb_gray_convolution(void *task_info){
+	Distributed_TaskHandle_List_t* data_info = Distributed_Start(task_info);
+
+	uint32_t tmp_get_tickcount = 0;
+	if(data_info->DSubTask_id == 0)
+		tmp_get_tickcount = xTaskGetTickCount();
+
+	Distributed_Data_t* array = Distributed_GetTragetData(data_info);
+	uint32_t* malloc_addr = NULL;
+	uint32_t malloc_size = array->Data_size;
+	Distributed_pvPortMalloc(malloc_addr, malloc_size*sizeof(uint32_t));
+	for(uint32_t i=0;i<malloc_size;i++){
+		uint32_t R = ((*(array->Data_addr+i) & 0x00FF0000) >> 16);
+		uint32_t G = ((*(array->Data_addr+i) & 0x0000FF00) >> 8);
+		uint32_t B = ((*(array->Data_addr+i) & 0x000000FF));
+		*(malloc_addr+i) = (R*299 + G*587 + B*114 + 500)/1000;
+	}
+
+	if(data_info->DSubTask_id == 0)
+		global_record_data[5] += (xTaskGetTickCount() - tmp_get_tickcount);
+
+	Distributed_End(data_info, malloc_addr, malloc_size);
+}
+
+void UserDefine_Distributed_Task_RSA(void *task_info){
+	Distributed_TaskHandle_List_t *data_info = Distributed_Start(task_info);
+	uint32_t tmp_get_tickcount = 0;
+	if(data_info->DSubTask_id == 0)
+		tmp_get_tickcount = xTaskGetTickCount();
+	Distributed_Data_t* array = Distributed_GetTragetData(data_info);
+	Distributed_Data_t* e_d_info = Distributed_GetTragetData(data_info);
+	Distributed_Data_t* n_info = Distributed_GetTragetData(data_info);
+
+	uint32_t e_d = *(e_d_info->Data_addr);
+	uint32_t n = *(n_info->Data_addr);
+
+	uint32_t* malloc_addr = NULL;
+	uint32_t malloc_size = array->Data_size;
+	Distributed_pvPortMalloc(malloc_addr, malloc_size*sizeof(uint32_t));
+
+	for(uint32_t i=0;i<array->Data_size;i++){
+		uint32_t process_data = *(array->Data_addr + i);
+		uint32_t result_data = 0;
+		for(uint32_t j=0;j<4;j++){
+			uint32_t process_byte = ((process_data >> ((j*8))) & 0x000000FF);
+			uint32_t cipher = powMod(process_byte, e_d, n);
+			result_data |= (cipher << (j*8));
+		}
+		*(malloc_addr + i) = result_data;
+	}
+
+	if(data_info->DSubTask_id == 0)
+		global_record_data[5] += (xTaskGetTickCount() - tmp_get_tickcount);
+	Distributed_End(data_info, malloc_addr, malloc_size);
+}
+
+uint32_t checkPrime(uint32_t n){
+	uint32_t i;
+	uint32_t m = n / 2;
+	for (i = 2; i <= m; i++) {
+		if (n % i == 0) {
+			return 0; // Not Prime
+		}
+	}
+	return 1; // Prime
+}
+
+uint32_t findGCD(uint32_t n1, uint32_t n2){
+	uint32_t i, gcd;
+	for(i = 1; i <= n1 && i <= n2; ++i) {
+		if(n1 % i == 0 && n2 % i == 0)
+			gcd = i;
+	}
+	return gcd;
+}
+
+uint32_t powMod(uint32_t a, uint32_t b, uint32_t n) {
+	uint32_t x = 1, y = a;
+	while (b > 0) {
+		if (b % 2 == 1)
+			x = (x * y) % n;
+		y = (y * y) % n; // Squaring the base
+		b /= 2;
+	}
+	return (x % n);
+}
+
+void public_key(uint32_t* e, uint32_t* d, uint32_t* n, uint32_t p, uint32_t q){
+	*n = (p * q);
+	uint32_t phin = (p - 1) * (q - 1);
+	*e = 0;
+	for ((*e) = 5; (*e) <= 100; (*e)++) {
+		if (findGCD(phin, (*e)) == 1)
+			break;
+	}
+	*d = 0;
+	while(1){
+		if ( (((*d) * (*e)) % phin) == 1)
+			break;
+		(*d)++;
+	}
+}
+
 /*
 void UserDefine_Local_Task_2d_array_convolution(uint32_t rec_Count){
 	uint32_t kernel_Data_addr[] = {2, 2, 2, 2, 2, 2, 2, 2, 2};
@@ -3710,6 +3951,35 @@ void UserDefine_Local_Task_2d_array_convolution(uint32_t rec_Count){
 	printf("array_Data_size: %u, Local_Task_2d_array_tick: %u\r\n", (unsigned int)array_Data_size, (unsigned int)Local_Task_2d_array_tick);
 }
 */
+
+void UserDefine_Local_Task_RSA(uint32_t rec_Count, uint32_t e_d, uint32_t n, uint32_t array_Data_size){
+	uint32_t* array_Data_addr = (uint32_t*)0x10000000;
+	for(uint32_t i=0;i<array_Data_size;i++)
+		*(array_Data_addr+i) = 0x075E9400;
+	uint32_t* malloc_addr = NULL;
+	uint32_t malloc_size = array_Data_size;
+	malloc_addr = pvPortMalloc(malloc_size*sizeof(uint32_t));
+	uint32_t tmp_get_tickcount = xTaskGetTickCount();
+	uint32_t Count = 0;
+	while(Count < rec_Count){
+		for(uint32_t i=0;i<array_Data_size;i++){
+			uint32_t process_data = *(array_Data_addr + i);
+			uint32_t result_data = 0;
+			for(uint32_t j=0;j<4;j++){
+				uint32_t process_byte = ((process_data >> ((j*8))) & 0x000000FF);
+				uint32_t cipher = powMod(process_byte, e_d, n);
+				result_data |= (cipher << (j*8));
+			}
+			*(malloc_addr + i) = result_data;
+		}
+		Count++;
+		DebugFlag = Count;
+	}
+	vPortFree(malloc_addr);
+	uint32_t Local_Task_RSA_tick = xTaskGetTickCount() - tmp_get_tickcount;
+	printf("array_Data_size: %u, Local_Task_RSA_tick: %u\r\n", (unsigned int)array_Data_size, (unsigned int)Local_Task_RSA_tick);
+}
+
 void UserDefine_Task(){
 	while(1){
 		if ((READ_BIT(USART1_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART1_BASE + USART_SR_OFFSET, ORE_BIT))){
@@ -3735,6 +4005,7 @@ void UserDefine_Task(){
 				*/
 				for(uint32_t i=0;i<0x3000;i++){
 					*(((uint32_t*)0x10000000)+i) = 1;
+					*(((uint32_t*)0x10000000)+i) = 0xFFB72500;
 				}
 				for(uint32_t i=0;i<8;i++)
 					global_record_data[i] = 0;
@@ -3798,19 +4069,19 @@ void UserDefine_Task(){
 						Result_data = Distributed_GetResult(Result);
 					Distributed_FreeResult(Result_data);
 					DebugFlag = Count;
-					//printf("Task: %u done	=\r\n", (unsigned int)Count);
+					printf("Task: %u done	=\r\n", (unsigned int)Count);
 					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
 					send_recv_data_time_count = 4;
 					Count++;
 				}
 				*/
-					//	UserDefine_Distributed_Task_2d_array_convolution
-				while(Count < 100){
+				/*	//	UserDefine_Distributed_Task_2d_array_convolution
+				while(Count < 10000){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
-					uint32_t array_column = 32;
+					uint32_t array_column = 128;
 					uint32_t kernel[] = {2, 2, 2, 2, 2, 2, 2, 2, 2};
 					uint32_t kernel_column = 3;
-					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x1000, 32);
+					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x1000, 128);
 					Distributed_AddTargetData(data_info, &array_column, 1, 0);
 					Distributed_AddTargetData(data_info, kernel, 9, 0);
 					Distributed_AddTargetData(data_info, &kernel_column, 1, 0);
@@ -3835,6 +4106,87 @@ void UserDefine_Task(){
 					Distributed_FreeResult(Result_data);
 					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
 					DebugFlag = Count;
+					send_recv_data_time_count = 4;
+					//printf("Task: %u ticks	=\r\n", (unsigned int)Count);
+					Count++;
+				}
+				*/
+				/*	//	UserDefine_Distributed_Task_argb_gray_convolution
+				while(Count < 1){
+					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
+					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x1000, 1);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_argb_gray_convolution, data_info, 1000, WithoutBarrier);
+					Distributed_Data_t* Result_data = NULL;
+					while(Result_data == NULL)
+						Result_data = Distributed_GetResult(Result);
+					Distributed_FreeResult(Result_data);
+					DebugFlag = Count;
+					printf("Task: %u done	=\r\n", (unsigned int)Count);
+					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
+					send_recv_data_time_count = 4;
+					Count++;
+				}
+				*/
+				printf("================================\r\n");
+				uint32_t e = 0;
+				uint32_t d = 0;
+				uint32_t n = 0;
+				uint32_t p = 11;
+				uint32_t q = 37;
+				public_key(&e, &d, &n, p, q);
+				printf("Value of e: %u, Value of d: %u, n: %u\r\n", (unsigned int)e, (unsigned int)d, (unsigned int)n);
+				uint32_t test_data_array[] = {0, 37, 183, 255};
+				uint32_t test_data = 0;
+				for(uint32_t i=0;i<4;i++)
+					test_data |= (test_data_array[i] << (i*8));
+				printf("test_data: 0x%lX\r\n", test_data);					//	0xFFB72500
+				uint32_t cipher = 0;
+				for(uint32_t i=0;i<4;i++){
+					uint32_t process_byte = ((test_data >> ((i*8))) & 0x000000FF);
+					uint32_t result_data = powMod(process_byte, e, n);
+					cipher |= (result_data << (i*8));
+				}
+				printf("cipher: 0x%lX\r\n", cipher);
+
+				uint32_t plain  = 0;
+				for(uint32_t i=0;i<4;i++){
+					uint32_t process_byte = ((cipher >> ((i*8))) & 0x000000FF);
+					uint32_t result_data = powMod(process_byte, d, n);
+					plain |= (result_data << (i*8));
+				}
+				printf("plain: 0x%lX\r\n", plain);
+				printf("================================\r\n");
+				//UserDefine_Local_Task_RSA(1, e, n, 0x1000);
+
+				while(Count < 10000){
+					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
+					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x1000, 1);
+					Distributed_AddTargetData(data_info, &e, 1, 0);
+					Distributed_AddTargetData(data_info, &n, 1, 0);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_RSA, data_info, 1000, WithoutBarrier);
+					Distributed_Data_t* Result_data = NULL;
+					while(Result_data == NULL)
+						Result_data = Distributed_GetResult(Result);
+					/*
+					uint32_t all_right = 1;
+					uint32_t fail_count = 0;
+					for(uint32_t i=0;i<Result_data->Data_size;i++){
+						if(*(Result_data->Data_addr+i) != 0X75E9400){
+							all_right = 0;
+							fail_count++;
+							printf("Not 0X75E9400: 0x%lX\r\n", *(Result_data->Data_addr+i));
+						}
+					}
+					if(all_right == 1)
+						//printf("Count: 0x%lX, All answer right\r\n", Count);
+						;
+					else
+						printf("Count: 0x%lX, Some answer is wrong, fail_count: %u\r\n", Count, (unsigned int)fail_count);
+					*/
+					Distributed_FreeResult(Result_data);
+					DebugFlag = Count;
+					//printf("Task: %u done	=\r\n", (unsigned int)Count);
+					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
 					send_recv_data_time_count = 4;
 					Count++;
 				}
@@ -3866,7 +4218,6 @@ void UserDefine_Task(){
 					printf("send_recv_data_time[%u]: %u\r\n", (unsigned int)i, (unsigned int)send_recv_data_time[i]);
 
 				//UserDefine_Local_Task_2d_array_convolution(10000);
-
 				/*
 				printf("Middleware Dispatch: %u, %u, Recycle:  %u, %u, ticks\r\n", (unsigned int)global_record_time_dispatch_array[0], (unsigned int)global_record_time_dispatch_array[1], (unsigned int)global_record_time_dispatch_array[2], (unsigned int)global_record_time_dispatch_array[3]);
 				printf("Dispatch Request: %u, %u, Release: %u, %u, ticks\r\n", (unsigned int)global_record_time_dispatch_array[4], (unsigned int)global_record_time_dispatch_array[5], (unsigned int)global_record_time_dispatch_array[6], (unsigned int)global_record_time_dispatch_array[7]);
@@ -4627,7 +4978,7 @@ uint8_t Distributed_NodeRecvCompleteSequence(uint32_t Target_Node_id){
 		Remain_th = SendCompleteFlag + 1;
 		SendCompleteFlag = 0;
 		uint32_t recv_complete_count = 0;
-		uint32_t recv_complete_limit = 5;
+		uint32_t recv_complete_limit = 10;
 		while(1){
 			Distributed_NodeSendComplete(Target_Node_id, Remain_th);
 			vPortExitCritical();
