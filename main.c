@@ -21,9 +21,9 @@ void init_dac(void);
 void init_external_interrupt(void);
 void exti0_handler(void);
 void DAC_SetChannel1Data(uint8_t vol);
-void init_usart1(void);
+void init_usart3(void);
 void init_usart2(void);
-void usart1_send_char(const char ch);
+void usart3_send_char(const char ch);
 void usart2_send_char(const char ch);
 void print_sys(char str[255]);
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1227,7 +1227,7 @@ void exti0_handler_c(uint32_t LR, uint32_t MSP)
 	uint32_t stacked_return_addr = *(stack_frame_ptr+6);
 	uint32_t stacked_LR = *(stack_frame_ptr+5);
 
-	printf("DebugFlag: 0x%lX, SendFlag: 0x%lX, RecvFlag: 0x%lX, Return_addr: 0x%lX, LR: 0x%lX\r\n", DebugFlag, SendFlag, RecvFlag, stacked_return_addr, stacked_LR);
+	printf("DebugFlag: 0x%lX, SendFlag: 0x%lX, RecvFlag: 0x%lX, PublishFlag: 0x%lX, Return_addr: 0x%lX, LR: 0x%lX\r\n", DebugFlag, SendFlag, RecvFlag, PublishFlag, stacked_return_addr, stacked_LR);
 	SET_BIT(EXTI_BASE + EXTI_PR_OFFSET, 0);
 }
 
@@ -1273,36 +1273,36 @@ void init_timer4(void){
 
 void init_usart2(void){
 	//RCC EN GPIO
-	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTA));
+	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTD));
 
 	//MODER => 10
-	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_1_BIT(2));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_0_BIT(2));
+	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_1_BIT(5));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_0_BIT(5));
 
-	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_1_BIT(3));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_0_BIT(3));
+	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_1_BIT(6));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_0_BIT(6));
 
 	//OT => 0
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OTYPER_OFFSET, OTy_BIT(2));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OTYPER_OFFSET, OTy_BIT(3));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OTYPER_OFFSET, OTy_BIT(5));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OTYPER_OFFSET, OTy_BIT(6));
 
 	//OSPEEDR => 10
-	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(2));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(2));
+	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(5));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(5));
 
-	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(3));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(3));
+	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(6));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(6));
 
 	//PUPDR = 00 => No pull-up, pull-down
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(2));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(2));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(6));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(6));
 
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(3));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(3));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(5));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(5));
 
 	//AF sel
-	WRITE_BITS(GPIO_BASE(GPIO_PORTA) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(2), AFRLy_0_BIT(2), 7);
-	WRITE_BITS(GPIO_BASE(GPIO_PORTA) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(3), AFRLy_0_BIT(3), 7);
+	WRITE_BITS(GPIO_BASE(GPIO_PORTD) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(5), AFRLy_0_BIT(5), 8);
+	WRITE_BITS(GPIO_BASE(GPIO_PORTD) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(6), AFRLy_0_BIT(6), 8);
 
 	//RCC EN USART2
 	SET_BIT(RCC_BASE + RCC_APB1ENR_OFFSET, USART2EN);
@@ -1363,41 +1363,41 @@ void usart2_handler(void){
 	}
 }
 
-void init_usart1(void){
+void init_usart3(void){
 	//RCC EN GPIO
-	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTB));
+	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTD));
 
 	//MODER => 10
-	SET_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_MODER_OFFSET, MODERy_1_BIT(6));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_MODER_OFFSET, MODERy_0_BIT(6));
+	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_1_BIT(8));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_0_BIT(8));
 
-	SET_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_MODER_OFFSET, MODERy_1_BIT(7));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_MODER_OFFSET, MODERy_0_BIT(7));
+	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_1_BIT(9));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_0_BIT(9));
 
 	//OT => 0
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_OTYPER_OFFSET, OTy_BIT(6));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_OTYPER_OFFSET, OTy_BIT(7));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OTYPER_OFFSET, OTy_BIT(8));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OTYPER_OFFSET, OTy_BIT(9));
 
 	//OSPEEDR => 10
-	SET_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(6));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(6));
+	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(8));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(8));
 
-	SET_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(7));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(7));
+	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(9));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(9));
 
 	//PUPDR = 00 => No pull-up, pull-down
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(6));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(6));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(8));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(8));
 
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(7));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(7));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(9));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(9));
 
 	//AF sel
-	WRITE_BITS(GPIO_BASE(GPIO_PORTB) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(6), AFRLy_0_BIT(6), 7);
-	WRITE_BITS(GPIO_BASE(GPIO_PORTB) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(7), AFRLy_0_BIT(7), 7);
+	WRITE_BITS(GPIO_BASE(GPIO_PORTD) + GPIOx_AFRH_OFFSET, AFRHy_3_BIT(8), AFRHy_0_BIT(8), 7);
+	WRITE_BITS(GPIO_BASE(GPIO_PORTD) + GPIOx_AFRH_OFFSET, AFRHy_3_BIT(9), AFRHy_0_BIT(9), 7);
 
 	//RCC EN USART2
-	SET_BIT(RCC_BASE + RCC_APB2ENR_OFFSET, USART1EN);
+	SET_BIT(RCC_BASE + RCC_APB1ENR_OFFSET, USART3EN);
 
 	//baud rate
 	const unsigned int BAUDRATE = 115200;
@@ -1407,35 +1407,35 @@ void init_usart1(void){
 	const uint32_t DIV_MANTISSA = (uint32_t)USARTDIV;
 	const uint32_t DIV_FRACTION = (uint32_t)((USARTDIV - DIV_MANTISSA) * 16);
 
-	WRITE_BITS(USART1_BASE + USART_BRR_OFFSET, DIV_MANTISSA_11_BIT, DIV_MANTISSA_0_BIT, DIV_MANTISSA);
-	WRITE_BITS(USART1_BASE + USART_BRR_OFFSET, DIV_FRACTION_3_BIT, DIV_FRACTION_0_BIT, DIV_FRACTION);
+	WRITE_BITS(USART3_BASE + USART_BRR_OFFSET, DIV_MANTISSA_11_BIT, DIV_MANTISSA_0_BIT, DIV_MANTISSA);
+	WRITE_BITS(USART3_BASE + USART_BRR_OFFSET, DIV_FRACTION_3_BIT, DIV_FRACTION_0_BIT, DIV_FRACTION);
 
 	//usart2 enable
-	SET_BIT(USART1_BASE + USART_CR1_OFFSET, UE_BIT);
+	SET_BIT(USART3_BASE + USART_CR1_OFFSET, UE_BIT);
 
 	//set TE
-	SET_BIT(USART1_BASE + USART_CR1_OFFSET, TE_BIT);
+	SET_BIT(USART3_BASE + USART_CR1_OFFSET, TE_BIT);
 
 	//set RE
-	SET_BIT(USART1_BASE + USART_CR1_OFFSET, RE_BIT);
+	SET_BIT(USART3_BASE + USART_CR1_OFFSET, RE_BIT);
 
 	//set RXNEIE
-	SET_BIT(USART1_BASE + USART_CR1_OFFSET, RXNEIE_BIT);
+	SET_BIT(USART3_BASE + USART_CR1_OFFSET, RXNEIE_BIT);
 
 	//set NVIC
 	//SET_BIT(NVIC_ISER_BASE + NVIC_ISERn_OFFSET(1), 5); //IRQ71 => (m+(32*n)) | m=7, n=2
 }
 
-void usart1_send_char(const char ch){
+void usart3_send_char(const char ch){
 	//wait util TXE == 1
-	while (!READ_BIT(USART1_BASE + USART_SR_OFFSET, TXE_BIT))
+	while (!READ_BIT(USART3_BASE + USART_SR_OFFSET, TXE_BIT))
 		;
-	REG(USART1_BASE + USART_DR_OFFSET) = (uint8_t)ch;
+	REG(USART3_BASE + USART_DR_OFFSET) = (uint8_t)ch;
 }
 
-void usart1_handler(void){
+void usart3_handler(void){
 
-	if (READ_BIT(USART1_BASE + USART_SR_OFFSET, ORE_BIT))
+	if (READ_BIT(USART3_BASE + USART_SR_OFFSET, ORE_BIT))
 	{
 		/*
 		char ch = (char)REG(USART2_BASE + USART_DR_OFFSET);
@@ -1453,7 +1453,7 @@ void usart1_handler(void){
 		receive_count = 0;
 	}
 
-	else if (READ_BIT(USART1_BASE + USART_SR_OFFSET, RXNE_BIT))
+	else if (READ_BIT(USART3_BASE + USART_SR_OFFSET, RXNE_BIT))
 	{
 		/*
 		char ch = (char)REG(USART2_BASE + USART_DR_OFFSET);
@@ -1461,7 +1461,7 @@ void usart1_handler(void){
 			usart2_send_char('\n');
 		usart2_send_char(ch);
 		*/
-		*(rece_ptr+receive_count) = (uint8_t)REG(USART1_BASE + USART_DR_OFFSET);
+		*(rece_ptr+receive_count) = (uint8_t)REG(USART3_BASE + USART_DR_OFFSET);
 		receive_count++;
 		if (receive_count>= 200){
 			if(rece_ptr==rec_play_buf_fir){
@@ -1472,7 +1472,7 @@ void usart1_handler(void){
 				rece_ptr = rec_play_buf_fir;
 				play_ptr = rec_play_buf_sec;
 			}
-			usart1_send_char(receive_count);
+			usart3_send_char(receive_count);
 			receive_count = 0;
 		}
 	}
@@ -2465,8 +2465,8 @@ void eth_handler(void){
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 void Distributed_ManageTask(){
 	while(1){
-		if ((READ_BIT(USART1_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART1_BASE + USART_SR_OFFSET, ORE_BIT))){
-			char rec_cmd = (char)REG(USART1_BASE + USART_DR_OFFSET);
+		if ((READ_BIT(USART3_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART3_BASE + USART_SR_OFFSET, ORE_BIT))){
+			char rec_cmd = (char)REG(USART3_BASE + USART_DR_OFFSET);
 			printf("%c\r\n", rec_cmd);
 
 			if (rec_cmd == 'c'){
@@ -2505,8 +2505,8 @@ void Distributed_ManageTask(){
 				printf("Got Global_Node_id: 0x%lX\r\n", Global_Node_id);
 				BlockChangeFlag = 0;
 				while(1){
-					if ((READ_BIT(USART1_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART1_BASE + USART_SR_OFFSET, ORE_BIT))){
-						rec_cmd = (char)REG(USART1_BASE + USART_DR_OFFSET);
+					if ((READ_BIT(USART3_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART3_BASE + USART_SR_OFFSET, ORE_BIT))){
+						rec_cmd = (char)REG(USART3_BASE + USART_DR_OFFSET);
 						printf("%c\r\n", rec_cmd);
 					}
 
@@ -3658,10 +3658,12 @@ void Distributed_ManageTask(){
 												break;
 											tmp_Lastnode = tmp_Lastnode->Next_TaskHandle_List;
 										}
+										/*
 										if(tmp_Lastnode != NULL)
 											printf("Lastnode has in DFinish\r\n");
 										else
 											printf("Lost Lastnode\r\n");
+										*/
 									}
 									break;
 								}
@@ -3984,8 +3986,8 @@ void UserDefine_Local_Task_RSA(uint32_t rec_Count, uint32_t e_d, uint32_t n, uin
 
 void UserDefine_Task(){
 	while(1){
-		if ((READ_BIT(USART1_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART1_BASE + USART_SR_OFFSET, ORE_BIT))){
-			char rec_cmd = (char)REG(USART1_BASE + USART_DR_OFFSET);
+		if ((READ_BIT(USART3_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART3_BASE + USART_SR_OFFSET, ORE_BIT))){
+			char rec_cmd = (char)REG(USART3_BASE + USART_DR_OFFSET);
 			printf("%c\r\n", rec_cmd);
 
 			if (rec_cmd == 'd'){										//	dispatch distributed task
@@ -4030,7 +4032,7 @@ void UserDefine_Task(){
 					Count++;
 				}
 				*/
-					//	UserDefine_Distributed_Task_do_nothing, less data
+				/*	//	UserDefine_Distributed_Task_do_nothing, less data
 				while(Count < 1){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x4, 1);
@@ -4044,7 +4046,7 @@ void UserDefine_Task(){
 					send_recv_data_time_count = 4;
 					Count++;
 				}
-
+				*/
 				/*	//	UserDefine_Distributed_Task_do_nothing, large data
 				while(Count < 100){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
@@ -4078,8 +4080,8 @@ void UserDefine_Task(){
 				}
 				*/
 					//	UserDefine_Distributed_Task_2d_array_convolution
-				/*
-				while(Count < 10000){
+
+				while(Count < 100){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
 					uint32_t array_column = 128;
 					uint32_t kernel[] = {2, 2, 2, 2, 2, 2, 2, 2, 2};
@@ -4110,10 +4112,10 @@ void UserDefine_Task(){
 					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
 					DebugFlag = Count;
 					send_recv_data_time_count = 4;
-					//printf("Task: %u ticks	=\r\n", (unsigned int)Count);
+					printf("Task: %u ticks	=\r\n", (unsigned int)Count);
 					Count++;
 				}
-				*/
+
 				/*	//	UserDefine_Distributed_Task_argb_gray_convolution
 				while(Count < 1){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
@@ -4835,17 +4837,18 @@ uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
 				ResponseKeyFlag = 0;
 				while(ResponseKeyFlag == 0){
 					//while(!Check_Sendable_Without_Limit());
-					Distributed_NodeRequestKey();								//	Request by communication
+					if(PublishFlag > 0)
+						Distributed_NodeRequestKey();									//	Request by communication
 					WaitForFlag(&ResponseKeyFlag, 1);
 				}
-
 			}
 			if(ResponseKeyFlag > Global_Node_count){									//	RequestKeyFlag is occupy, clear ResponseKeyFlag
 				ResponseKeyFlag = 0;													//	Not Get the Key
-				PublishFlag = 0;
+				//PublishFlag = 0;
 				return	0;
 			}
 			else{																		//	occupy RequestKeyFlag, clear ResponseKeyFlag
+				PublishFlag = 0;
 				ResponseKeyFlag = 0;
 				break;
 			}
@@ -4882,7 +4885,7 @@ uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
 	else{
 		for(uint32_t i=1;i<=Global_Node_count;i++){										//	Disable/Enable all node
 			if((i != Global_Node_Master) && (i != Global_Node_id)){
-				uint32_t Timeout_count_limit = 10;
+				uint32_t Timeout_count_limit = 20;
 				uint32_t Timeout_count = 0;
 				while(PublishResponseFlag != i){
 					//while(!Check_Sendable_Without_Limit());
@@ -5175,7 +5178,7 @@ void Distributed_Show_FreeBlock(){
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 int main(void){
 	DStart->Next_TaskHandle_List = NULL;
-	init_usart1();
+	init_usart3();
 	led_init(LED_GREEN);
 	led_init(LED_ORANGE);
 	led_init(LED_RED);
@@ -5249,7 +5252,7 @@ void *_sbrk(int incr){
 
 int _write(int file, char *ptr, int len){
 	for (unsigned int i = 0; i < len; i++)
-		usart1_send_char(*ptr++);
+		usart3_send_char(*ptr++);
 
 	return len;
 }

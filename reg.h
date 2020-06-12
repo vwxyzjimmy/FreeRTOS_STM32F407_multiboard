@@ -280,6 +280,7 @@
 #define DACEN 29
 #define I2C1EN 21
 #define USART2EN 17
+#define USART3EN 18
 #define TIM4EN 2
 #define TIM2EN 0
 
@@ -363,6 +364,7 @@
 //USART1
 #define USART1_BASE 0x40011000
 #define USART2_BASE 0x40004400
+#define USART3_BASE 0x40004800
 #define USART6_BASE 0x40011400
 
 #define USART_SR_OFFSET 0x00
