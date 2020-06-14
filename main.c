@@ -197,7 +197,7 @@ uint32_t send_recv_data_time_count = 4;
 extern volatile uint8_t ov_rev_ok;
 extern volatile uint8_t ov_frame;
 extern volatile uint32_t datanum;
-
+extern uint16_t camera_buffer[PIC_WIDTH*PIC_HEIGHT];
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Distributed_Data_t* Distributed_SetTargetData(uint32_t* data_addr, uint32_t data_size, uint32_t split_size){
 	Distributed_Data_t* data_info = pvPortMalloc(sizeof(Distributed_Data_t));
@@ -1234,7 +1234,6 @@ void exti0_handler_c(uint32_t LR, uint32_t MSP)
 	}
 	uint32_t stacked_return_addr = *(stack_frame_ptr+6);
 	uint32_t stacked_LR = *(stack_frame_ptr+5);
-
 	printf("DebugFlag: 0x%lX, SendFlag: 0x%lX, RecvFlag: 0x%lX, PublishFlag: 0x%lX, Return_addr: 0x%lX, LR: 0x%lX\r\n", DebugFlag, SendFlag, RecvFlag, PublishFlag, stacked_return_addr, stacked_LR);
 	SET_BIT(EXTI_BASE + EXTI_PR_OFFSET, 0);
 }
@@ -2514,7 +2513,7 @@ void Distributed_ManageTask(){
 				BlockChangeFlag = 0;
 				while(1){
 					if ((READ_BIT(USART3_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART3_BASE + USART_SR_OFFSET, ORE_BIT))){
-						rec_cmd = (char)REG(USART3_BASE + USART_DR_OFFSET);
+						char rec_cmd = (char)REG(USART3_BASE + USART_DR_OFFSET);
 						printf("%c\r\n", rec_cmd);
 					}
 
@@ -4268,12 +4267,17 @@ void UserDefine_Task(){
 			}
 
 			else if(rec_cmd == 'C'){
-				printf("C~~r\n");
+				//printf("C~~\r\n");
 				DCMI_Start();
-				printf("DCMI_Start\r\n");
+				//printf("DCMI_Start\r\n");
 				while(ov_rev_ok == 0)
 					;
-				printf("ov_rev_ok is %u\r\n", (unsigned int)ov_rev_ok);
+				printf("\r\n");
+				uint8_t* send_addr = (uint8_t*)camera_buffer;
+				for(uint32_t i=0;i<8192;i++)
+					usart3_send_char(*(send_addr+i));
+				//printf("\r\n");
+				//printf("ov_rev_ok is %u\r\n", (unsigned int)ov_rev_ok);
 				rec_cmd = '\0';
 			}
 		}
