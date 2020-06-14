@@ -11,6 +11,7 @@ extern uint32_t RecvFlag;
 extern uint32_t global_pxBlockToInsert;
 uint32_t SystemCoreClock = 168000000;
 uint32_t SystemTICK_RATE_HZ = 184320;								//	168000	//184320
+//uint32_t SystemTICK_RATE_HZ = 100000;								//	168000	//184320
 
 void set_sysclk_pll(void);
 

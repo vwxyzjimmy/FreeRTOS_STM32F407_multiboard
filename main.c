@@ -9,7 +9,11 @@
 #include "queue.h"
 #include "timers.h"
 #include "struct.h"
+#include "ov7670.h"
+#include "dcmi.h"
 #define HEAP_MAX (32 * 1024) 	// 128 KB
+
+#define portTICK_PERIOD_US			( (uint32_t) 1000000 / SystemTICK_RATE_HZ )
 
 extern void vPortSVCHandler();
 void vApplicationTickHook() {;}
@@ -189,6 +193,10 @@ uint32_t record_subtask_end_time;
 uint32_t global_record_data[8];
 uint32_t send_recv_data_time[8];
 uint32_t send_recv_data_time_count = 4;
+
+extern volatile uint8_t ov_rev_ok;
+extern volatile uint8_t ov_frame;
+extern volatile uint32_t datanum;
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Distributed_Data_t* Distributed_SetTargetData(uint32_t* data_addr, uint32_t data_size, uint32_t split_size){
@@ -3985,6 +3993,12 @@ void UserDefine_Local_Task_RSA(uint32_t rec_Count, uint32_t e_d, uint32_t n, uin
 }
 
 void UserDefine_Task(){
+	uint8_t OV7670_Init_flag = OV7670_Init();
+	if(OV7670_Init_flag == 0)
+		printf("OV7670_Init success\r\n");
+	else
+		printf("OV7670_Init fail\r\n");
+
 	while(1){
 		if ((READ_BIT(USART3_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART3_BASE + USART_SR_OFFSET, ORE_BIT))){
 			char rec_cmd = (char)REG(USART3_BASE + USART_DR_OFFSET);
@@ -4251,6 +4265,16 @@ void UserDefine_Task(){
 				//printf("Transmit_time: %u ticks and checksize_count: %u\r\n", (unsigned int)Transmit_time, (unsigned int)checksize_count);
 				//printf("Subtask time: %u ticks\r\n", (unsigned int)(record_subtask_end_time-record_subtask_time));
 
+			}
+
+			else if(rec_cmd == 'C'){
+				printf("C~~r\n");
+				DCMI_Start();
+				printf("DCMI_Start\r\n");
+				while(ov_rev_ok == 0)
+					;
+				printf("ov_rev_ok is %u\r\n", (unsigned int)ov_rev_ok);
+				rec_cmd = '\0';
 			}
 		}
 	}

@@ -65,6 +65,58 @@
 #define NVIC_AIRCR_RESET_VALUE 0x05FA0000
 #define NVIC_PRIORITYGROUP_4 0x300
 
+#define DCMI_BASE 0x50050000
+
+#define DCMI_CR_OFFSET  0x00
+#define ENABLE_BIT      14
+#define EDM_1_BIT       11
+#define EDM_0_BIT       10
+#define FCRC_1_BIT      9
+#define FCRC_0_BIT      8
+#define VSPOL_BIT       7
+#define HSPOL_BIT       6
+#define PCKPOL_BIT      5
+#define ESS_BIT         4
+#define JPEG_BIT        3
+#define CROP_BIT        2
+#define CM_BIT          1
+#define CAPTURE_BIT     0
+
+#define DCMI_SR_OFFSET          0x04
+
+#define DCMI_RIS_OFFSET         0x08
+
+#define DCMI_IER_OFFSET         0x0C
+#define LINE_IE_BIT     4
+#define VSYNC_IE_BIT    3
+#define ERR_IE_BIT      2
+#define OVR_IE_BIT      1
+#define FRAME_IE_BIT    0
+
+#define DCMI_MIS_OFFSET         0x10
+#define LINE_MIS_BIT    4
+#define VSYNC_MIS_BIT   3
+#define ERR_MIS_BIT     2
+#define OVR_MIS_BIT     1
+#define FRAME_MIS_BIT   0
+
+#define DCMI_ICR_OFFSET         0x14
+#define LINE_ISC_BIT    4
+#define VSYNC_ISC_BIT   3
+#define ERR_ISC_BIT     2
+#define OVR_ISC_BIT     1
+#define FRAME_ISC_BIT   0
+
+#define DCMI_ESCR_OFFSET        0x18
+
+#define DCMI_ESUR_OFFSET        0x1C
+
+#define DCMI_CWSTRT_OFFSET      0x20
+
+#define DCMI_CWSIZE_OFFSET      0x24
+
+#define DCMI_DR_OFFSET          0x28
+
 #define ETHERNET_MAC_BASE 0x40028000
 
 #define ETH_MACCR_OFFSET 0x0000
@@ -225,6 +277,74 @@
 #define TPSIE 1
 #define TIE 0
 
+#define DMA2_BASE 0x40026400
+
+#define DMA_LISR_OFFSET     0x00000000
+#define DMA_FEIF1   6
+#define DMA_DMEIF1  8
+#define DMA_TEIF1   9
+#define DMA_HTIF1   10
+#define DMA_TCIF1   11
+
+#define DMA_LIFCR_OFFSET    0x00000008
+#define DMA_CFEIF1  6
+#define DMA_CDMEIF1 8
+#define DMA_CTEIF1  9
+#define DMA_CHTIF1  10
+#define DMA_CTCIF1  11
+
+#define DMA_S1CR_OFFSET     0x00000028
+#define DMA_CHSEL_2_BIT     27
+#define DMA_CHSEL_0_BIT     25
+#define DMA_MBURST_1_BIT    24
+#define DMA_MBURST_0_BIT    23
+#define DMA_PBURST_1_BIT    22
+#define DMA_PBURST_0_BIT    21
+#define DMA_CT_BIT          19
+#define DMA_DBM_BIT         18
+#define DMA_PL_1_BIT        17
+#define DMA_PL_0_BIT        16
+#define DMA_PINCOS_BIT      15
+#define DMA_MSIZE_1_BIT     14
+#define DMA_MSIZE_0_BIT     13
+#define DMA_PSIZE_1_BIT     12
+#define DMA_PSIZE_0_BIT     11
+#define DMA_MINC_BIT        10
+#define DMA_PINC_BIT        9
+#define DMA_CIRC_BIT        8
+#define DMA_DIR_1_BIT       7
+#define DMA_DIR_0_BIT       6
+#define DMA_PFCTRL_BIT      5
+#define DMA_TCIE_BIT        4
+#define DMA_HTIE_BIT        3
+#define DMA_TEIE_BIT        2
+#define DMA_DMEIE_BIT       1
+#define DMA_EN_BIT          0
+
+#define DMA_S1NDTR_OFFSET   0x0000002C
+#define DMA_NDT_15_BIT  15
+#define DMA_NDT_0_BIT   0
+
+#define DMA_S1PAR_OFFSET    0x00000030
+#define DMA_PA_31_BIT  31
+#define DMA_PA_0_BIT   0
+
+#define DMA_S1M0AR_OFFSET   0x00000034
+#define DMA_M0A_31_BIT  31
+#define DMA_M0A_0_BIT   0
+
+#define DMA_S1M1AR_OFFSET   0x00000038
+#define DMA_M1A_31_BIT  31
+#define DMA_M1A_0_BIT   0
+
+#define DMA_S1FCR_OFFSET    0x0000003C
+#define DMA_FEIE_BIT    7
+#define DMA_FS_2_BIT    5
+#define DMA_FS_0_BIT    3
+#define DMA_DMDIS_BIT   2
+#define DMA_FTH_1_BIT   1
+#define DMA_FTH_0_BIT   0
+
 //FLASH
 #define FLASH_BASE 0x40023C00
 
@@ -256,10 +376,15 @@
 #define RCC_CFGR_OFFSET 0x08
 #define MCO2_1_BIT 31
 #define MCO2_0_BIT 30
-
 #define MCO2PRE_2_BIT 29
 #define MCO2PRE_1_BIT 28
 #define MCO2PRE_0_BIT 27
+#define MCO1PRE_2_BIT 26
+#define MCO1PRE_1_BIT 25
+#define MCO1PRE_0_BIT 24
+#define MCO1_1_BIT 22
+#define MCO1_0_BIT 21
+
 
 #define SWS_1_BIT 3
 #define SWS_0_BIT 2
@@ -275,6 +400,10 @@
 #define ETHMACRXEN 27
 #define ETHMACTXEN 26
 #define ETHMACEN 25
+#define DMA2EN 22
+
+#define RCC_AHB2ENR_OFFSET 0x34
+#define DCMIEN 0
 
 #define RCC_APB1ENR_OFFSET 0x40
 #define DACEN 29
@@ -315,6 +444,7 @@
 #define OSPEEDRy_1_BIT(y) ((y)*2 + 1)
 #define OSPEEDRy_0_BIT(y) ((y)*2)
 #define GPIOx_IDR_OFFSET 0x10
+#define IDy_BIT(y) (y)
 #define GPIOx_PUPDR_OFFSET 0x0C
 #define PUPDRy_1_BIT(y) ((y)*2 + 1)
 #define PUPDRy_0_BIT(y) ((y)*2)

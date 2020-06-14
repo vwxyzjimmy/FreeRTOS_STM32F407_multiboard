@@ -57,7 +57,7 @@ extern uint32_t SystemTICK_RATE_HZ;
 #define configTICK_RATE_HZ				( ( TickType_t )  SystemTICK_RATE_HZ) //184320
 #define configMAX_PRIORITIES			( 5 )
 #define configMINIMAL_STACK_SIZE		( ( unsigned short ) 130 )
-#define configTOTAL_HEAP_SIZE			( ( size_t ) ( 96 * 1024 ) )
+#define configTOTAL_HEAP_SIZE			( ( size_t ) ( 88 * 1024 ) )		//	8k byted used to be camera buffer
 #define configMAX_TASK_NAME_LEN			( 10 )
 #define configUSE_TRACE_FACILITY		1
 #define configUSE_16_BIT_TICKS			0

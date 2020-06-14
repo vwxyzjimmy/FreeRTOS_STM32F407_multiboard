@@ -1271,4 +1271,3 @@ typedef StaticStreamBuffer_t StaticMessageBuffer_t;
 #endif
 
 #endif /* INC_FREERTOS_H */
-
