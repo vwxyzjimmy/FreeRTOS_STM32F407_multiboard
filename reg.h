@@ -3,6 +3,8 @@
 #ifndef REG_H
 #define REG_H
 
+#define USE_CAMERA 1
+
 //REG OPERATIONS
 
 #define UINT32_1 ((uint32_t)1)

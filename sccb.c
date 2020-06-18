@@ -172,6 +172,7 @@ uint8_t SCCB_WR_Reg(uint8_t reg,uint8_t data){
   	if(SCCB_WR_Byte(data))
         res=1;
   	SCCB_Stop();
+    vTaskDelay(100/portTICK_PERIOD_US);
   	return	res;
 }
 
@@ -195,5 +196,6 @@ uint8_t SCCB_RD_Reg(uint8_t reg){
   	val=SCCB_RD_Byte();
   	SCCB_No_Ack();
   	SCCB_Stop();
+    vTaskDelay(100/portTICK_PERIOD_US);
   	return val;
 }

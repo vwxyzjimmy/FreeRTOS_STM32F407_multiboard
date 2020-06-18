@@ -12,7 +12,6 @@
 //�޸�����:2012/9/14
 //�汾��V1.0
 //////////////////////////////////////////////////////////////////////////////////
-
 uint16_t camera_buffer[PIC_WIDTH*PIC_HEIGHT]={0};
 
 //����RESET��PWDN����
@@ -106,12 +105,13 @@ uint8_t OV7670_Init(void){
 	}
 
 	OV7670_Window_Set(PIC_START_X,PIC_START_Y,PIC_WIDTH,PIC_HEIGHT);
-
-	OV7670_Light_Mode(0);
-	OV7670_Color_Saturation(2);
-	OV7670_Brightness(1);
-	OV7670_Contrast(2);
-
+	for(uint32_t i=0;i<5;i++){
+		OV7670_Light_Mode(0);
+		OV7670_Color_Saturation(2);
+		OV7670_Brightness(1);
+		OV7670_Contrast(2);
+		OV7670_Special_Effects(0);
+	}
 	My_DCMI_Init();
 	DCMI_DMA_Init((uint32_t)&camera_buffer,sizeof(camera_buffer)/4);//DCMI DMA
 
@@ -278,7 +278,7 @@ void OV7670_Special_Effects(uint8_t eft){
 			break;
 		case 3://ƫ��ɫ
 			reg3aval=0X14;
-			reg67val=0Xc0;
+			reg67val=0XC0;
 			reg68val=0X80;
 			break;
 		case 4://ƫ��ɫ

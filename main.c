@@ -103,7 +103,7 @@ void UserDefine_Distributed_Task(void *task_info);
 void UserDefine_Distributed_Task_do_nothing(void *task_info);
 void UserDefine_Distributed_Task_multiple(void *task_info);
 void UserDefine_Distributed_Task_2d_array_convolution(void *task_info);
-void UserDefine_Distributed_Task_argb_gray_convolution(void *task_info);
+void UserDefine_Distributed_Task_bgr_gray_transform(void *task_info);
 void UserDefine_Distributed_Task_RSA(void *task_info);
 
 //void UserDefine_Local_Task_2d_array_convolution(uint32_t rec_Count);
@@ -178,6 +178,7 @@ extern uint32_t SystemCoreClock;
 extern uint32_t SystemTICK_RATE_HZ;
 #define Timeout_Tick_Count (SystemTICK_RATE_HZ/timeout_freq)
 #define PrintSendRecv 0
+
 uint32_t DebugFlag = 0;
 uint32_t SendFlag = 0;
 uint32_t RecvFlag = 0;
@@ -2474,8 +2475,7 @@ void Distributed_ManageTask(){
 	while(1){
 		if ((READ_BIT(USART3_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART3_BASE + USART_SR_OFFSET, ORE_BIT))){
 			char rec_cmd = (char)REG(USART3_BASE + USART_DR_OFFSET);
-			printf("%c\r\n", rec_cmd);
-
+			printf("%c.\r\n", rec_cmd);
 			if (rec_cmd == 'c'){
 				Msg_event = 0;
 				Global_Node_id = 0;
@@ -2513,13 +2513,14 @@ void Distributed_ManageTask(){
 				BlockChangeFlag = 0;
 				while(1){
 					if ((READ_BIT(USART3_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART3_BASE + USART_SR_OFFSET, ORE_BIT))){
-						char rec_cmd = (char)REG(USART3_BASE + USART_DR_OFFSET);
+						rec_cmd = (char)REG(USART3_BASE + USART_DR_OFFSET);
 						printf("%c\r\n", rec_cmd);
 					}
 
-					if(rec_cmd == 'q')
+					if(rec_cmd == 'q'){
 						printf("Die in here: 0x%lX\r\n", DebugFlag);
-
+						rec_cmd = '\0';
+					}
 					if (rec_cmd == 'w'){
 						vPortEnterCritical();
 						Distributed_TaskHandle_List_t* Lastnode = DStart;
@@ -3817,7 +3818,7 @@ void UserDefine_Distributed_Task_2d_array_convolution(void *task_info){
 	Distributed_End(data_info, malloc_addr, malloc_size);
 }
 
-void UserDefine_Distributed_Task_argb_gray_convolution(void *task_info){
+void UserDefine_Distributed_Task_bgr_gray_transform(void *task_info){
 	Distributed_TaskHandle_List_t* data_info = Distributed_Start(task_info);
 
 	uint32_t tmp_get_tickcount = 0;
@@ -3825,20 +3826,21 @@ void UserDefine_Distributed_Task_argb_gray_convolution(void *task_info){
 		tmp_get_tickcount = xTaskGetTickCount();
 
 	Distributed_Data_t* array = Distributed_GetTragetData(data_info);
-	uint32_t* malloc_addr = NULL;
-	uint32_t malloc_size = array->Data_size;
-	Distributed_pvPortMalloc(malloc_addr, malloc_size*sizeof(uint32_t));
+	uint8_t* image_addr = (uint8_t*)array->Data_addr;
+	uint32_t image_size = sizeof(uint32_t)*(array->Data_size);
+	uint8_t* malloc_addr = NULL;
+	uint32_t malloc_size = image_size/2;
+	Distributed_pvPortMalloc(malloc_addr, malloc_size);
 	for(uint32_t i=0;i<malloc_size;i++){
-		uint32_t R = ((*(array->Data_addr+i) & 0x00FF0000) >> 16);
-		uint32_t G = ((*(array->Data_addr+i) & 0x0000FF00) >> 8);
-		uint32_t B = ((*(array->Data_addr+i) & 0x000000FF));
-		*(malloc_addr+i) = (R*299 + G*587 + B*114 + 500)/1000;
+		uint32_t B = (uint32_t)((*(image_addr+(2*i)) & 0xF8) >> 3);
+		uint32_t G = ((uint32_t)((*(image_addr+(2*i)) & 0x07) << 5) | (uint32_t)((*(image_addr+(2*i)+1) & 0x0E0) >> 5));
+		uint32_t R = (uint32_t)((*(image_addr+(2*i)+1) & 0x1F));
+		*(malloc_addr+i) = (uint8_t)((R*299 + G*587 + B*114 + 500)/1000);
 	}
-
 	if(data_info->DSubTask_id == 0)
 		global_record_data[5] += (xTaskGetTickCount() - tmp_get_tickcount);
-
-	Distributed_End(data_info, malloc_addr, malloc_size);
+	uint32_t ret_size = malloc_size/sizeof(uint32_t);
+	Distributed_End(data_info, malloc_addr, ret_size);
 }
 
 void UserDefine_Distributed_Task_RSA(void *task_info){
@@ -3992,12 +3994,13 @@ void UserDefine_Local_Task_RSA(uint32_t rec_Count, uint32_t e_d, uint32_t n, uin
 }
 
 void UserDefine_Task(){
-	uint8_t OV7670_Init_flag = OV7670_Init();
-	if(OV7670_Init_flag == 0)
-		printf("OV7670_Init success\r\n");
-	else
-		printf("OV7670_Init fail\r\n");
-
+	#if(USE_CAMERA == 1)
+		uint8_t OV7670_Init_flag = OV7670_Init();
+		if(OV7670_Init_flag == 0)
+			printf("OV7670_Init success\r\n");
+		else
+			printf("OV7670_Init fail\r\n");
+	#endif
 	while(1){
 		if ((READ_BIT(USART3_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART3_BASE + USART_SR_OFFSET, ORE_BIT))){
 			char rec_cmd = (char)REG(USART3_BASE + USART_DR_OFFSET);
@@ -4093,7 +4096,7 @@ void UserDefine_Task(){
 				}
 				*/
 					//	UserDefine_Distributed_Task_2d_array_convolution
-
+				/*
 				while(Count < 100){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
 					uint32_t array_column = 128;
@@ -4128,12 +4131,12 @@ void UserDefine_Task(){
 					printf("Task: %u ticks	=\r\n", (unsigned int)Count);
 					Count++;
 				}
-
-				/*	//	UserDefine_Distributed_Task_argb_gray_convolution
+				*/
+				/*	//	UserDefine_Distributed_Task_bgr_gray_transform
 				while(Count < 1){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x1000, 1);
-					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_argb_gray_convolution, data_info, 1000, WithoutBarrier);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_bgr_gray_transform, data_info, 1000, WithoutBarrier);
 					Distributed_Data_t* Result_data = NULL;
 					while(Result_data == NULL)
 						Result_data = Distributed_GetResult(Result);
@@ -4224,7 +4227,30 @@ void UserDefine_Task(){
 					printf("Task: %u ticks	=\r\n", (unsigned int)Count);
 				}
 				*/
+				#if(USE_CAMERA == 1)
+				uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
+				DCMI_Start();
+				while(Count < 100){
+					while(ov_rev_ok == 0)
+						;
+					DCMI_Stop();
+					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)camera_buffer, (32768/4), 1);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_bgr_gray_transform, data_info, 1000, WithBarrier);
+					DCMI_Start();
+					Distributed_Data_t* Result_data = NULL;
+					while(Result_data == NULL)
+						Result_data = Distributed_GetResult(Result);
+					//printf("Result_data, Data_addr: 0x%lX, Data_size: %u\r\n", (uint32_t)Result_data->Data_addr, (unsigned int)Result_data->Data_size);
+					Distributed_FreeResult(Result_data);
+					DebugFlag = Count;
+					Count++;
+					//printf("Task: %u done	=\r\n", (unsigned int)Count);
+					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
+					send_recv_data_time_count = 4;
+				}
+				DCMI_Stop();
 
+				#endif
 				uint32_t duration_time = (xTaskGetTickCount() - Total_base_tick);
 				printf("Duration: %u ticks	=\r\n", (unsigned int)duration_time);
 
@@ -4237,7 +4263,7 @@ void UserDefine_Task(){
 					printf("send_recv_data_time[%u]: %u\r\n", (unsigned int)i, (unsigned int)send_recv_data_time[i]);
 
 				//UserDefine_Local_Task_2d_array_convolution(10000);
-
+				/*
 				printf("Middleware Dispatch: %u, %u, Recycle:  %u, %u, ticks\r\n", (unsigned int)global_record_time_dispatch_array[0], (unsigned int)global_record_time_dispatch_array[1], (unsigned int)global_record_time_dispatch_array[2], (unsigned int)global_record_time_dispatch_array[3]);
 				printf("Dispatch Request: %u, %u, Release: %u, %u, ticks\r\n", (unsigned int)global_record_time_dispatch_array[4], (unsigned int)global_record_time_dispatch_array[5], (unsigned int)global_record_time_dispatch_array[6], (unsigned int)global_record_time_dispatch_array[7]);
 				for(uint32_t i=0;i<4;i++)
@@ -4249,7 +4275,7 @@ void UserDefine_Task(){
 					printf("Subtask Send: %u, Send done: %u, ticks\r\n", (unsigned int)global_record_time_dispatch_array[36+i], (unsigned int)global_record_time_dispatch_array[40+i]);
 				for(uint32_t i=0;i<4;i++)
 					printf("Request Result: %u, Result done: %u, ticks\r\n", (unsigned int)global_record_time_dispatch_array[44+i], (unsigned int)global_record_time_dispatch_array[48+i]);
-
+				*/
 				/*
 				//uint32_t Transmit_time = 0;
 				for(uint32_t i=0;i<24;i++){
@@ -4263,23 +4289,60 @@ void UserDefine_Task(){
 				*/
 				//printf("Transmit_time: %u ticks and checksize_count: %u\r\n", (unsigned int)Transmit_time, (unsigned int)checksize_count);
 				//printf("Subtask time: %u ticks\r\n", (unsigned int)(record_subtask_end_time-record_subtask_time));
-
+				rec_cmd = '\0';
 			}
-
-			else if(rec_cmd == 'C'){
-				//printf("C~~\r\n");
+			#if(USE_CAMERA == 1)
+			if (rec_cmd == 'D'){
+				uint32_t tmp_get_tickcount = xTaskGetTickCount();
+				uint32_t Count = 0;
+				while(Count < 100){
+					DCMI_Start();
+					while(ov_rev_ok == 0)
+						;
+					DCMI_Stop();
+					uint8_t* image_addr = (uint8_t*)camera_buffer;
+					uint8_t* malloc_addr = pvPortMalloc(16384);
+					uint32_t malloc_size = 16384;
+					for(uint32_t i=0;i<malloc_size;i++){
+						uint32_t B = (uint32_t)((*(image_addr+(2*i)) & 0xF8) >> 3);
+						uint32_t G = ((uint32_t)((*(image_addr+(2*i)) & 0x07) << 5) | (uint32_t)((*(image_addr+(2*i)+1) & 0x0E0) >> 5));
+						uint32_t R = (uint32_t)((*(image_addr+(2*i)+1) & 0x1F));
+						*(malloc_addr+i) = (uint8_t)((R*299 + G*587 + B*114 + 500)/1000);
+					}
+					vPortFree(malloc_addr);
+					Count++;
+				}
+				uint32_t camera_duration = xTaskGetTickCount() - tmp_get_tickcount;
+				printf("camera_duration: %u\r\n", (unsigned int)camera_duration);
+				rec_cmd = '\0';
+			}
+			if (rec_cmd == 'C'){
+				/*
+				uint32_t count = 0;
+				uint32_t tmp_get_tickcount = xTaskGetTickCount();
+				while(count < 100){
+					DCMI_Start();
+					while(ov_rev_ok == 0)
+						;
+					DCMI_Stop();
+					count++;
+				}
+				uint32_t camera_duration = xTaskGetTickCount() - tmp_get_tickcount;
+				printf("camera_duration: %u\r\n", (unsigned int)camera_duration);
+				*/
 				DCMI_Start();
-				//printf("DCMI_Start\r\n");
 				while(ov_rev_ok == 0)
 					;
-				printf("\r\n");
+				DCMI_Stop();
+
 				uint8_t* send_addr = (uint8_t*)camera_buffer;
-				for(uint32_t i=0;i<8192;i++)
+				for(uint32_t i=0;i<32768;i++)
 					usart3_send_char(*(send_addr+i));
 				//printf("\r\n");
 				//printf("ov_rev_ok is %u\r\n", (unsigned int)ov_rev_ok);
 				rec_cmd = '\0';
 			}
+			#endif
 		}
 	}
 }
@@ -5281,7 +5344,6 @@ void *_sbrk(int incr){
 int _write(int file, char *ptr, int len){
 	for (unsigned int i = 0; i < len; i++)
 		usart3_send_char(*ptr++);
-
 	return len;
 }
 

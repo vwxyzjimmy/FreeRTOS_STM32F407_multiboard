@@ -24,12 +24,18 @@
 #define OV7670_RST_L  			SET_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_BSRR_OFFSET, BRy_BIT(5));
 
 
-//320*240�ü����ض���
-#define PIC_START_X				0		//��ʼ����x
-#define PIC_START_Y				0		//��ʼ����y
-#define PIC_WIDTH				64		//��Ƭ����
-#define PIC_HEIGHT				64		//��Ƭ�߶�
-
+#if(USE_CAMERA == 1)
+    //320*240�ü����ض���
+    #define PIC_START_X				64		//��ʼ����x
+    #define PIC_START_Y				64		//��ʼ����y
+    #define PIC_WIDTH				128		//��Ƭ����
+    #define PIC_HEIGHT				128		//��Ƭ�߶�
+#else
+    #define PIC_START_X				0		//��ʼ����x
+    #define PIC_START_Y				0		//��ʼ����y
+    #define PIC_WIDTH				1		//��Ƭ����
+    #define PIC_HEIGHT				1		//��Ƭ�߶�
+#endif
 extern uint16_t camera_buffer[PIC_WIDTH*PIC_HEIGHT];
 /*************************��Ҫ�޸ĵĵط�*************************/
 

@@ -8,7 +8,7 @@ uint32_t datanum=0;
 uint32_t HSYNC=0;
 uint32_t VSYNC=0;
 //DCMI_InitTypeDef DCMI_InitStructure;
-uint8_t ov_rev_ok = 0;
+volatile uint8_t ov_rev_ok = 0;
 
 void DCMI_DMA_Init(uint32_t DMA_Memory0BaseAddr,uint16_t DMA_BufferSize){
 	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, DMA2EN);
@@ -61,8 +61,7 @@ void dma2_stream1_handler(void){
 		DMA_Cmd(DMA2_Stream1, DISABLE);
 		DMA_ClearFlag(DMA2_Stream1,DMA_FLAG_TCIF1);//�������������ж�
 		*/
-		printf("ov_rev_ok, %u\r\n", (unsigned int)datanum);
-		ov_rev_ok= 1;
+		ov_rev_ok = 1;
 		datanum++;
 	}
 }
@@ -224,6 +223,7 @@ void My_DCMI_Init(void){
 
 void DCMI_Start(void){
 	//��ʼд��GRAM
+	ov_rev_ok = 0;
 	SET_BIT(DMA2_BASE + DMA_S1CR_OFFSET, DMA_EN_BIT);
 	SET_BIT(DCMI_BASE + DCMI_CR_OFFSET, CAPTURE_BIT);
 	/*
