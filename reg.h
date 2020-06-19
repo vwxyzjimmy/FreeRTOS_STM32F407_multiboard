@@ -4,7 +4,9 @@
 #define REG_H
 
 #define USE_CAMERA 1
-
+#define CAMERA_BGR_GRAY 1
+#define DISTRIBUTED_LOCAL 1
+#define SENDIMAGE 1
 //REG OPERATIONS
 
 #define UINT32_1 ((uint32_t)1)
