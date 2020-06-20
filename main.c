@@ -110,6 +110,7 @@ void UserDefine_Distributed_Task_bgr_gray_transform_with_2D_convolution(void *ta
 
 //void UserDefine_Local_Task_2d_array_convolution(uint32_t rec_Count);
 void UserDefine_Local_Task_RSA(uint32_t rec_Count, uint32_t e_d, uint32_t n, uint32_t array_Data_size);
+void UserDefine_Local_Task_bgr_gray_transform_with_2D_convolution(uint32_t rec_Count);
 
 uint32_t checkPrime(uint32_t n)__attribute__((always_inline));
 uint32_t findGCD(uint32_t n1, uint32_t n2)__attribute__((always_inline));
@@ -1228,7 +1229,7 @@ void init_external_interrupt(void){
 
 void exti0_handler_c(uint32_t LR, uint32_t MSP)
 {
-	exti0_flag = 1;
+	//exti0_flag = 1;
 	uint32_t *stack_frame_ptr;
 	if (LR & 0x4){
 		stack_frame_ptr = (uint32_t *)read_psp();
@@ -1238,7 +1239,7 @@ void exti0_handler_c(uint32_t LR, uint32_t MSP)
 	}
 	uint32_t stacked_return_addr = *(stack_frame_ptr+6);
 	uint32_t stacked_LR = *(stack_frame_ptr+5);
-	//printf("DebugFlag: 0x%lX, SendFlag: 0x%lX, RecvFlag: 0x%lX, PublishFlag: 0x%lX, Return_addr: 0x%lX, LR: 0x%lX\r\n", DebugFlag, SendFlag, RecvFlag, PublishFlag, stacked_return_addr, stacked_LR);
+	printf("DebugFlag: 0x%lX, SendFlag: 0x%lX, RecvFlag: 0x%lX, PublishFlag: 0x%lX, Return_addr: 0x%lX, LR: 0x%lX\r\n", DebugFlag, SendFlag, RecvFlag, PublishFlag, stacked_return_addr, stacked_LR);
 	SET_BIT(EXTI_BASE + EXTI_PR_OFFSET, 0);
 }
 
@@ -4015,7 +4016,7 @@ void UserDefine_Local_Task_2d_array_convolution(uint32_t rec_Count){
 					if((((i+1)%array_a_column)==0)&&(operator[1] == 1))
 						operator[1] = -1;
 					uint32_t tmp_index = (uint32_t)((int)i + operator[0]*array_a_column + operator[1]);
-					tmp_sum += (*(malloc_addr+tmp_index))*(*(kernel_Data_addr+(j+1)*kernel_a_column+(k+1)));
+					tmp_sum += (*(array_Data_addr+tmp_index))*(*(kernel_Data_addr+(j+1)*kernel_a_column+(k+1)));
 				}
 			}
 			*(malloc_addr+i) = tmp_sum;
@@ -4055,6 +4056,77 @@ void UserDefine_Local_Task_RSA(uint32_t rec_Count, uint32_t e_d, uint32_t n, uin
 	vPortFree(malloc_addr);
 	uint32_t Local_Task_RSA_tick = xTaskGetTickCount() - tmp_get_tickcount;
 	printf("array_Data_size: %u, Local_Task_RSA_tick: %u\r\n", (unsigned int)array_Data_size, (unsigned int)Local_Task_RSA_tick);
+}
+
+void UserDefine_Local_Task_bgr_gray_transform_with_2D_convolution(uint32_t rec_Count){
+	printf("UserDefine_Local_Task_bgr_gray_transform_with_2D_convolution start\r\n");
+	uint32_t Count = 0;
+	uint32_t kernel_Data_addr[] = {3, 3, 3, 3, 1, 3, 3, 3, 3};
+	uint32_t array_a_column = PIC_WIDTH;
+	uint32_t kernel_a_column = 3;
+
+	uint32_t tmp_get_tickcount = xTaskGetTickCount();
+	while(Count < rec_Count){
+		DCMI_Start();
+		while(ov_rev_ok == 0)
+			;
+		DCMI_Stop();
+		uint8_t* image_addr = (uint8_t*)camera_buffer;
+		uint32_t image_size = (PIC_WIDTH*PIC_HEIGHT*2);
+		uint32_t malloc_size = image_size/2;
+		uint8_t* malloc_addr = pvPortMalloc(malloc_size);
+		for(uint32_t i=0;i<malloc_size;i++){
+			uint32_t B = (uint32_t)((*(image_addr+(2*i)) & 0xF8) >> 3);
+			uint32_t G = ((uint32_t)((*(image_addr+(2*i)) & 0x07) << 5) | (uint32_t)((*(image_addr+(2*i)+1) & 0x0E0) >> 5));
+			uint32_t R = (uint32_t)((*(image_addr+(2*i)+1) & 0x1F));
+			*(malloc_addr+i) = (uint8_t)((R*299 + G*587 + B*114 + 500)/1000);
+		}
+		uint8_t* tar_malloc_addr = pvPortMalloc(malloc_size);
+		for(uint32_t i=0;i<malloc_size;i++){
+			int operator[] = {0, 0};
+			uint32_t tmp_sum = 0;
+			for(int j=-1;j<2;j++){
+				for(int k=-1;k<2;k++){
+					operator[0] = j;
+					operator[1] = k;
+					if((i<array_a_column)&&(operator[0] == -1))
+						operator[0] = 1;
+					if((i>=(malloc_size-array_a_column))&&(operator[0] == 1))
+						operator[0] = -1;
+					if(((i%array_a_column)==0)&&(operator[1] == -1))
+						operator[1] = 1;
+					if((((i+1)%array_a_column)==0)&&(operator[1] == 1))
+						operator[1] = -1;
+					uint32_t tmp_index = (uint32_t)((int)i + operator[0]*array_a_column + operator[1]);
+					tmp_sum += (*(malloc_addr+tmp_index))*(*(kernel_Data_addr+(j+1)*kernel_a_column+(k+1)));
+				}
+			}
+			*(tar_malloc_addr+i) = tmp_sum/25;
+		}
+		/*
+		uint8_t* send_addr = (uint8_t*)malloc_addr;
+		uint32_t send_size = malloc_size;
+		char camera_char[] = {'c', 'a', 'm', 'e', 'r', 'a', '_', '0'};
+		for(uint32_t i=0;i<8;i++)
+			usart3_send_char(camera_char[i]);
+		for(uint32_t i=0;i<send_size;i++)
+			usart3_send_char(*(send_addr+i));
+
+		send_addr = (uint8_t*)tar_malloc_addr;
+		send_size = malloc_size;
+		for(uint32_t i=0;i<8;i++)
+			usart3_send_char(camera_char[i]);
+		for(uint32_t i=0;i<send_size;i++)
+			usart3_send_char(*(send_addr+i));
+		*/
+		vPortFree(malloc_addr);
+		vPortFree(tar_malloc_addr);
+		DebugFlag = Count;
+		Count++;
+	}
+	uint32_t Local_Task_bgr_gray_transform_with_2D_convolution_tick = xTaskGetTickCount() - tmp_get_tickcount;
+	printf("rec_Count: %u, Local_Task_bgr_gray_transform_with_2D_convolution_tick: %u\r\n", (unsigned int)rec_Count, (unsigned int)Local_Task_bgr_gray_transform_with_2D_convolution_tick);
+
 }
 
 void UserDefine_Task(){
@@ -4289,12 +4361,12 @@ void UserDefine_Task(){
 					//	UserDefine_Distributed_Task_bgr_gray_transform_with_2D_convolution with camera
 				#if(USE_CAMERA == 1)
 				uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
-				uint32_t array_column = 128;
-				uint32_t kernel[] = {1, 1, 1, 1, 1, 1, 1, 1, 1};
+				uint32_t array_column = PIC_WIDTH;
+				uint32_t kernel[] = {3, 3, 3, 3, 1, 3, 3, 3, 3};
 				uint32_t kernel_column = 3;
 
 				DCMI_Start();
-				while(Count < 100){
+				while(Count < 10000){
 					while(ov_rev_ok == 0)
 						;
 					DCMI_Stop();
@@ -4417,6 +4489,7 @@ void UserDefine_Task(){
 					Count++;
 				}
 				#else
+				/*
 				vTaskDelay(1000/portTICK_RATE_MS);
 				while(Count < 1){
 					DCMI_Start();
@@ -4446,7 +4519,7 @@ void UserDefine_Task(){
 				vTaskDelay(1000/portTICK_RATE_MS);
 
 				Count = 0;
-				uint32_t array_column = 128;
+				uint32_t array_column = PIC_WIDTH;
 				uint32_t kernel[] = {3, 3, 3, 3, 1, 3, 3, 3, 3};
 				uint32_t kernel_column = 3;
 				DCMI_Start();
@@ -4479,7 +4552,8 @@ void UserDefine_Task(){
 					send_recv_data_time_count = 4;
 				}
 				DCMI_Stop();
-
+				*/
+				UserDefine_Local_Task_bgr_gray_transform_with_2D_convolution(10000);
 				#endif
 				/*
 				uint32_t camera_duration = xTaskGetTickCount() - tmp_get_tickcount;
