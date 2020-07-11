@@ -4374,62 +4374,44 @@ void UserDefine_Task(){
 				#endif
 				*/
 					//	UserDefine_Distributed_Task_bgr_gray_transform_with_2D_convolution with camera
-				for(uint32_t x=0;x<2;x++){
-					uint32_t tmp_barrier = 0;
-					if(x == 1)
-						tmp_barrier = WithoutBarrier;
-					else
-						tmp_barrier = WithBarrier;
-					printf("\r\nstart:\r\n");
-					#if(USE_CAMERA == 1)
-					uint32_t array_column = PIC_WIDTH;
-					uint32_t kernel[] = {3, 3, 3, 3, 1, 3, 3, 3, 3};
-					uint32_t kernel_column = 3;
-					uint32_t camera_tmp_tick;
-					uint32_t camera_tmp_duration_tick = 0;
+				printf("\r\nstart:\r\n");
+				#if(USE_CAMERA == 1)
+				uint32_t array_column = PIC_WIDTH;
+				uint32_t kernel[] = {3, 3, 3, 3, 1, 3, 3, 3, 3};
+				uint32_t kernel_column = 3;
+				uint32_t camera_tmp_tick;
+				uint32_t camera_tmp_duration_tick = 0;
 
-					uint32_t camera_duration_tick = 0;
-					uint32_t camera_stop_tick;
-					uint32_t camera_start_tick = xTaskGetTickCount();
-					DCMI_Start();
-					while(Count < 10000){
-						uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
-						while(ov_rev_ok == 0)
-							;
-						DCMI_Stop();
-						Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)camera_buffer, (32768/4), 256);
-						Distributed_AddTargetData(data_info, &array_column, 1, 0);
-						Distributed_AddTargetData(data_info, kernel, 9, 0);
-						Distributed_AddTargetData(data_info, &kernel_column, 1, 0);
-						//Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_bgr_gray_transform_with_2D_convolution, data_info, 1000, WithBarrier);
-						Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_bgr_gray_transform_with_2D_convolution, data_info, 1000, tmp_barrier);
-						DCMI_Start();
-						Distributed_Data_t* Result_data = NULL;
-						while(Result_data == NULL)
-							Result_data = Distributed_GetResult(Result);
-						//printf("Result_data, Data_addr: 0x%lX, Data_size: %u\r\n", (uint32_t)Result_data->Data_addr, (unsigned int)Result_data->Data_size);
-						Distributed_FreeResult(Result_data);
-						DebugFlag = Count;
-						Count++;
-						//printf("Task: %u done	=\r\n", (unsigned int)Count);
-						global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
-						send_recv_data_time_count = 4;
-					}
+				uint32_t camera_duration_tick = 0;
+				uint32_t camera_stop_tick;
+				uint32_t camera_start_tick = xTaskGetTickCount();
+				DCMI_Start();
+				while(Count < 10000){
+					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
+					while(ov_rev_ok == 0)
+						;
 					DCMI_Stop();
-					#endif
-
-					uint32_t duration_time = (xTaskGetTickCount() - Total_base_tick);
-					printf("Duration: %u ticks	=\r\n", (unsigned int)duration_time);
-
-					for(uint32_t i=0;i<4;i++)
-						printf("Node: %u, Subtask Finish Count: %u\r\n", (unsigned int)i, (unsigned int)SubtaskFinishArray[i]);
-
-					for(uint32_t i=0;i<8;i++)
-						printf("global_record_data[%u]: %u\r\n", (unsigned int)i, (unsigned int)global_record_data[i]);
-					for(uint32_t i=0;i<8;i++)
-						printf("send_recv_data_time[%u]: %u\r\n", (unsigned int)i, (unsigned int)send_recv_data_time[i]);
-					printf("\r\nstart:\r\n");
+					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)camera_buffer, (32768/4), 256);
+					Distributed_AddTargetData(data_info, &array_column, 1, 0);
+					Distributed_AddTargetData(data_info, kernel, 9, 0);
+					Distributed_AddTargetData(data_info, &kernel_column, 1, 0);
+					//Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_bgr_gray_transform_with_2D_convolution, data_info, 1000, WithBarrier);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_bgr_gray_transform_with_2D_convolution, data_info, 1000, WithoutBarrier);
+					DCMI_Start();
+					Distributed_Data_t* Result_data = NULL;
+					while(Result_data == NULL)
+						Result_data = Distributed_GetResult(Result);
+					//printf("Result_data, Data_addr: 0x%lX, Data_size: %u\r\n", (uint32_t)Result_data->Data_addr, (unsigned int)Result_data->Data_size);
+					Distributed_FreeResult(Result_data);
+					DebugFlag = Count;
+					Count++;
+					//printf("Task: %u done	=\r\n", (unsigned int)Count);
+					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
+					send_recv_data_time_count = 4;
 				}
+				DCMI_Stop();
+				#endif
+
 				/*
 				while(1){
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x400, 1);
@@ -4444,6 +4426,16 @@ void UserDefine_Task(){
 					printf("Task: %u ticks	=\r\n", (unsigned int)Count);
 				}
 				*/
+				uint32_t duration_time = (xTaskGetTickCount() - Total_base_tick);
+				printf("Duration: %u ticks	=\r\n", (unsigned int)duration_time);
+
+				for(uint32_t i=0;i<4;i++)
+					printf("Node: %u, Subtask Finish Count: %u\r\n", (unsigned int)i, (unsigned int)SubtaskFinishArray[i]);
+
+				for(uint32_t i=0;i<8;i++)
+					printf("global_record_data[%u]: %u\r\n", (unsigned int)i, (unsigned int)global_record_data[i]);
+				for(uint32_t i=0;i<8;i++)
+					printf("send_recv_data_time[%u]: %u\r\n", (unsigned int)i, (unsigned int)send_recv_data_time[i]);
 				/*
 				uint32_t duration_time = (xTaskGetTickCount() - Total_base_tick);
 				printf("Duration: %u ticks	=\r\n", (unsigned int)duration_time);
@@ -4529,7 +4521,7 @@ void UserDefine_Task(){
 					Count++;
 				}
 				#else
-				/*
+
 				DCMI_Start();
 				while(ov_rev_ok == 0)
 					;
@@ -4540,7 +4532,7 @@ void UserDefine_Task(){
 					usart3_send_char(camera_char1[i]);
 				for(uint32_t i=1;i<(PIC_WIDTH*PIC_HEIGHT*2);i++)
 					usart3_send_char(*((uint8_t*)camera_buffer+i));
-				usart3_send_char("\0");
+				usart3_send_char('\0');
 				#endif
 				vTaskDelay(1000/portTICK_RATE_MS);
 				while(Count < 1){
@@ -4604,11 +4596,11 @@ void UserDefine_Task(){
 					send_recv_data_time_count = 4;
 				}
 				DCMI_Stop();
-				*/
+
 				#endif
 
-				UserDefine_Local_Task_bgr_gray_transform(10000);
-				//UserDefine_Local_Task_bgr_gray_transform_with_2D_convolution(1);
+				//UserDefine_Local_Task_bgr_gray_transform(1);
+				UserDefine_Local_Task_bgr_gray_transform_with_2D_convolution(1);
 
 				/*
 				uint32_t camera_duration = xTaskGetTickCount() - tmp_get_tickcount;
