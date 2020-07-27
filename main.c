@@ -107,7 +107,6 @@ void UserDefine_Distributed_Task_bgr_gray_transform(void *task_info);
 void UserDefine_Distributed_Task_RSA(void *task_info);
 void UserDefine_Distributed_Task_bgr_gray_transform_with_2D_convolution(void *task_info);
 
-
 //void UserDefine_Local_Task_2d_array_convolution(uint32_t rec_Count);
 void UserDefine_Local_Task_RSA(uint32_t rec_Count, uint32_t e_d, uint32_t n, uint32_t array_Data_size);
 void UserDefine_Local_Task_bgr_gray_transform(uint32_t rec_Count);
@@ -186,7 +185,7 @@ extern uint32_t SystemTICK_RATE_HZ;
 uint32_t DebugFlag = 0;
 uint32_t SendFlag = 0;
 uint32_t RecvFlag = 0;
-uint32_t SubtaskFinishArray[] = {0, 0, 0, 0};
+uint32_t SubtaskFinishArray[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
 uint32_t global_record_time;
 uint32_t global_record_time_dispatch_array[52];
@@ -196,8 +195,8 @@ uint32_t checksize_count = 0;
 uint32_t record_subtask_time;
 uint32_t record_subtask_end_time;
 uint32_t global_record_data[8];
-uint32_t send_recv_data_time[8];
-uint32_t send_recv_data_time_count = 4;
+uint32_t send_recv_data_time[16];
+uint32_t send_recv_data_time_count = 8;
 
 extern volatile uint8_t ov_rev_ok;
 extern volatile uint8_t ov_frame;
@@ -2022,6 +2021,7 @@ void eth_handler(void){
 	    /* process received ethernet packet */
 	    frame = Pkt_Handle();
 	}
+	//frame has bug here, the result is less than 0x20000000 ******************************************************************
 	uint32_t Dest = *((uint32_t*)((uint8_t*)frame.buffer+2));
 	uint32_t Sour = *((uint32_t*)((uint8_t*)frame.buffer+8));
 	//==========================================================================
@@ -2474,10 +2474,10 @@ void eth_handler(void){
 		}
 		//printf("Node_id: 0x%lX, Node_count: 0x%lX, Master: 0x%lX, Backup_Master: 0x%lX, Dest: 0x%lX, Sour: 0x%lX\r\n", Global_Node_id, Global_Node_count, Global_Node_Master, Global_Node_Backup_Master, Dest, Sour);
 	}
-	taskEXIT_CRITICAL_FROM_ISR(uxSavedInterruptStatus);
 	/* Clear the Eth DMA Rx IT pending bits */
 	SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, RS);
 	SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, NIS);
+	taskEXIT_CRITICAL_FROM_ISR(uxSavedInterruptStatus);
 }
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 void Distributed_ManageTask(){
@@ -4181,11 +4181,11 @@ void UserDefine_Task(){
 					global_record_data[i] = 0;
 
 				uint32_t Count = 0;
-				for(uint32_t i=0;i<4;i++)
-					SubtaskFinishArray[i] = 0;
 				for(uint32_t i=0;i<8;i++)
+					SubtaskFinishArray[i] = 0;
+				for(uint32_t i=0;i<16;i++)
 					send_recv_data_time[i] = 0;
-				send_recv_data_time_count = 4;
+				send_recv_data_time_count = 8;
 				uint32_t Total_base_tick = xTaskGetTickCount();
 				/*
 				while(Count < 100){
@@ -4198,10 +4198,10 @@ void UserDefine_Task(){
 					Count++;
 				}
 				*/
-				/*	//	UserDefine_Distributed_Task_do_nothing, less data
-				while(Count < 1){
+					//	UserDefine_Distributed_Task_do_nothing, less data
+				while(Count < 10000){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
-					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x4, 1);
+					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x8, 1);
 					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_do_nothing, data_info, 1000, WithBarrier);
 					Distributed_Data_t* Result_data = NULL;
 					while(Result_data == NULL)
@@ -4209,31 +4209,31 @@ void UserDefine_Task(){
 					Distributed_FreeResult(Result_data);
 					DebugFlag = Count;
 					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
-					send_recv_data_time_count = 4;
+					send_recv_data_time_count = 8;
 					Count++;
 				}
-				*/
+
 				/*	//	UserDefine_Distributed_Task_do_nothing, large data
-				while(Count < 100){
+				while(Count < 10000){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x1000, 1);
-					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_do_nothing, data_info, 1000, WithBarrier);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_do_nothing, data_info, 1000, WithoutBarrier);
 					Distributed_Data_t* Result_data = NULL;
 					while(Result_data == NULL)
 						Result_data = Distributed_GetResult(Result);
 					Distributed_FreeResult(Result_data);
 					DebugFlag = Count;
 					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
-					send_recv_data_time_count = 4;
+					send_recv_data_time_count = 8;
 					//printf("Task: %u done	=\r\n", (unsigned int)Count);
 					Count++;
 				}
 				*/
 				/*	//	UserDefine_Distributed_Task_multiple, large data
-				while(Count < 100){
+				while(Count < 10000){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x1000, 1);
-					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_multiple, data_info, 1000, WithBarrier);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_multiple, data_info, 1000, WithoutBarrier);
 					Distributed_Data_t* Result_data = NULL;
 					while(Result_data == NULL)
 						Result_data = Distributed_GetResult(Result);
@@ -4241,13 +4241,13 @@ void UserDefine_Task(){
 					DebugFlag = Count;
 					//printf("Task: %u done	=\r\n", (unsigned int)Count);
 					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
-					send_recv_data_time_count = 4;
+					send_recv_data_time_count = 8;
 					Count++;
 				}
 				*/
-					//	UserDefine_Distributed_Task_2d_array_convolution
-				/*
-				while(Count < 100){
+				/*	//	UserDefine_Distributed_Task_2d_array_convolution
+
+				while(Count < 10000){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
 					uint32_t array_column = 128;
 					uint32_t kernel[] = {2, 2, 2, 2, 2, 2, 2, 2, 2};
@@ -4256,7 +4256,7 @@ void UserDefine_Task(){
 					Distributed_AddTargetData(data_info, &array_column, 1, 0);
 					Distributed_AddTargetData(data_info, kernel, 9, 0);
 					Distributed_AddTargetData(data_info, &kernel_column, 1, 0);
-					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_2d_array_convolution, data_info, 1000, WithBarrier);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_2d_array_convolution, data_info, 1000, WithoutBarrier);
 					Distributed_Data_t* Result_data = NULL;
 					while(Result_data == NULL)
 						Result_data = Distributed_GetResult(Result);
@@ -4277,32 +4277,33 @@ void UserDefine_Task(){
 					Distributed_FreeResult(Result_data);
 					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
 					DebugFlag = Count;
-					send_recv_data_time_count = 4;
-					printf("Task: %u ticks	=\r\n", (unsigned int)Count);
+					send_recv_data_time_count = 8;
+					//printf("Task: %u ticks	=\r\n", (unsigned int)Count);
 					Count++;
 				}
 				*/
 				/*
-				printf("================================\r\n");
+				//printf("================================\r\n");
+
 				uint32_t e = 0;
 				uint32_t d = 0;
 				uint32_t n = 0;
 				uint32_t p = 11;
 				uint32_t q = 37;
 				public_key(&e, &d, &n, p, q);
-				printf("Value of e: %u, Value of d: %u, n: %u\r\n", (unsigned int)e, (unsigned int)d, (unsigned int)n);
+				//printf("Value of e: %u, Value of d: %u, n: %u\r\n", (unsigned int)e, (unsigned int)d, (unsigned int)n);
 				uint32_t test_data_array[] = {0, 37, 183, 255};
 				uint32_t test_data = 0;
 				for(uint32_t i=0;i<4;i++)
 					test_data |= (test_data_array[i] << (i*8));
-				printf("test_data: 0x%lX\r\n", test_data);					//	0xFFB72500
+				//printf("test_data: 0x%lX\r\n", test_data);					//	0xFFB72500
 				uint32_t cipher = 0;
 				for(uint32_t i=0;i<4;i++){
 					uint32_t process_byte = ((test_data >> ((i*8))) & 0x000000FF);
 					uint32_t result_data = powMod(process_byte, e, n);
 					cipher |= (result_data << (i*8));
 				}
-				printf("cipher: 0x%lX\r\n", cipher);
+				//printf("cipher: 0x%lX\r\n", cipher);
 
 				uint32_t plain  = 0;
 				for(uint32_t i=0;i<4;i++){
@@ -4310,11 +4311,11 @@ void UserDefine_Task(){
 					uint32_t result_data = powMod(process_byte, d, n);
 					plain |= (result_data << (i*8));
 				}
-				printf("plain: 0x%lX\r\n", plain);
-				printf("================================\r\n");
+				//printf("plain: 0x%lX\r\n", plain);
+				//printf("================================\r\n");
 				//UserDefine_Local_Task_RSA(1, e, n, 0x1000);
 
-				while(Count < 1){
+				while(Count < 10000){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x1000, 1);
 					Distributed_AddTargetData(data_info, &e, 1, 0);
@@ -4343,7 +4344,7 @@ void UserDefine_Task(){
 					DebugFlag = Count;
 					//printf("Task: %u done	=\r\n", (unsigned int)Count);
 					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
-					send_recv_data_time_count = 4;
+					send_recv_data_time_count = 8;
 					Count++;
 				}
 				*/
@@ -4351,13 +4352,14 @@ void UserDefine_Task(){
 				#if(USE_CAMERA == 1)
 
 				DCMI_Start();
-				while(Count < 1){
+				while(Count < 10000){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
 					while(ov_rev_ok == 0)
 						;
 					DCMI_Stop();
+					//printf("dame camera done\r\n");
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)camera_buffer, (32768/4), 1);
-					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_bgr_gray_transform, data_info, 1000, WithoutBarrier);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_bgr_gray_transform, data_info, 1000, WithBarrier);
 					DCMI_Start();
 					Distributed_Data_t* Result_data = NULL;
 					while(Result_data == NULL)
@@ -4368,13 +4370,13 @@ void UserDefine_Task(){
 					Count++;
 					//printf("Task: %u done	=\r\n", (unsigned int)Count);
 					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
-					send_recv_data_time_count = 4;
+					send_recv_data_time_count = 8;
 				}
 				DCMI_Stop();
 				#endif
 				*/
-					//	UserDefine_Distributed_Task_bgr_gray_transform_with_2D_convolution with camera
-				printf("\r\nstart:\r\n");
+				/*	//	UserDefine_Distributed_Task_bgr_gray_transform_with_2D_convolution with camera
+				//printf("\r\nstart:\r\n");
 				#if(USE_CAMERA == 1)
 				uint32_t array_column = PIC_WIDTH;
 				uint32_t kernel[] = {3, 3, 3, 3, 1, 3, 3, 3, 3};
@@ -4407,11 +4409,11 @@ void UserDefine_Task(){
 					Count++;
 					//printf("Task: %u done	=\r\n", (unsigned int)Count);
 					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
-					send_recv_data_time_count = 4;
+					send_recv_data_time_count = 8;
 				}
 				DCMI_Stop();
 				#endif
-
+				*/
 				/*
 				while(1){
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x400, 1);
@@ -4429,12 +4431,12 @@ void UserDefine_Task(){
 				uint32_t duration_time = (xTaskGetTickCount() - Total_base_tick);
 				printf("Duration: %u ticks	=\r\n", (unsigned int)duration_time);
 
-				for(uint32_t i=0;i<4;i++)
+				for(uint32_t i=0;i<8;i++)
 					printf("Node: %u, Subtask Finish Count: %u\r\n", (unsigned int)i, (unsigned int)SubtaskFinishArray[i]);
 
 				for(uint32_t i=0;i<8;i++)
 					printf("global_record_data[%u]: %u\r\n", (unsigned int)i, (unsigned int)global_record_data[i]);
-				for(uint32_t i=0;i<8;i++)
+				for(uint32_t i=0;i<16;i++)
 					printf("send_recv_data_time[%u]: %u\r\n", (unsigned int)i, (unsigned int)send_recv_data_time[i]);
 				/*
 				uint32_t duration_time = (xTaskGetTickCount() - Total_base_tick);
@@ -4477,6 +4479,7 @@ void UserDefine_Task(){
 				//printf("Subtask time: %u ticks\r\n", (unsigned int)(record_subtask_end_time-record_subtask_time));
 				rec_cmd = '\0';
 			}
+
 			#if(USE_CAMERA == 1)
 			if ((rec_cmd == 'D') || (exti0_flag > 0)){
 				uint32_t tmp_get_tickcount = xTaskGetTickCount();
@@ -4558,7 +4561,7 @@ void UserDefine_Task(){
 					Distributed_FreeResult(Result_data);
 					DebugFlag = Count;
 					Count++;
-					send_recv_data_time_count = 4;
+					send_recv_data_time_count = 8;
 				}
 				vTaskDelay(1000/portTICK_RATE_MS);
 
@@ -4593,7 +4596,7 @@ void UserDefine_Task(){
 					Distributed_FreeResult(Result_data);
 					DebugFlag = Count;
 					Count++;
-					send_recv_data_time_count = 4;
+					send_recv_data_time_count = 8;
 				}
 				DCMI_Stop();
 
@@ -4637,6 +4640,7 @@ void UserDefine_Task(){
 				rec_cmd = '\0';
 			}
 			#endif
+
 		}
 	}
 }

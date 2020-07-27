@@ -3,10 +3,10 @@
 #ifndef REG_H
 #define REG_H
 
-#define USE_CAMERA 1
+#define USE_CAMERA 0
 #define CAMERA_BGR_GRAY 1
-#define DISTRIBUTED_LOCAL 1
-#define SENDIMAGE 1
+#define DISTRIBUTED_LOCAL 0
+#define SENDIMAGE 0
 //REG OPERATIONS
 
 #define UINT32_1 ((uint32_t)1)
