@@ -4,7 +4,6 @@
 #include <stdio.h>
 //#include "stm32f4xx.h"
 
-/*************************��Ҫ�޸ĵĵط�*************************/
 /*
 #define OV7670_RST_PW_RCC		RCC_AHB1Periph_GPIOG
 #define OV7670_RST_PW_Pin		GPIO_Pin_4|GPIO_Pin_5

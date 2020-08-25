@@ -57,12 +57,11 @@ read_r0_from_svc:
 	movs	r0, r0
 	bx	lr
 
-
 .global	sys_call
 sys_call:
 	SVC	#0x0
 	bx	lr
-
+// Distributed middleware interface for user, Get LR, SP
 .type Distributed_Start, %function
 .global Distributed_Start
 Distributed_Start:

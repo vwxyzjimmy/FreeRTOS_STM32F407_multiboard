@@ -1,3 +1,5 @@
+// Distributed middleware interface for user(Macro)
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #define Distributed_End(s, target_addr, target_size)		 		\
 do {                			 									\
 	s->Data_addr = (uint32_t*)target_addr;							\
@@ -37,6 +39,8 @@ do {																						\
 	__asm (	"pop	{r0}				\n");												\
 } while (0)
 
+// Distributed middleware structure
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 typedef struct Distributed_Data{
     uint32_t* Data_addr;
     uint32_t Data_size;
@@ -110,26 +114,8 @@ typedef struct {
   volatile ETH_DMADESCTypeDef *descriptor;
 } FrameTypeDef;
 
-#define ETH_TXBUFNB   2
-#define ETH_RXBUFNB   2
-#define ETH_TX_BUF_SIZE 1524
-#define ETH_RX_BUF_SIZE 1524
-ETH_DMADESCTypeDef  DMARxDscrTab[ETH_RXBUFNB] __attribute__((aligned (4)));/* Ethernet Rx MA Descriptor */
-ETH_DMADESCTypeDef  DMATxDscrTab[ETH_TXBUFNB] __attribute__((aligned (4)));/* Ethernet Tx DMA Descriptor */
-uint8_t Rx_Buff[ETH_RXBUFNB][ETH_RX_BUF_SIZE] __attribute__((aligned (4))); /* Ethernet Receive Buffer */
-uint8_t Tx_Buff[ETH_TXBUFNB][ETH_TX_BUF_SIZE] __attribute__((aligned (4))); /* Ethernet Transmit Buffer */
-
-volatile ETH_DMADESCTypeDef  *DMATxDescToSet;
-volatile ETH_DMADESCTypeDef  *DMARxDescToGet;
-ETH_DMA_Rx_Frame_infos RX_Frame_Descriptor;
-volatile ETH_DMA_Rx_Frame_infos *DMA_RX_FRAME_infos;
-
-#define     DP83848_PHY_ADDRESS     0x01
-#define 	ETH_SPEED_10M   0x00000000
-#define 	ETH_SPEED_100M   0x00004000
-#define 	ETH_MODE_FULLDUPLEX   0x00000800
-#define 	ETH_MODE_HALFDUPLEX   0x00000000
-
+// Distributed middleware communicate function number
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #define Distributed_NodeGetID_MSG 					0x01
 #define Distributed_NodeGetIDAgain_MSG 				0x02
 #define Distributed_NodeResponseID_MSG 				0x03
@@ -157,6 +143,30 @@ volatile ETH_DMA_Rx_Frame_infos *DMA_RX_FRAME_infos;
 #define Distributed_NodeRemoveTask_MSG 				0x19
 #define Distributed_NodeSendComplete_MSG			0x1a
 
+// Ethernat structure
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+#define ETH_TXBUFNB   2
+#define ETH_RXBUFNB   2
+#define ETH_TX_BUF_SIZE 1524
+#define ETH_RX_BUF_SIZE 1524
+ETH_DMADESCTypeDef  DMARxDscrTab[ETH_RXBUFNB] __attribute__((aligned (4)));/* Ethernet Rx MA Descriptor */
+ETH_DMADESCTypeDef  DMATxDscrTab[ETH_TXBUFNB] __attribute__((aligned (4)));/* Ethernet Tx DMA Descriptor */
+uint8_t Rx_Buff[ETH_RXBUFNB][ETH_RX_BUF_SIZE] __attribute__((aligned (4))); /* Ethernet Receive Buffer */
+uint8_t Tx_Buff[ETH_TXBUFNB][ETH_TX_BUF_SIZE] __attribute__((aligned (4))); /* Ethernet Transmit Buffer */
+
+volatile ETH_DMADESCTypeDef  *DMATxDescToSet;
+volatile ETH_DMADESCTypeDef  *DMARxDescToGet;
+ETH_DMA_Rx_Frame_infos RX_Frame_Descriptor;
+volatile ETH_DMA_Rx_Frame_infos *DMA_RX_FRAME_infos;
+
+#define     DP83848_PHY_ADDRESS     0x01
+#define 	ETH_SPEED_10M   0x00000000
+#define 	ETH_SPEED_100M   0x00004000
+#define 	ETH_MODE_FULLDUPLEX   0x00000800
+#define 	ETH_MODE_HALFDUPLEX   0x00000000
+
+// Other
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #define Request 0x00
 #define Release 0x01
 #define WithBarrier 0x0

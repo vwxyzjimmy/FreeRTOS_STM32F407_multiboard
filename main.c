@@ -23,7 +23,7 @@ void vApplicationStackOverflowHook() {;}
 void vApplicationIdleHook() {;}
 void vApplicationMallocFailedHook() {;}
 
-// Distributed middleware user interface
+// Distributed middleware interface for user
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Distributed_Data_t* Distributed_SetTargetData(uint32_t* data_addr, uint32_t data_size, uint32_t split_size);
 void Distributed_AddTargetData(Distributed_Data_t* S, uint32_t* data_addr, uint32_t data_size, uint32_t split_size);
@@ -34,9 +34,12 @@ extern Distributed_TaskHandle_List_t* Distributed_Start(void *data_info);
 Distributed_Data_t* Distributed_GetResult(Distributed_Result* Result);
 void Distributed_FreeResult(Distributed_Data_t* Distributed_Data);
 
-// Distributed middleware dispatch function
+// Distributed middleware other function
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Dispatch task
 Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_t sp, uint32_t lr);
+
+// Other
 Distributed_TaskHandle_List_t* Distributed_GetNode(uint32_t Return_addr, Distributed_TaskHandle_List_t* Lastnode);
 uint32_t Got_sp_minus_immediate(uint32_t addr);
 void Distributed_LocalSubtaskDone(Distributed_TaskHandle_List_t* s, uint32_t* Result_Data_addr, uint32_t Result_Data_size);
@@ -46,7 +49,12 @@ extern void vPortFree_From_ISR( void *pv );
 extern void *pvPortMalloc_From_ISR( size_t xWantedSize );
 void ListFreeBlock();
 
-// Distributed middleware ethernet function
+// Quick sort in dispatch task
+void swap(int *a, int *b);
+int Partition(int *arr, int front, int end);
+void QuickSort(int *arr, int front, int end);
+
+// Distributed middleware ethernet driver
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 uint8_t init_eth(uint16_t PHYAddress, uint8_t *Addr);
 uint32_t ETH_WritePHYRegister(uint16_t PHYAddress, uint16_t PHYReg, uint16_t PHYValue);
@@ -63,7 +71,7 @@ FrameTypeDef Pkt_Handle(void);
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Middleware eth funciton
 void Distributed_SendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t Size);
-// init node id
+// Init node id
 void Distributed_NodeGetID();
 void Distributed_NodeGetIDAgain();
 void Distributed_NodeResponseID();
@@ -71,7 +79,7 @@ uint8_t Distributed_NodeCheck(uint32_t Target_Node_id, uint32_t Needsize);
 void Distributed_NodeCheckback(uint32_t Target_Node_id, uint8_t checkback_flag);
 void Distributed_NodeBackupMaster(uint32_t Target_Node_id);
 void Distributed_NodeInvalid(uint32_t Target_Node_id);
-// request/release priviledge
+// Request/release priviledge
 void Distributed_NodeDisablePublish(uint32_t Target_Node_id);
 void Distributed_NodeEnablePublish(uint32_t Target_Node_id);
 void Distributed_NodeResponsePublish(uint32_t Target_Node_id);
@@ -79,27 +87,27 @@ void Distributed_NodeRequestKey();
 void Distributed_NodeReleaseKey();
 void Distributed_NodeResponseKey(uint32_t Target_Node_id, uint8_t response_flag);
 uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag);
-// check node exist
+// Check node exist and size
 uint8_t Distributed_NodeCheckSizeTimeout(uint32_t tick, uint32_t Target_Node_id, uint32_t Needsize);
-// dispatch subtask
+// Dispatch subtask
 void Distributed_NodeSendSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size);
 void Distributed_NodeSendRemainSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size, uint32_t Remain_th);
 void Distributed_NodeRecvSubtask(uint32_t Target_Node_id);
 void Distributed_NodeRecvRemainSubtask(uint32_t Target_Node_id, uint32_t Remain_th);
-// subtask finish
+// Subtask finish
 void Distributed_NodeSubtaskFinish(uint32_t Target_Node_id, uint32_t Task_id, uint32_t Subtask_id, uint32_t Size);
 void Distributed_NodeResponseSubtaskFinish(uint32_t Target_Node_id, uint32_t Target_Task_id, uint32_t Target_Subtask_id);
-// retrieve result
+// Retrieve result
 void Distributed_NodeRequestResult(uint32_t Target_Node_id, uint32_t Task_id, uint32_t Subtask_id);
 void Distributed_NodeRequestRemainResult(uint32_t Target_Node_id, uint32_t Remain_th);
 void Distributed_NodeResponseResult(uint32_t Target_Node_id, uint8_t* Result_addr, uint32_t Result_size);
 void Distributed_NodeResponseRemainResult(uint32_t Target_Node_id, uint8_t* Result_addr, uint32_t Result_size, uint32_t Remain_th);
 void Distributed_NodeRemoveTask(uint32_t Target_Node_id, uint32_t Source_Node_id, uint32_t Task_id);
 void Distributed_NodeSendComplete(uint32_t Target_Node_id, uint8_t Remain_th);
-// complete sequence
+// Complete sequence
 uint8_t Distributed_NodeSendCompleteSequence(uint32_t Target_Node_id);
 uint8_t Distributed_NodeRecvCompleteSequence(uint32_t Target_Node_id);
-// update free memory information
+// Update free memory information
 void Distributed_NodeSendFreeBlock(uint32_t Target_Node_id, uint32_t Node_id);
 void UpdateLocalFreeBlock();
 uint8_t Check_Sendable();
@@ -110,14 +118,9 @@ void Distributed_Show_FreeBlock();
 void Distributed_ManageTask();
 uint32_t WaitForFlag(volatile uint32_t* Flag_Addr, uint32_t timeout_time);
 
-// Quick sort in dispatch task
+// UserDefine function
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-void swap(int *a, int *b);
-int Partition(int *arr, int front, int end);
-void QuickSort(int *arr, int front, int end);
-
-// UserDefine distributed / local task ezxample
-//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Distributed task examples
 void UserDefine_Distributed_Task(void *task_info);
 void UserDefine_Distributed_Task_matrix_multiplication(void *task_info);
 void UserDefine_Distributed_Task_do_nothing(void *task_info);
@@ -127,30 +130,31 @@ void UserDefine_Distributed_Task_bgr_gray_transform(void *task_info);
 void UserDefine_Distributed_Task_RSA(void *task_info);
 void UserDefine_Distributed_Task_bgr_gray_transform_with_2D_convolution(void *task_info);
 
+// Local task examples
 void UserDefine_Local_Task_2d_array_convolution(uint32_t rec_Count);
 void UserDefine_Local_Task_RSA(uint32_t rec_Count, uint32_t e_d, uint32_t n, uint32_t array_Data_size);
 void UserDefine_Local_Task_bgr_gray_transform(uint32_t rec_Count);
 void UserDefine_Local_Task_bgr_gray_transform_with_2D_convolution(uint32_t rec_Count);
 
-// UserDefine RSA fuinction
-//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// RSA fuinction
 uint32_t checkPrime(uint32_t n)__attribute__((always_inline));
 uint32_t findGCD(uint32_t n1, uint32_t n2)__attribute__((always_inline));
 uint32_t powMod(uint32_t a, uint32_t b, uint32_t n)__attribute__((always_inline));
 void public_key(uint32_t* e, uint32_t* d, uint32_t* n, uint32_t p, uint32_t q)__attribute__((always_inline));
 
-// UserDefine other fuinction
-//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Other fuinction
 void test_inline()__attribute__((always_inline));
 void UserDefine_Task();
 void LED_BLUE_TASK();
 
-// other peripheral function, not so important
+// Other peripheral function, not so important
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-void init_dac(void);
+
+// Exti0
 void init_external_interrupt(void);
 void exti0_handler(void);
-void DAC_SetChannel1Data(uint8_t vol);
+
+// Usart3
 void init_usart3(void);
 void usart3_send_char(const char ch);
 void print_sys(char str[255]);
@@ -215,6 +219,8 @@ TaskHandle_t TaskHandle_1;
 TaskHandle_t TaskHandle_2;
 TaskHandle_t TaskHandle_3;
 
+// Use to debug and test performance
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 uint32_t DebugFlag = 0;
 uint32_t SendFlag = 0;
 uint32_t RecvFlag = 0;
@@ -231,6 +237,8 @@ uint32_t global_record_data[8];
 uint32_t send_recv_data_time[16];
 uint32_t send_recv_data_time_count = 8;
 
+// Camera variable
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 extern volatile uint8_t ov_rev_ok;
 extern volatile uint8_t ov_frame;
 extern volatile uint32_t datanum;
@@ -333,6 +341,7 @@ void Distributed_FreeResult(Distributed_Data_t* Distributed_Data){
 
 // Distributed middleware dispatch function
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Dispatch task
 Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_t sp, uint32_t lr){
 	uint8_t Get_key = 0;
 	uint32_t get_key_flag = 0;
@@ -988,6 +997,7 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 	return Subscriber_task;
 }
 
+// Other
 Distributed_TaskHandle_List_t* Distributed_GetNode(uint32_t Return_addr, Distributed_TaskHandle_List_t* Lastnode){
 	while(Lastnode != NULL){
 		if (((uint32_t)Lastnode->Instruction_addr<=Return_addr) && (Return_addr<=(uint32_t)Lastnode->Instruction_addr_end)){
@@ -1240,6 +1250,35 @@ void svc_handler_c(uint32_t LR, uint32_t MSP){
 	else if (svc_num == 6){
 		printf("Inline code success svc\r\n");
 	}
+}
+
+// Quick sort in dispatch task
+void swap(int *a, int *b){
+    int temp = *a;
+    *a = *b;
+    *b = temp;
+}
+
+int Partition(int *arr, int front, int end){
+    int pivot = arr[end];
+    int i = front -1;
+    for (int j = front; j < end; j++) {
+        if (arr[j] < pivot) {
+            i++;
+            swap(&arr[i], &arr[j]);
+        }
+    }
+    i++;
+    swap(&arr[i], &arr[end]);
+    return i;
+}
+
+void QuickSort(int *arr, int front, int end){
+    if (front < end) {
+        int pivot = Partition(arr, front, end);
+        QuickSort(arr, front, pivot - 1);
+        QuickSort(arr, pivot + 1, end);
+    }
 }
 
 // Distributed middleware ethernet function
@@ -3152,7 +3191,7 @@ void Distributed_ManageTask(){
 		if ((READ_BIT(USART3_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART3_BASE + USART_SR_OFFSET, ORE_BIT))){
 			char rec_cmd = (char)REG(USART3_BASE + USART_DR_OFFSET);
 			printf("%c.\r\n", rec_cmd);
-			if (rec_cmd == 'c'){
+			if (rec_cmd == 'c'){												// input 'c' to startup the middleware, get the id and free memory info
 				Msg_event = 0;
 				Global_Node_id = 0;
 				Global_Node_count = 0;
@@ -4384,38 +4423,9 @@ uint32_t WaitForFlag(volatile uint32_t* Flag_Addr, uint32_t timeout_time){
 	return *(Flag_Addr);
 }
 
-// Quick sort in dispatch task
+// UserDefine funciton
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
-void swap(int *a, int *b){
-    int temp = *a;
-    *a = *b;
-    *b = temp;
-}
-
-int Partition(int *arr, int front, int end){
-    int pivot = arr[end];
-    int i = front -1;
-    for (int j = front; j < end; j++) {
-        if (arr[j] < pivot) {
-            i++;
-            swap(&arr[i], &arr[j]);
-        }
-    }
-    i++;
-    swap(&arr[i], &arr[end]);
-    return i;
-}
-
-void QuickSort(int *arr, int front, int end){
-    if (front < end) {
-        int pivot = Partition(arr, front, end);
-        QuickSort(arr, front, pivot - 1);
-        QuickSort(arr, pivot + 1, end);
-    }
-}
-
-// UserDefine distributed / local task ezxample
-//-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Distributed  task example
 void UserDefine_Distributed_Task(void *task_info){
 	Distributed_TaskHandle_List_t *data_info = Distributed_Start(task_info);
 	Distributed_Data_t* array1 = Distributed_GetTragetData(data_info);
@@ -4445,6 +4455,8 @@ void UserDefine_Distributed_Task(void *task_info){
 
 void UserDefine_Distributed_Task_matrix_multiplication(void *task_info){
 	Distributed_TaskHandle_List_t *data_info = Distributed_Start(task_info);
+	if(data_info->DSubTask_id == 0)
+		printf("mtfk\r\n");
 	Distributed_Data_t* array1 = Distributed_GetTragetData(data_info);
 	Distributed_Data_t* array2 = Distributed_GetTragetData(data_info);
 	Distributed_Data_t* array1_column = Distributed_GetTragetData(data_info);
@@ -4648,6 +4660,7 @@ void UserDefine_Distributed_Task_bgr_gray_transform_with_2D_convolution(void *ta
 	Distributed_End(data_info, tar_malloc_addr, ret_size);
 }
 
+// Local task example
 void UserDefine_Local_Task_2d_array_convolution(uint32_t rec_Count){
 	uint32_t kernel_Data_addr[] = {2, 2, 2, 2, 2, 2, 2, 2, 2};
 	uint32_t array_a_column = 128;
@@ -4823,8 +4836,7 @@ void UserDefine_Local_Task_bgr_gray_transform_with_2D_convolution(uint32_t rec_C
 	#endif
 }
 
-// UserDefine RSA fuinction
-//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// RSA fuinction
 uint32_t checkPrime(uint32_t n){
 	uint32_t i;
 	uint32_t m = n / 2;
@@ -4872,8 +4884,7 @@ void public_key(uint32_t* e, uint32_t* d, uint32_t* n, uint32_t p, uint32_t q){
 	}
 }
 
-// UserDefine other fuinction, not so important
-//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// other fuinction, not so important
 void test_inline(){
 	__asm (	"svc	#0x6				\n");
 }
@@ -4910,7 +4921,7 @@ void UserDefine_Task(){
 				*/
 				for(uint32_t i=0;i<0x3000;i++){
 					*(((uint32_t*)0x10000000)+i) = 1;
-					*(((uint32_t*)0x10000000)+i) = 0xFFB72500;
+					//*(((uint32_t*)0x10000000)+i) = 0xFFB72500;
 				}
 				for(uint32_t i=0;i<8;i++)
 					global_record_data[i] = 0;
@@ -4922,6 +4933,9 @@ void UserDefine_Task(){
 					send_recv_data_time[i] = 0;
 				send_recv_data_time_count = 8;
 				uint32_t Total_base_tick = xTaskGetTickCount();
+
+				// Set Distributed task target data and start task
+				//*---------------------------------------------------------------------------------------------------------------------
 				/*
 				while(Count < 100){
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x3000, 1);
@@ -4933,23 +4947,21 @@ void UserDefine_Task(){
 					Count++;
 				}
 				*/
-					//	UserDefine_Distributed_Task_matrix_multiplication
-				uint32_t ARRAY1_COLUMN = 10, ARRAY1_ROW = 5, ARRAY2_COLUMN = 10, ARRAY2_ROW = 20;
-				uint32_t* ARRAY1_ADDR = pvPortMalloc(ARRAY1_COLUMN*ARRAY1_ROW*sizeof(uint32_t));
-				uint32_t* ARRAY2_ADDR = pvPortMalloc(ARRAY2_COLUMN*ARRAY2_ROW*sizeof(uint32_t));
+				/*	//	UserDefine_Distributed_Task_matrix_multiplication
+				uint32_t ARRAY1_COLUMN = 20, ARRAY1_ROW = 3, ARRAY2_COLUMN = 3, ARRAY2_ROW = 3;
+				uint32_t* ARRAY1_ADDR = (uint32_t*)0x10000000;
+				uint32_t* ARRAY2_ADDR = (uint32_t*)(0x10000000+ARRAY1_COLUMN*ARRAY1_ROW*sizeof(uint32_t));
 				for(uint32_t i=0;i<(ARRAY1_COLUMN*ARRAY1_ROW);i++)
 					*(ARRAY1_ADDR+i) = 1;
 				for(uint32_t i=0;i<(ARRAY2_COLUMN*ARRAY2_ROW);i++)
 					*(ARRAY2_ADDR+i) = 2;
-				while(Count < 1){
+				while(Count < 100){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)ARRAY1_ADDR, (ARRAY1_COLUMN*ARRAY1_ROW), ARRAY1_COLUMN);
 					Distributed_AddTargetData(data_info, ARRAY2_ADDR, (ARRAY2_COLUMN*ARRAY2_ROW), 0);
 					Distributed_AddTargetData(data_info, &ARRAY1_COLUMN, 1, 0);
 					Distributed_AddTargetData(data_info, &ARRAY2_COLUMN, 1, 0);
 					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_matrix_multiplication, data_info, 100, WithBarrier);
-					vPortFree(ARRAY1_ADDR);
-					vPortFree(ARRAY2_ADDR);
 					Distributed_Data_t* Result_data = NULL;
 					while(Result_data == NULL)
 						Result_data = Distributed_GetResult(Result);
@@ -4958,47 +4970,10 @@ void UserDefine_Task(){
 					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
 					send_recv_data_time_count = 8;
 					Count++;
-				}
-
-				while(Count < 1){
-					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
-					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)ARRAY1_ADDR, (ARRAY1_COLUMN*ARRAY1_ROW), ARRAY1_COLUMN);
-					Distributed_AddTargetData(data_info, ARRAY2_ADDR, (ARRAY2_COLUMN*ARRAY2_ROW), 0);
-					Distributed_AddTargetData(data_info, &ARRAY1_COLUMN, 1, 0);
-					Distributed_AddTargetData(data_info, &ARRAY2_COLUMN, 1, 0);
-					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_matrix_multiplication, data_info, 100, WithBarrier);
-					vPortFree(ARRAY1_ADDR);
-					vPortFree(ARRAY2_ADDR);
-					Distributed_Data_t* Result_data = NULL;
-					while(Result_data == NULL)
-						Result_data = Distributed_GetResult(Result);
-					Distributed_FreeResult(Result_data);
-					DebugFlag = Count;
-					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
-					send_recv_data_time_count = 8;
-					Count++;
-				}
-				/*
-				while(Count < 1){
-					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
-					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)ARRAY1_ADDR, (ARRAY1_COLUMN*ARRAY1_ROW), ARRAY1_COLUMN);
-					Distributed_AddTargetData(data_info, ARRAY2_ADDR, (ARRAY2_COLUMN*ARRAY2_ROW), 0);
-					Distributed_AddTargetData(data_info, &ARRAY1_COLUMN, 1, 0);
-					Distributed_AddTargetData(data_info, &ARRAY2_COLUMN, 1, 0);
-					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_matrix_multiplication, data_info, 100, WithBarrier);
-					vPortFree(ARRAY1_ADDR);
-					vPortFree(ARRAY2_ADDR);
-					Distributed_Data_t* Result_data = NULL;
-					while(Result_data == NULL)
-						Result_data = Distributed_GetResult(Result);
-					Distributed_FreeResult(Result_data);
-					DebugFlag = Count;
-					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
-					send_recv_data_time_count = 8;
-					Count++;
+					printf("Count: %u", (unsigned int)Count);
 				}
 				*/
-				/*	//	UserDefine_Distributed_Task_do_nothing, less data
+				/* //	UserDefine_Distributed_Task_do_nothing, less data
 				while(Count < 100){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x8, 1);
@@ -5013,7 +4988,7 @@ void UserDefine_Task(){
 					Count++;
 				}
 				*/
-				/*	//	UserDefine_Distributed_Task_do_nothing, large data
+				/* //	UserDefine_Distributed_Task_do_nothing, large data
 				while(Count < 10000){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x1000, 1);
@@ -5029,7 +5004,7 @@ void UserDefine_Task(){
 					Count++;
 				}
 				*/
-				/*	//	UserDefine_Distributed_Task_multiple, large data
+				/* //	UserDefine_Distributed_Task_multiple, large data
 				while(Count < 10000){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x1000, 1);
@@ -5045,9 +5020,8 @@ void UserDefine_Task(){
 					Count++;
 				}
 				*/
-					//	UserDefine_Distributed_Task_2d_array_convolution
-				/*
-				while(Count < 10000){
+				 //	UserDefine_Distributed_Task_2d_array_convolution
+				while(Count < 1){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
 					uint32_t array_column = 128;
 					uint32_t kernel[] = {2, 2, 2, 2, 2, 2, 2, 2, 2};
@@ -5056,7 +5030,7 @@ void UserDefine_Task(){
 					Distributed_AddTargetData(data_info, &array_column, 1, 0);
 					Distributed_AddTargetData(data_info, kernel, 9, 0);
 					Distributed_AddTargetData(data_info, &kernel_column, 1, 0);
-					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_2d_array_convolution, data_info, 1000, WithoutBarrier);
+					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_2d_array_convolution, data_info, 1000, WithBarrier);
 					Distributed_Data_t* Result_data = NULL;
 					while(Result_data == NULL)
 						Result_data = Distributed_GetResult(Result);
@@ -5074,15 +5048,20 @@ void UserDefine_Task(){
 					//	printf("Count: 0x%lX, Some answer is wrong\r\n", Count);
 					//}
 					//printf("Result_data Data_size: 0x%lX\r\n", Result_data->Data_size);
+					for(uint32_t i=0;i<Result_data->Data_size;i++){
+						printf("%u, ", (unsigned int)*(Result_data->Data_addr+i));
+						if((i%128) == 0)
+							printf("\r\n");
+					}
 					Distributed_FreeResult(Result_data);
 					global_record_data[7] += (xTaskGetTickCount() - tmp_global_record_data_7);
 					DebugFlag = Count;
 					send_recv_data_time_count = 8;
-					//printf("Task: %u ticks	=\r\n", (unsigned int)Count);
+					printf("Task: %u ticks	=\r\n", (unsigned int)Count);
 					Count++;
 				}
-				*/
-				/*
+
+				/* //	UserDefine_Local_Task_RSA
 				//printf("================================\r\n");
 
 				uint32_t e = 0;
@@ -5148,7 +5127,7 @@ void UserDefine_Task(){
 					Count++;
 				}
 				*/
-				/*	//	UserDefine_Distributed_Task_bgr_gray_transform with camera
+				/* //	UserDefine_Distributed_Task_bgr_gray_transform with camera
 				#if(USE_CAMERA == 1)
 
 				DCMI_Start();
@@ -5175,7 +5154,7 @@ void UserDefine_Task(){
 				DCMI_Stop();
 				#endif
 				*/
-				/*	//	UserDefine_Distributed_Task_bgr_gray_transform_with_2D_convolution with camera
+				/* //	UserDefine_Distributed_Task_bgr_gray_transform_with_2D_convolution with camera
 				//printf("\r\nstart:\r\n");
 				#if(USE_CAMERA == 1)
 				uint32_t array_column = PIC_WIDTH;
@@ -5214,7 +5193,7 @@ void UserDefine_Task(){
 				DCMI_Stop();
 				#endif
 				*/
-				/*
+				/* //	UserDefine_Distributed_Task
 				while(1){
 					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x400, 1);
 					Distributed_AddTargetData(data_info, (uint32_t*)0x10001000, 0x400, 1);
@@ -5462,6 +5441,7 @@ void LED_BLUE_TASK(){
 
 // other peripheral function, not so important
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Exti0
 void init_external_interrupt(void){
 	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTA));
 	//GPIO Configurations
@@ -5502,45 +5482,7 @@ void exti0_handler_c(uint32_t LR, uint32_t MSP){
 	SET_BIT(EXTI_BASE + EXTI_PR_OFFSET, 0);
 }
 
-void init_dac(void){
-	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTA));
-	SET_BIT(RCC_BASE + RCC_APB1ENR_OFFSET, DACEN);
-
-	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_1_BIT(4));
-	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_0_BIT(4));
-
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(4));
-	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(4));
-
-	CLEAR_BIT(DAC_BASE + DAC_CR_OFFSET, DAC_CR_DMAUDRIE1);
-	CLEAR_BIT(DAC_BASE + DAC_CR_OFFSET, DAC_CR_DMAEN1);
-	WRITE_BITS(DAC_BASE + DAC_CR_OFFSET, DAC_CR_MAMP1_3_BIT, DAC_CR_MAMP1_0_BIT, 0);
-	WRITE_BITS(DAC_BASE + DAC_CR_OFFSET, DAC_CR_WAVE1_1_BIT, DAC_CR_WAVE1_0_BIT, 0);
-	WRITE_BITS(DAC_BASE + DAC_CR_OFFSET, DAC_CR_TSEL1_2_BIT, DAC_CR_TSEL1_0_BIT, 7);
-	CLEAR_BIT(DAC_BASE + DAC_CR_OFFSET, DAC_CR_TEN1);
-	SET_BIT(DAC_BASE + DAC_CR_OFFSET, DAC_CR_BOFF1);
-	SET_BIT(DAC_BASE + DAC_CR_OFFSET, DAC_CR_EN1);
-	DAC_SetChannel1Data(0);
-}
-
-void DAC_SetChannel1Data(uint8_t vol){
-	WRITE_BITS( DAC_BASE + DAC_DHR8R1_OFFSET, DAC_DHR8R1_DACC1DHR_7_BIT, DAC_DHR8R1_DACC1DHR_0_BIT, vol);
-}
-
-void init_timer4(void){
-	SET_BIT(RCC_BASE + RCC_APB1ENR_OFFSET, TIM4EN);
-	WRITE_BITS(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_CKD_1_BIT, TIMx_CKD_0_BIT, 0b00);
-	SET_BIT(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_ARPE);
-	WRITE_BITS(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_CMS_1_BIT, TIMx_CMS_0_BIT, 0b00);
-	CLEAR_BIT(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_DIR);
-	CLEAR_BIT(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_OPM);
-	CLEAR_BIT(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_URS);
-	CLEAR_BIT(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_UDIS);
-	WRITE_BITS(TIM4_BASE + TIMx_PSC_OFFSET, TIMx_PSC_15_BIT, TIMx_PSC_0_BIT, 3);
-	WRITE_BITS(TIM4_BASE + TIMx_ARR_OFFSET, TIMx_ARR_15_BIT, TIMx_ARR_0_BIT, 952);
-	SET_BIT(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_CEN);
-}
-
+// Usart3
 void init_usart3(void){
 	//RCC EN GPIO
 	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTD));
