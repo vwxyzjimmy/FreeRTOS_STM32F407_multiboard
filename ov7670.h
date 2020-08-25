@@ -26,10 +26,10 @@
 
 #if(USE_CAMERA == 1)
     //320*240�ü����ض���
-    #define PIC_START_X				64		//��ʼ����x
-    #define PIC_START_Y				64		//��ʼ����y
-    #define PIC_WIDTH				128		//��Ƭ����
-    #define PIC_HEIGHT				128		//��Ƭ�߶�
+    #define PIC_START_X				128		//��ʼ����x
+    #define PIC_START_Y				128		//��ʼ����y
+    #define PIC_WIDTH				256		//��Ƭ����
+    #define PIC_HEIGHT				256		//��Ƭ�߶�
 #else
     #define PIC_START_X				0		//��ʼ����x
     #define PIC_START_Y				0		//��ʼ����y
