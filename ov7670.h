@@ -10,11 +10,11 @@
 #define OV7670_RST_PW_Pin		GPIO_Pin_4|GPIO_Pin_5
 #define OV7670_RST_PW_GPIO		GPIOB
 
-#define OV7670_PWDN_H  			GPIO_SetBits(GPIOG,GPIO_Pin_9)			//POWER DOWN�����ź�
-#define OV7670_PWDN_L  			GPIO_ResetBits(GPIOG,GPIO_Pin_9)		//POWER DOWN�����ź�
+#define OV7670_PWDN_H  			GPIO_SetBits(GPIOG,GPIO_Pin_9)
+#define OV7670_PWDN_L  			GPIO_ResetBits(GPIOG,GPIO_Pin_9)
 
-#define OV7670_RST_H  			GPIO_SetBits(GPIOG,GPIO_Pin_8)			//��λ�����ź�
-#define OV7670_RST_L  			GPIO_ResetBits(GPIOG,GPIO_Pin_8)		//��λ�����ź�
+#define OV7670_RST_H  			GPIO_SetBits(GPIOG,GPIO_Pin_8)
+#define OV7670_RST_L  			GPIO_ResetBits(GPIOG,GPIO_Pin_8)
 */
 
 #define OV7670_PWDN_H  			SET_BIT(GPIO_BASE(GPIO_PORTB) + GPIOx_BSRR_OFFSET, BSy_BIT(4));
@@ -25,19 +25,17 @@
 
 
 #if(USE_CAMERA == 1)
-    //320*240�ü����ض���
-    #define PIC_START_X				128		//��ʼ����x
-    #define PIC_START_Y				128		//��ʼ����y
-    #define PIC_WIDTH				256		//��Ƭ����
-    #define PIC_HEIGHT				256		//��Ƭ�߶�
+    #define PIC_START_X				128
+    #define PIC_START_Y				128
+    #define PIC_WIDTH				256
+    #define PIC_HEIGHT				256
 #else
-    #define PIC_START_X				0		//��ʼ����x
-    #define PIC_START_Y				0		//��ʼ����y
-    #define PIC_WIDTH				1		//��Ƭ����
-    #define PIC_HEIGHT				1		//��Ƭ�߶�
+    #define PIC_START_X				0
+    #define PIC_START_Y				0
+    #define PIC_WIDTH				1
+    #define PIC_HEIGHT				1
 #endif
 extern uint16_t camera_buffer[PIC_WIDTH*PIC_HEIGHT];
-/*************************��Ҫ�޸ĵĵط�*************************/
 
 //////////////////////////////////////////////////////////////////////////////////
 #define OV7670_MID				0X7FA2

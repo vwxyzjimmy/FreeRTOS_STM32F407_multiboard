@@ -15,8 +15,7 @@ uint32_t SystemTICK_RATE_HZ = 184320;								//	168000	//184320
 
 void set_sysclk_pll(void);
 
-void reset_handler(void)
-{
+void reset_handler(void){
 	//symbols defined in linker script
 	extern uint32_t _mydata_lma_start;
 	extern uint32_t _mydata_vma_start;
@@ -54,8 +53,7 @@ void reset_handler(void)
 		;
 }
 
-void hardfault_handler_c(uint32_t LR, uint32_t MSP)
-{
+void hardfault_handler_c(uint32_t LR, uint32_t MSP){
 	uint32_t *stack_frame_ptr;
 	if (LR & 0x4){
 		stack_frame_ptr = (uint32_t *)read_psp();
@@ -74,8 +72,7 @@ void hardfault_handler_c(uint32_t LR, uint32_t MSP)
  * set sysclk pll (168 MHz)
  *
  */
-void set_sysclk_pll(void)
-{
+void set_sysclk_pll(void){
 	//enable HSE
 	SET_BIT(RCC_BASE + RCC_CR_OFFSET, HSEON_BIT);
 

@@ -11,42 +11,42 @@
 #include "struct.h"
 #include "ov7670.h"
 #include "dcmi.h"
-#define HEAP_MAX (32 * 1024) 	// 128 KB
+#define HEAP_MAX (32 * 1024) 	// FreeRTOS manage memory 128 KB
 
-#define portTICK_PERIOD_US			( (uint32_t) 1000000 / SystemTICK_RATE_HZ )
+#define portTICK_PERIOD_US			( (uint32_t) 1000000 / SystemTICK_RATE_HZ )	//	FreeRTOS Context  switch freq
 
+// FreeRTOS porting hook function
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 extern void vPortSVCHandler();
 void vApplicationTickHook() {;}
 void vApplicationStackOverflowHook() {;}
 void vApplicationIdleHook() {;}
 void vApplicationMallocFailedHook() {;}
+
+// Distributed middleware user interface
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-void init_dac(void);
-void init_external_interrupt(void);
-void exti0_handler(void);
-void DAC_SetChannel1Data(uint8_t vol);
-void init_usart3(void);
-void init_usart2(void);
-void usart3_send_char(const char ch);
-void usart2_send_char(const char ch);
-void print_sys(char str[255]);
+Distributed_Data_t* Distributed_SetTargetData(uint32_t* data_addr, uint32_t data_size, uint32_t split_size);
+void Distributed_AddTargetData(Distributed_Data_t* S, uint32_t* data_addr, uint32_t data_size, uint32_t split_size);
+Distributed_Result* Distributed_CreateTask(void* task, Distributed_Data_t *s, uint32_t Stack_size, uint32_t barrier);
+
+extern Distributed_TaskHandle_List_t* Distributed_Start(void *data_info);
+//Distributed_End, Distributed_pvPortMalloc, Distributed_vPortFree are macro and defined in struct.h
+Distributed_Data_t* Distributed_GetResult(Distributed_Result* Result);
+void Distributed_FreeResult(Distributed_Data_t* Distributed_Data);
+
+// Distributed middleware dispatch function
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_t sp, uint32_t lr);
+Distributed_TaskHandle_List_t* Distributed_GetNode(uint32_t Return_addr, Distributed_TaskHandle_List_t* Lastnode);
 uint32_t Got_sp_minus_immediate(uint32_t addr);
 void Distributed_LocalSubtaskDone(Distributed_TaskHandle_List_t* s, uint32_t* Result_Data_addr, uint32_t Result_Data_size);
 void Distributed_InsertFinishNode(Distributed_TaskHandle_List_t* NewDTaskControlBlock);
-Distributed_Result* Distributed_CreateTask(void* task, Distributed_Data_t *s, uint32_t Stack_size, uint32_t barrier);
-Distributed_Data_t* Distributed_GetResult(Distributed_Result* Result);
-void Distributed_FreeResult(Distributed_Data_t* Distributed_Data);
-Distributed_TaskHandle_List_t* Distributed_GetNode(uint32_t Return_addr, Distributed_TaskHandle_List_t* Lastnode);
-Distributed_Data_t* Distributed_SetTargetData(uint32_t* data_addr, uint32_t data_size, uint32_t split_size);
-void Distributed_AddTargetData(Distributed_Data_t* S, uint32_t* data_addr, uint32_t data_size, uint32_t split_size);
-extern Distributed_TaskHandle_List_t* Distributed_Start(void *data_info);
 extern void tri_svc();
 extern void vPortFree_From_ISR( void *pv );
 extern void *pvPortMalloc_From_ISR( size_t xWantedSize );
-
 void ListFreeBlock();
+
+// Distributed middleware ethernet function
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 uint8_t init_eth(uint16_t PHYAddress, uint8_t *Addr);
 uint32_t ETH_WritePHYRegister(uint16_t PHYAddress, uint16_t PHYReg, uint16_t PHYValue);
@@ -58,7 +58,12 @@ void eth_handler(void);
 uint32_t ETH_CheckFrameReceived(void);
 FrameTypeDef ETH_Get_Received_Frame(void);
 FrameTypeDef Pkt_Handle(void);
+
+// Distributed middleware communicate function, including init node id , request/release priviledge, check node exist, dispatch subtask, subtask finish, retrieve result, complete sequence, update free memory information and Distributed_ManageTask.
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Middleware eth funciton
+void Distributed_SendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t Size);
+// init node id
 void Distributed_NodeGetID();
 void Distributed_NodeGetIDAgain();
 void Distributed_NodeResponseID();
@@ -66,39 +71,53 @@ uint8_t Distributed_NodeCheck(uint32_t Target_Node_id, uint32_t Needsize);
 void Distributed_NodeCheckback(uint32_t Target_Node_id, uint8_t checkback_flag);
 void Distributed_NodeBackupMaster(uint32_t Target_Node_id);
 void Distributed_NodeInvalid(uint32_t Target_Node_id);
-void Distributed_NodeSendFreeBlock(uint32_t Target_Node_id, uint32_t Node_id);
-void Distributed_NodeSendSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size);
-void Distributed_NodeSendRemainSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size, uint32_t Remain_th);
-void Distributed_NodeRecvSubtask(uint32_t Target_Node_id);
-void Distributed_NodeRecvRemainSubtask(uint32_t Target_Node_id, uint32_t Remain_th);
+// request/release priviledge
 void Distributed_NodeDisablePublish(uint32_t Target_Node_id);
 void Distributed_NodeEnablePublish(uint32_t Target_Node_id);
 void Distributed_NodeResponsePublish(uint32_t Target_Node_id);
 void Distributed_NodeRequestKey();
 void Distributed_NodeReleaseKey();
 void Distributed_NodeResponseKey(uint32_t Target_Node_id, uint8_t response_flag);
+uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag);
+// check node exist
+uint8_t Distributed_NodeCheckSizeTimeout(uint32_t tick, uint32_t Target_Node_id, uint32_t Needsize);
+// dispatch subtask
+void Distributed_NodeSendSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size);
+void Distributed_NodeSendRemainSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size, uint32_t Remain_th);
+void Distributed_NodeRecvSubtask(uint32_t Target_Node_id);
+void Distributed_NodeRecvRemainSubtask(uint32_t Target_Node_id, uint32_t Remain_th);
+// subtask finish
 void Distributed_NodeSubtaskFinish(uint32_t Target_Node_id, uint32_t Task_id, uint32_t Subtask_id, uint32_t Size);
 void Distributed_NodeResponseSubtaskFinish(uint32_t Target_Node_id, uint32_t Target_Task_id, uint32_t Target_Subtask_id);
+// retrieve result
 void Distributed_NodeRequestResult(uint32_t Target_Node_id, uint32_t Task_id, uint32_t Subtask_id);
 void Distributed_NodeRequestRemainResult(uint32_t Target_Node_id, uint32_t Remain_th);
 void Distributed_NodeResponseResult(uint32_t Target_Node_id, uint8_t* Result_addr, uint32_t Result_size);
 void Distributed_NodeResponseRemainResult(uint32_t Target_Node_id, uint8_t* Result_addr, uint32_t Result_size, uint32_t Remain_th);
 void Distributed_NodeRemoveTask(uint32_t Target_Node_id, uint32_t Source_Node_id, uint32_t Task_id);
 void Distributed_NodeSendComplete(uint32_t Target_Node_id, uint8_t Remain_th);
-
-void Distributed_SendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t Size);
-uint8_t Distributed_NodeCheckSizeTimeout(uint32_t tick, uint32_t Target_Node_id, uint32_t Needsize);
-uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag);
+// complete sequence
 uint8_t Distributed_NodeSendCompleteSequence(uint32_t Target_Node_id);
 uint8_t Distributed_NodeRecvCompleteSequence(uint32_t Target_Node_id);
+// update free memory information
+void Distributed_NodeSendFreeBlock(uint32_t Target_Node_id, uint32_t Node_id);
 void UpdateLocalFreeBlock();
 uint8_t Check_Sendable();
 uint8_t Check_Sendable_Without_Limit();
 Distributed_FreeBlock* GetFreeBlockNode(uint32_t Node_id);
 void Distributed_Show_FreeBlock();
-//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Distributed manage task
 void Distributed_ManageTask();
-void test_inline()__attribute__((always_inline));
+uint32_t WaitForFlag(volatile uint32_t* Flag_Addr, uint32_t timeout_time);
+
+// Quick sort in dispatch task
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+void swap(int *a, int *b);
+int Partition(int *arr, int front, int end);
+void QuickSort(int *arr, int front, int end);
+
+// UserDefine distributed / local task ezxample
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 void UserDefine_Distributed_Task(void *task_info);
 void UserDefine_Distributed_Task_matrix_multiplication(void *task_info);
 void UserDefine_Distributed_Task_do_nothing(void *task_info);
@@ -108,32 +127,36 @@ void UserDefine_Distributed_Task_bgr_gray_transform(void *task_info);
 void UserDefine_Distributed_Task_RSA(void *task_info);
 void UserDefine_Distributed_Task_bgr_gray_transform_with_2D_convolution(void *task_info);
 
-//void UserDefine_Local_Task_2d_array_convolution(uint32_t rec_Count);
+void UserDefine_Local_Task_2d_array_convolution(uint32_t rec_Count);
 void UserDefine_Local_Task_RSA(uint32_t rec_Count, uint32_t e_d, uint32_t n, uint32_t array_Data_size);
 void UserDefine_Local_Task_bgr_gray_transform(uint32_t rec_Count);
 void UserDefine_Local_Task_bgr_gray_transform_with_2D_convolution(uint32_t rec_Count);
 
+// UserDefine RSA fuinction
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 uint32_t checkPrime(uint32_t n)__attribute__((always_inline));
 uint32_t findGCD(uint32_t n1, uint32_t n2)__attribute__((always_inline));
 uint32_t powMod(uint32_t a, uint32_t b, uint32_t n)__attribute__((always_inline));
 void public_key(uint32_t* e, uint32_t* d, uint32_t* n, uint32_t p, uint32_t q)__attribute__((always_inline));
 
+// UserDefine other fuinction
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+void test_inline()__attribute__((always_inline));
 void UserDefine_Task();
 void LED_BLUE_TASK();
+
+// other peripheral function, not so important
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-void swap(int *a, int *b);
-int Partition(int *arr, int front, int end);
-void QuickSort(int *arr, int front, int end);
-uint32_t WaitForFlag(volatile uint32_t* Flag_Addr, uint32_t timeout_time);
+void init_dac(void);
+void init_external_interrupt(void);
+void exti0_handler(void);
+void DAC_SetChannel1Data(uint8_t vol);
+void init_usart3(void);
+void usart3_send_char(const char ch);
+void print_sys(char str[255]);
+
+// Distributed_task list
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-volatile uint8_t exti0_flag = 0;
-volatile uint8_t rec_play_buf_fir[200], rec_play_buf_sec[200];
-volatile uint8_t *rece_ptr;
-volatile uint8_t *play_ptr;
-volatile uint8_t receive_count = 0;
-TaskHandle_t TaskHandle_1;
-TaskHandle_t TaskHandle_2;
-TaskHandle_t TaskHandle_3;
 extern BlockLink_t xStart;
 Distributed_TaskHandle_List_t* DStart = NULL;											//	Distributed_task list
 Distributed_TaskHandle_List_t* DRequest = NULL;											//	Distributed_task list
@@ -141,6 +164,8 @@ Distributed_TaskHandle_List_t* DFinish = NULL;											//	Distributed_task Fin
 Distributed_TaskHandle_List_t* DDelete = NULL;											//	Distributed_task Delete list
 Distributed_TaskHandle_List_t* DSendFinish = NULL;										//	Distributed_task DSendFinish list
 
+// Distributed_task event flag, Distributed_ManageTask will check most of these flag to do something
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 uint8_t Msg_event = 0;
 uint32_t Global_Node_id = 0;
 uint32_t Global_Node_count = 0;
@@ -174,6 +199,8 @@ volatile uint32_t SendCompleteFlag = 0;
 volatile uint32_t NodeInvalidFlag = 0;
 extern volatile uint8_t BlockChangeFlag;
 
+// Distributed_task timeout and clock
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 uint32_t tickcount_lo_bound = 0;
 uint32_t tickcount_hi_bound = 0xFFFFFFFF;
 uint32_t Unmerge_Finish_Distributed_task = 0;
@@ -182,6 +209,11 @@ extern uint32_t SystemCoreClock;
 extern uint32_t SystemTICK_RATE_HZ;
 #define Timeout_Tick_Count (SystemTICK_RATE_HZ/timeout_freq)
 #define PrintSendRecv 0
+
+volatile uint8_t exti0_flag = 0;
+TaskHandle_t TaskHandle_1;
+TaskHandle_t TaskHandle_2;
+TaskHandle_t TaskHandle_3;
 
 uint32_t DebugFlag = 0;
 uint32_t SendFlag = 0;
@@ -203,6 +235,8 @@ extern volatile uint8_t ov_rev_ok;
 extern volatile uint8_t ov_frame;
 extern volatile uint32_t datanum;
 extern uint16_t camera_buffer[PIC_WIDTH*PIC_HEIGHT];
+
+// Distributed middleware user interface
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Distributed_Data_t* Distributed_SetTargetData(uint32_t* data_addr, uint32_t data_size, uint32_t split_size){
 	Distributed_Data_t* data_info = pvPortMalloc(sizeof(Distributed_Data_t));
@@ -223,28 +257,6 @@ void Distributed_AddTargetData(Distributed_Data_t* data_info, uint32_t* data_add
 	new_data_info->Data_size = data_size;
 	new_data_info->Split_size = split_size;
 	new_data_info->Next_Distributed_Data = NULL;
-}
-
-Distributed_TaskHandle_List_t* Distributed_GetNode(uint32_t Return_addr, Distributed_TaskHandle_List_t* Lastnode){
-	while(Lastnode != NULL){
-		if (((uint32_t)Lastnode->Instruction_addr<=Return_addr) && (Return_addr<=(uint32_t)Lastnode->Instruction_addr_end)){
-			break;
-		}
-		Lastnode = Lastnode->Next_TaskHandle_List;
-	}
-	return Lastnode;
-}
-
-void ListFreeBlock(){
-	vPortEnterCritical();
-	BlockLink_t* tmp_block = &xStart;
-	printf("------------------------------------------------------------\r\n");
-	while((tmp_block->pxNextFreeBlock)!=NULL){
-		tmp_block = tmp_block->pxNextFreeBlock;
-		printf("Free  xBlockAddr	0x%lX, xBlockSize:	0x%lX\r\n", (uint32_t)tmp_block, (uint32_t)tmp_block->xBlockSize);
-	}
-	printf("------------------------------------------------------------\r\n");
-	vPortExitCritical();
 }
 
 Distributed_Result* Distributed_CreateTask(void* task, Distributed_Data_t* data_info, uint32_t Stack_size, uint32_t barrier){
@@ -319,178 +331,8 @@ void Distributed_FreeResult(Distributed_Data_t* Distributed_Data){
 	portEXIT_CRITICAL();
 }
 
-void Distributed_LocalSubtaskDone(Distributed_TaskHandle_List_t* s, uint32_t* Result_Data_addr, uint32_t Result_Data_size){
-	record_subtask_end_time = xTaskGetTickCount();
-	global_record_time_dispatch_array[28] = xTaskGetTickCount() - global_record_time;
-	vPortEnterCritical();
-	uint32_t Subtask_star_addr = (uint32_t)s;
-	uint32_t Subtask_total_size = s->Subtask_all_size;
-	Distributed_TaskHandle_List_t* tmp_NewDTaskControlBlock = pvPortMalloc(sizeof(Distributed_TaskHandle_List_t) + Result_Data_size*sizeof(uint32_t));					//	Copy a DTCB and copy from sour DTCB
-	if(tmp_NewDTaskControlBlock == NULL){
-		uint32_t mallocsize = (sizeof(Distributed_TaskHandle_List_t) + Result_Data_size*sizeof(uint32_t));
-		uint32_t largestblock = 0;
-		BlockLink_t* block_ndoe = &xStart;
-		while(block_ndoe != NULL) {
-			if(block_ndoe->xBlockSize > largestblock)
-				largestblock = block_ndoe->xBlockSize;
-			block_ndoe = block_ndoe->pxNextFreeBlock;
-		}
-		//printf("Malloc size: 0x%lX, but largest free block: 0x%lX\r\n", mallocsize, largestblock);
-		//printf("NOt enough size to malloc in Distributed_LocalSubtaskDone\r\n");
-		Distributed_TaskHandle_List_t tmp_DTCB;
-		for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++)
-			*(((uint8_t*)&tmp_DTCB)+i) = *((uint8_t*)s+i);
-		vPortFree(s);
-		tmp_NewDTaskControlBlock = pvPortMalloc(mallocsize);
-		for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++)
-			*((uint8_t*)tmp_NewDTaskControlBlock+i) = *(((uint8_t*)&tmp_DTCB)+i);
-	}
-	else{
-		for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++)
-			*((uint8_t*)tmp_NewDTaskControlBlock+i) = *((uint8_t*)s+i);
-		vPortFree(s);																													//	Free sour DTCB
-	}
-	tmp_NewDTaskControlBlock->Next_TaskHandle_List = NULL;
-	tmp_NewDTaskControlBlock->Data_addr = (uint32_t*)((uint8_t*)tmp_NewDTaskControlBlock + sizeof(Distributed_TaskHandle_List_t));											//	Copy result from sour data
-	tmp_NewDTaskControlBlock->Data_number = Result_Data_size;
-	//printf("\r\n	Result data, Subtask id: 0x%lX, Result_Data_size: 0x%lX\r\n", tmp_NewDTaskControlBlock->DSubTask_id, Result_Data_size);
-	for(uint32_t i=0;i<Result_Data_size;i++)
-		*(tmp_NewDTaskControlBlock->Data_addr+i) = *(Result_Data_addr+i);
-
-	if (!(((uint32_t)Result_Data_addr < (Subtask_star_addr+Subtask_total_size) ) && ((uint32_t)Result_Data_addr >= Subtask_star_addr))){
-		vPortFree(Result_Data_addr);
-	}
-
-	uint32_t* Result_addr = 0;
-	uint32_t Result_size = 0;
-	uint32_t allsubtaskdoneflag = 0;
-	tmp_NewDTaskControlBlock->Finish_Flag = 1;
-	Distributed_InsertFinishNode(tmp_NewDTaskControlBlock);																			//	Inser to Fiish DTCB list
-	if(tmp_NewDTaskControlBlock->Source_Processor_id == Global_Node_id){															//	Check Task done, DStart list without task_id(all subtask done)
-		uint32_t tmp_count = 0;
-		Distributed_TaskHandle_List_t* check_Lastnode = DFinish;
-		while(check_Lastnode != NULL){
-			if((check_Lastnode->DTask_id == tmp_NewDTaskControlBlock->DTask_id) && (check_Lastnode->Source_Processor_id == Global_Node_id)){
-				tmp_count++;
-				if(tmp_NewDTaskControlBlock->Barrier > 0)
-					Result_size += check_Lastnode->Data_number;
-				if(tmp_count >= tmp_NewDTaskControlBlock->DSubTask_number){
-					if(tmp_NewDTaskControlBlock->Barrier > 0)
-						allsubtaskdoneflag = 1;
-					else{
-						if(*(tmp_NewDTaskControlBlock->barrier_flag) == 1){
-							TaskDoneFlag = tmp_NewDTaskControlBlock->DTask_id;	//	???	Should add with distributed_getresult
-							//printf("TaskDoneFlag in Distributed_LocalSubtaskDone: 0x%lX, barrier_flag: 0x%lX, *(barrier_flag): 0x%lX\r\n", TaskDoneFlag, (uint32_t)tmp_NewDTaskControlBlock->barrier_flag, *(tmp_NewDTaskControlBlock->barrier_flag));
-						}
-						else{
-							*(tmp_NewDTaskControlBlock->barrier_flag) = 2;
-						}
-
-					}
-					break;
-				}
-			}
-			check_Lastnode = check_Lastnode->Next_TaskHandle_List;
-		}
-	}
-	if(allsubtaskdoneflag > 0){
-		Result_addr = pvPortMalloc(Result_size*sizeof(uint32_t));
-		uint32_t Subtask_id_size[tmp_NewDTaskControlBlock->DSubTask_number];
-		Distributed_TaskHandle_List_t* check_Lastnode = DFinish;
-		while(check_Lastnode != NULL){
-			if((check_Lastnode->DTask_id == tmp_NewDTaskControlBlock->DTask_id) && (check_Lastnode->Source_Processor_id == Global_Node_id)){
-				Subtask_id_size[check_Lastnode->DSubTask_id] = check_Lastnode->Data_number;
-			}
-			check_Lastnode = check_Lastnode->Next_TaskHandle_List;
-		}
-		check_Lastnode = DFinish;
-		while(check_Lastnode != NULL){
-			if((check_Lastnode->DTask_id == tmp_NewDTaskControlBlock->DTask_id) && (check_Lastnode->Source_Processor_id == Global_Node_id)){
-				uint32_t* Dest_Result_addr = Result_addr;
-				for(uint32_t i=0;i<(check_Lastnode->DSubTask_id);i++)
-					Dest_Result_addr += Subtask_id_size[i];
-				for(uint32_t i=0;i<check_Lastnode->Data_number;i++)
-					*(Dest_Result_addr+i) = *(check_Lastnode->Data_addr+i);
-				if(check_Lastnode->DSubTask_id != 0)
-					vPortFree(check_Lastnode->Data_addr);
-				check_Lastnode->Data_addr = Dest_Result_addr;
-			}
-			check_Lastnode = check_Lastnode->Next_TaskHandle_List;
-		}
-		TaskDoneFlag = tmp_NewDTaskControlBlock->DTask_id;
-		//printf("TaskDoneFlag in LocalSubtaskDone: 0x%lX\r\n", TaskDoneFlag);
-	}
-	/*
-	printf("Subtask 0x%lX finish, Addr: 0x%lX, Size: 0x%lX\r\n", (uint32_t)tmp_NewDTaskControlBlock->DSubTask_id, (uint32_t)tmp_NewDTaskControlBlock->Data_addr, (uint32_t)tmp_NewDTaskControlBlock->Data_size);
-	for(uint32_t i=0;i<5;i++)
-		printf("%d, 0x%lX, 0x%lX, %d, 0x%lX, 0x%lX\r\n", (int)i, (uint32_t)(tmp_NewDTaskControlBlock->Data_addr+i), *(tmp_NewDTaskControlBlock->Data_addr+i), (int)(tmp_NewDTaskControlBlock->Data_number-5+i), (uint32_t)(tmp_NewDTaskControlBlock->Data_addr+tmp_NewDTaskControlBlock->Data_number-5+i), *(tmp_NewDTaskControlBlock->Data_addr+tmp_NewDTaskControlBlock->Data_number-5+i));
-	*/
-	vPortExitCritical();
-	vTaskDelete(NULL);																												//	Kill local task(parameter eith NULL)
-	printf("Entry while loop forever, Should not be here\r\n");
-	while(1);
-}
-
-void Distributed_InsertFinishNode(Distributed_TaskHandle_List_t* NewDTaskControlBlock){
-	Distributed_TaskHandle_List_t* Lastnode = DFinish;
-	Distributed_TaskHandle_List_t* pre_Lastnode = Lastnode;
-	NewDTaskControlBlock->Next_TaskHandle_List = NULL;
-	while((Lastnode != NULL) && ((Lastnode->Source_Processor_id != NewDTaskControlBlock->Source_Processor_id) || (Lastnode->DTask_id != NewDTaskControlBlock->DTask_id))){
-		pre_Lastnode = Lastnode;
-		Lastnode = Lastnode->Next_TaskHandle_List;
-	}
-	if(Lastnode == NULL){
-		NewDTaskControlBlock->Next_TaskHandle_List = NULL;
-		if(Lastnode == DFinish){
-			DFinish = NewDTaskControlBlock;
-		}
-		else{
-			pre_Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
-		}
-	}
-	else{
-		while((Lastnode != NULL) && (Lastnode->Source_Processor_id == NewDTaskControlBlock->Source_Processor_id) &&  (Lastnode->DTask_id == NewDTaskControlBlock->DTask_id) && (Lastnode->DSubTask_id < NewDTaskControlBlock->DSubTask_id)){
-			pre_Lastnode = Lastnode;
-			Lastnode = Lastnode->Next_TaskHandle_List;
-		}
-		if((Lastnode == DFinish) && (Lastnode->DSubTask_id >= NewDTaskControlBlock->DSubTask_id)){
-			NewDTaskControlBlock->Next_TaskHandle_List = Lastnode;
-			DFinish = NewDTaskControlBlock;
-		}
-		else{
-			NewDTaskControlBlock->Next_TaskHandle_List = pre_Lastnode->Next_TaskHandle_List;
-			pre_Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
-		}
-	}
-}
-
-uint32_t Got_sp_minus_immediate(uint32_t addr){
-	uint32_t sp_T1_bit_mask = 0xB080;
-	uint32_t sp_T2_bit_mask = 0xF1AD0D00;
-	uint32_t sp_T3_bit_mask = 0xF2AD0D00;
-	uint32_t immediate = 0;
-	uint32_t tmp = *((uint32_t *)addr);
-	uint32_t tmp_high = tmp >> 16;
-	uint32_t tmp_low = tmp << 16;
-	tmp = tmp_high|tmp_low;
-	if ((tmp & 0xB0FFFFFF)==tmp){
-		tmp = (tmp>>16);
-		if ((tmp &sp_T1_bit_mask)==sp_T1_bit_mask){
-			immediate = (tmp & 0x7F)<<2;
-		}
-	}
-	else {
-		if ((tmp &sp_T2_bit_mask)==sp_T2_bit_mask){
-			uint32_t tmp_immediate = ((tmp & 0x4000000)>>15)|((tmp & 0x7000)>>4)|(tmp & 0xFF);
-			immediate = ((0x80|(tmp_immediate&0x7F))>>(tmp_immediate>>7))|((0x80|(tmp_immediate&0x7F))<<(32-(tmp_immediate>>7)));
-		}
-		else if ((tmp &sp_T3_bit_mask)==sp_T3_bit_mask){
-			immediate = ((tmp & 0x4000000)>>15)|((tmp & 0x7000)>>4)|(tmp & 0xFF);
-		}
-	}
-	return immediate;
-}
-
+// Distributed middleware dispatch function
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_t sp, uint32_t lr){
 	uint8_t Get_key = 0;
 	uint32_t get_key_flag = 0;
@@ -1146,6 +988,200 @@ Distributed_TaskHandle_List_t* Distributed_DispatchTask(void* data_info, uint32_
 	return Subscriber_task;
 }
 
+Distributed_TaskHandle_List_t* Distributed_GetNode(uint32_t Return_addr, Distributed_TaskHandle_List_t* Lastnode){
+	while(Lastnode != NULL){
+		if (((uint32_t)Lastnode->Instruction_addr<=Return_addr) && (Return_addr<=(uint32_t)Lastnode->Instruction_addr_end)){
+			break;
+		}
+		Lastnode = Lastnode->Next_TaskHandle_List;
+	}
+	return Lastnode;
+}
+
+uint32_t Got_sp_minus_immediate(uint32_t addr){
+	uint32_t sp_T1_bit_mask = 0xB080;
+	uint32_t sp_T2_bit_mask = 0xF1AD0D00;
+	uint32_t sp_T3_bit_mask = 0xF2AD0D00;
+	uint32_t immediate = 0;
+	uint32_t tmp = *((uint32_t *)addr);
+	uint32_t tmp_high = tmp >> 16;
+	uint32_t tmp_low = tmp << 16;
+	tmp = tmp_high|tmp_low;
+	if ((tmp & 0xB0FFFFFF)==tmp){
+		tmp = (tmp>>16);
+		if ((tmp &sp_T1_bit_mask)==sp_T1_bit_mask){
+			immediate = (tmp & 0x7F)<<2;
+		}
+	}
+	else {
+		if ((tmp &sp_T2_bit_mask)==sp_T2_bit_mask){
+			uint32_t tmp_immediate = ((tmp & 0x4000000)>>15)|((tmp & 0x7000)>>4)|(tmp & 0xFF);
+			immediate = ((0x80|(tmp_immediate&0x7F))>>(tmp_immediate>>7))|((0x80|(tmp_immediate&0x7F))<<(32-(tmp_immediate>>7)));
+		}
+		else if ((tmp &sp_T3_bit_mask)==sp_T3_bit_mask){
+			immediate = ((tmp & 0x4000000)>>15)|((tmp & 0x7000)>>4)|(tmp & 0xFF);
+		}
+	}
+	return immediate;
+}
+
+void Distributed_LocalSubtaskDone(Distributed_TaskHandle_List_t* s, uint32_t* Result_Data_addr, uint32_t Result_Data_size){
+	record_subtask_end_time = xTaskGetTickCount();
+	global_record_time_dispatch_array[28] = xTaskGetTickCount() - global_record_time;
+	vPortEnterCritical();
+	uint32_t Subtask_star_addr = (uint32_t)s;
+	uint32_t Subtask_total_size = s->Subtask_all_size;
+	Distributed_TaskHandle_List_t* tmp_NewDTaskControlBlock = pvPortMalloc(sizeof(Distributed_TaskHandle_List_t) + Result_Data_size*sizeof(uint32_t));					//	Copy a DTCB and copy from sour DTCB
+	if(tmp_NewDTaskControlBlock == NULL){
+		uint32_t mallocsize = (sizeof(Distributed_TaskHandle_List_t) + Result_Data_size*sizeof(uint32_t));
+		uint32_t largestblock = 0;
+		BlockLink_t* block_ndoe = &xStart;
+		while(block_ndoe != NULL) {
+			if(block_ndoe->xBlockSize > largestblock)
+				largestblock = block_ndoe->xBlockSize;
+			block_ndoe = block_ndoe->pxNextFreeBlock;
+		}
+		//printf("Malloc size: 0x%lX, but largest free block: 0x%lX\r\n", mallocsize, largestblock);
+		//printf("NOt enough size to malloc in Distributed_LocalSubtaskDone\r\n");
+		Distributed_TaskHandle_List_t tmp_DTCB;
+		for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++)
+			*(((uint8_t*)&tmp_DTCB)+i) = *((uint8_t*)s+i);
+		vPortFree(s);
+		tmp_NewDTaskControlBlock = pvPortMalloc(mallocsize);
+		for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++)
+			*((uint8_t*)tmp_NewDTaskControlBlock+i) = *(((uint8_t*)&tmp_DTCB)+i);
+	}
+	else{
+		for(uint8_t i=0;i<sizeof(Distributed_TaskHandle_List_t);i++)
+			*((uint8_t*)tmp_NewDTaskControlBlock+i) = *((uint8_t*)s+i);
+		vPortFree(s);																													//	Free sour DTCB
+	}
+	tmp_NewDTaskControlBlock->Next_TaskHandle_List = NULL;
+	tmp_NewDTaskControlBlock->Data_addr = (uint32_t*)((uint8_t*)tmp_NewDTaskControlBlock + sizeof(Distributed_TaskHandle_List_t));											//	Copy result from sour data
+	tmp_NewDTaskControlBlock->Data_number = Result_Data_size;
+	//printf("\r\n	Result data, Subtask id: 0x%lX, Result_Data_size: 0x%lX\r\n", tmp_NewDTaskControlBlock->DSubTask_id, Result_Data_size);
+	for(uint32_t i=0;i<Result_Data_size;i++)
+		*(tmp_NewDTaskControlBlock->Data_addr+i) = *(Result_Data_addr+i);
+
+	if (!(((uint32_t)Result_Data_addr < (Subtask_star_addr+Subtask_total_size) ) && ((uint32_t)Result_Data_addr >= Subtask_star_addr))){
+		vPortFree(Result_Data_addr);
+	}
+
+	uint32_t* Result_addr = 0;
+	uint32_t Result_size = 0;
+	uint32_t allsubtaskdoneflag = 0;
+	tmp_NewDTaskControlBlock->Finish_Flag = 1;
+	Distributed_InsertFinishNode(tmp_NewDTaskControlBlock);																			//	Inser to Fiish DTCB list
+	if(tmp_NewDTaskControlBlock->Source_Processor_id == Global_Node_id){															//	Check Task done, DStart list without task_id(all subtask done)
+		uint32_t tmp_count = 0;
+		Distributed_TaskHandle_List_t* check_Lastnode = DFinish;
+		while(check_Lastnode != NULL){
+			if((check_Lastnode->DTask_id == tmp_NewDTaskControlBlock->DTask_id) && (check_Lastnode->Source_Processor_id == Global_Node_id)){
+				tmp_count++;
+				if(tmp_NewDTaskControlBlock->Barrier > 0)
+					Result_size += check_Lastnode->Data_number;
+				if(tmp_count >= tmp_NewDTaskControlBlock->DSubTask_number){
+					if(tmp_NewDTaskControlBlock->Barrier > 0)
+						allsubtaskdoneflag = 1;
+					else{
+						if(*(tmp_NewDTaskControlBlock->barrier_flag) == 1){
+							TaskDoneFlag = tmp_NewDTaskControlBlock->DTask_id;	//	???	Should add with distributed_getresult
+							//printf("TaskDoneFlag in Distributed_LocalSubtaskDone: 0x%lX, barrier_flag: 0x%lX, *(barrier_flag): 0x%lX\r\n", TaskDoneFlag, (uint32_t)tmp_NewDTaskControlBlock->barrier_flag, *(tmp_NewDTaskControlBlock->barrier_flag));
+						}
+						else{
+							*(tmp_NewDTaskControlBlock->barrier_flag) = 2;
+						}
+
+					}
+					break;
+				}
+			}
+			check_Lastnode = check_Lastnode->Next_TaskHandle_List;
+		}
+	}
+	if(allsubtaskdoneflag > 0){
+		Result_addr = pvPortMalloc(Result_size*sizeof(uint32_t));
+		uint32_t Subtask_id_size[tmp_NewDTaskControlBlock->DSubTask_number];
+		Distributed_TaskHandle_List_t* check_Lastnode = DFinish;
+		while(check_Lastnode != NULL){
+			if((check_Lastnode->DTask_id == tmp_NewDTaskControlBlock->DTask_id) && (check_Lastnode->Source_Processor_id == Global_Node_id)){
+				Subtask_id_size[check_Lastnode->DSubTask_id] = check_Lastnode->Data_number;
+			}
+			check_Lastnode = check_Lastnode->Next_TaskHandle_List;
+		}
+		check_Lastnode = DFinish;
+		while(check_Lastnode != NULL){
+			if((check_Lastnode->DTask_id == tmp_NewDTaskControlBlock->DTask_id) && (check_Lastnode->Source_Processor_id == Global_Node_id)){
+				uint32_t* Dest_Result_addr = Result_addr;
+				for(uint32_t i=0;i<(check_Lastnode->DSubTask_id);i++)
+					Dest_Result_addr += Subtask_id_size[i];
+				for(uint32_t i=0;i<check_Lastnode->Data_number;i++)
+					*(Dest_Result_addr+i) = *(check_Lastnode->Data_addr+i);
+				if(check_Lastnode->DSubTask_id != 0)
+					vPortFree(check_Lastnode->Data_addr);
+				check_Lastnode->Data_addr = Dest_Result_addr;
+			}
+			check_Lastnode = check_Lastnode->Next_TaskHandle_List;
+		}
+		TaskDoneFlag = tmp_NewDTaskControlBlock->DTask_id;
+		//printf("TaskDoneFlag in LocalSubtaskDone: 0x%lX\r\n", TaskDoneFlag);
+	}
+	/*
+	printf("Subtask 0x%lX finish, Addr: 0x%lX, Size: 0x%lX\r\n", (uint32_t)tmp_NewDTaskControlBlock->DSubTask_id, (uint32_t)tmp_NewDTaskControlBlock->Data_addr, (uint32_t)tmp_NewDTaskControlBlock->Data_size);
+	for(uint32_t i=0;i<5;i++)
+		printf("%d, 0x%lX, 0x%lX, %d, 0x%lX, 0x%lX\r\n", (int)i, (uint32_t)(tmp_NewDTaskControlBlock->Data_addr+i), *(tmp_NewDTaskControlBlock->Data_addr+i), (int)(tmp_NewDTaskControlBlock->Data_number-5+i), (uint32_t)(tmp_NewDTaskControlBlock->Data_addr+tmp_NewDTaskControlBlock->Data_number-5+i), *(tmp_NewDTaskControlBlock->Data_addr+tmp_NewDTaskControlBlock->Data_number-5+i));
+	*/
+	vPortExitCritical();
+	vTaskDelete(NULL);																												//	Kill local task(parameter eith NULL)
+	printf("Entry while loop forever, Should not be here\r\n");
+	while(1);
+}
+
+void Distributed_InsertFinishNode(Distributed_TaskHandle_List_t* NewDTaskControlBlock){
+	Distributed_TaskHandle_List_t* Lastnode = DFinish;
+	Distributed_TaskHandle_List_t* pre_Lastnode = Lastnode;
+	NewDTaskControlBlock->Next_TaskHandle_List = NULL;
+	while((Lastnode != NULL) && ((Lastnode->Source_Processor_id != NewDTaskControlBlock->Source_Processor_id) || (Lastnode->DTask_id != NewDTaskControlBlock->DTask_id))){
+		pre_Lastnode = Lastnode;
+		Lastnode = Lastnode->Next_TaskHandle_List;
+	}
+	if(Lastnode == NULL){
+		NewDTaskControlBlock->Next_TaskHandle_List = NULL;
+		if(Lastnode == DFinish){
+			DFinish = NewDTaskControlBlock;
+		}
+		else{
+			pre_Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
+		}
+	}
+	else{
+		while((Lastnode != NULL) && (Lastnode->Source_Processor_id == NewDTaskControlBlock->Source_Processor_id) &&  (Lastnode->DTask_id == NewDTaskControlBlock->DTask_id) && (Lastnode->DSubTask_id < NewDTaskControlBlock->DSubTask_id)){
+			pre_Lastnode = Lastnode;
+			Lastnode = Lastnode->Next_TaskHandle_List;
+		}
+		if((Lastnode == DFinish) && (Lastnode->DSubTask_id >= NewDTaskControlBlock->DSubTask_id)){
+			NewDTaskControlBlock->Next_TaskHandle_List = Lastnode;
+			DFinish = NewDTaskControlBlock;
+		}
+		else{
+			NewDTaskControlBlock->Next_TaskHandle_List = pre_Lastnode->Next_TaskHandle_List;
+			pre_Lastnode->Next_TaskHandle_List = NewDTaskControlBlock;
+		}
+	}
+}
+
+void ListFreeBlock(){
+	vPortEnterCritical();
+	BlockLink_t* tmp_block = &xStart;
+	printf("------------------------------------------------------------\r\n");
+	while((tmp_block->pxNextFreeBlock)!=NULL){
+		tmp_block = tmp_block->pxNextFreeBlock;
+		printf("Free  xBlockAddr	0x%lX, xBlockSize:	0x%lX\r\n", (uint32_t)tmp_block, (uint32_t)tmp_block->xBlockSize);
+	}
+	printf("------------------------------------------------------------\r\n");
+	vPortExitCritical();
+}
+
 void svc_handler_c(uint32_t LR, uint32_t MSP){
 	uint32_t *stack_frame_ptr;
 	if (LR & 0x4){
@@ -1206,294 +1242,7 @@ void svc_handler_c(uint32_t LR, uint32_t MSP){
 	}
 }
 
-//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-void init_external_interrupt(void){
-	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTA));
-	//GPIO Configurations
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_1_BIT(0));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA)+ GPIOx_MODER_OFFSET, MODERy_0_BIT(0));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA)+ GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(0));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA)+ GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(0));
-
-	//RCC Enable SYSCFG
-	SET_BIT(SYSCFG_BASE + RCC_APB2ENR_OFFSET, SYSCFGEN_BIT);
-
-	//SYSCFG Configurations
-	WRITE_BITS(SYSCFG_BASE + SYSCFG_EXTICR1_OFFSET, EXTI0_3_BIT, EXTI0_0_BIT, 0);
-
-	SET_BIT(EXTI_BASE + EXTI_IMR_OFFSET, 0);
-	SET_BIT(EXTI_BASE + EXTI_RTSR_OFFSET, 0);
-	SET_BIT(EXTI_BASE + EXTI_FTSR_OFFSET, 0);
-	SET_BIT(EXTI_BASE + EXTI_PR_OFFSET, 0);
-	SET_BIT(NVIC_ISER_BASE + NVIC_ISERn_OFFSET(0), 6); //IRQ6
-}
-
-void exti0_handler_c(uint32_t LR, uint32_t MSP)
-{
-	#if(SENDIMAGE == 1)
-	exti0_flag = 1;
-	#endif
-	uint32_t *stack_frame_ptr;
-	if (LR & 0x4){
-		stack_frame_ptr = (uint32_t *)read_psp();
-	}
-	else{
-		stack_frame_ptr = (uint32_t *)MSP;
-	}
-	uint32_t stacked_return_addr = *(stack_frame_ptr+6);
-	uint32_t stacked_LR = *(stack_frame_ptr+5);
-	#if(SENDIMAGE == 0)
-	printf("DebugFlag: 0x%lX, SendFlag: 0x%lX, RecvFlag: 0x%lX, PublishFlag: 0x%lX, Return_addr: 0x%lX, LR: 0x%lX\r\n", DebugFlag, SendFlag, RecvFlag, PublishFlag, stacked_return_addr, stacked_LR);
-	#endif
-	SET_BIT(EXTI_BASE + EXTI_PR_OFFSET, 0);
-}
-
-
-void init_dac(void){
-	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTA));
-	SET_BIT(RCC_BASE + RCC_APB1ENR_OFFSET, DACEN);
-
-	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_1_BIT(4));
-	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_0_BIT(4));
-
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(4));
-	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(4));
-
-	CLEAR_BIT(DAC_BASE + DAC_CR_OFFSET, DAC_CR_DMAUDRIE1);
-	CLEAR_BIT(DAC_BASE + DAC_CR_OFFSET, DAC_CR_DMAEN1);
-	WRITE_BITS(DAC_BASE + DAC_CR_OFFSET, DAC_CR_MAMP1_3_BIT, DAC_CR_MAMP1_0_BIT, 0);
-	WRITE_BITS(DAC_BASE + DAC_CR_OFFSET, DAC_CR_WAVE1_1_BIT, DAC_CR_WAVE1_0_BIT, 0);
-	WRITE_BITS(DAC_BASE + DAC_CR_OFFSET, DAC_CR_TSEL1_2_BIT, DAC_CR_TSEL1_0_BIT, 7);
-	CLEAR_BIT(DAC_BASE + DAC_CR_OFFSET, DAC_CR_TEN1);
-	SET_BIT(DAC_BASE + DAC_CR_OFFSET, DAC_CR_BOFF1);
-	SET_BIT(DAC_BASE + DAC_CR_OFFSET, DAC_CR_EN1);
-	DAC_SetChannel1Data(0);
-}
-
-void DAC_SetChannel1Data(uint8_t vol){
-	WRITE_BITS( DAC_BASE + DAC_DHR8R1_OFFSET, DAC_DHR8R1_DACC1DHR_7_BIT, DAC_DHR8R1_DACC1DHR_0_BIT, vol);
-}
-
-void init_timer4(void){
-	SET_BIT(RCC_BASE + RCC_APB1ENR_OFFSET, TIM4EN);
-	WRITE_BITS(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_CKD_1_BIT, TIMx_CKD_0_BIT, 0b00);
-	SET_BIT(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_ARPE);
-	WRITE_BITS(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_CMS_1_BIT, TIMx_CMS_0_BIT, 0b00);
-	CLEAR_BIT(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_DIR);
-	CLEAR_BIT(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_OPM);
-	CLEAR_BIT(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_URS);
-	CLEAR_BIT(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_UDIS);
-	WRITE_BITS(TIM4_BASE + TIMx_PSC_OFFSET, TIMx_PSC_15_BIT, TIMx_PSC_0_BIT, 3);
-	WRITE_BITS(TIM4_BASE + TIMx_ARR_OFFSET, TIMx_ARR_15_BIT, TIMx_ARR_0_BIT, 952);
-	SET_BIT(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_CEN);
-}
-
-void init_usart2(void){
-	//RCC EN GPIO
-	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTD));
-
-	//MODER => 10
-	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_1_BIT(5));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_0_BIT(5));
-
-	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_1_BIT(6));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_0_BIT(6));
-
-	//OT => 0
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OTYPER_OFFSET, OTy_BIT(5));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OTYPER_OFFSET, OTy_BIT(6));
-
-	//OSPEEDR => 10
-	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(5));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(5));
-
-	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(6));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(6));
-
-	//PUPDR = 00 => No pull-up, pull-down
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(6));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(6));
-
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(5));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(5));
-
-	//AF sel
-	WRITE_BITS(GPIO_BASE(GPIO_PORTD) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(5), AFRLy_0_BIT(5), 8);
-	WRITE_BITS(GPIO_BASE(GPIO_PORTD) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(6), AFRLy_0_BIT(6), 8);
-
-	//RCC EN USART2
-	SET_BIT(RCC_BASE + RCC_APB1ENR_OFFSET, USART2EN);
-
-	//baud rate
-	const unsigned int BAUDRATE = 115200;
-	//const unsigned int BAUDRATE = 529200;
-	//const unsigned int BAUDRATE = 115200;
-	const unsigned int SYSCLK_MHZ = 168;
-	const double USARTDIV = SYSCLK_MHZ * 1.0e6 / 8 / 2 / BAUDRATE;
-
-	const uint32_t DIV_MANTISSA = (uint32_t)USARTDIV;
-	const uint32_t DIV_FRACTION = (uint32_t)((USARTDIV - DIV_MANTISSA) * 16);
-
-	WRITE_BITS(USART2_BASE + USART_BRR_OFFSET, DIV_MANTISSA_11_BIT, DIV_MANTISSA_0_BIT, DIV_MANTISSA);
-	WRITE_BITS(USART2_BASE + USART_BRR_OFFSET, DIV_FRACTION_3_BIT, DIV_FRACTION_0_BIT, DIV_FRACTION);
-
-	//usart2 enable
-	SET_BIT(USART2_BASE + USART_CR1_OFFSET, UE_BIT);
-
-	//set TE
-	SET_BIT(USART2_BASE + USART_CR1_OFFSET, TE_BIT);
-
-	//set RE
-	SET_BIT(USART2_BASE + USART_CR1_OFFSET, RE_BIT);
-
-	//set RXNEIE
-	SET_BIT(USART2_BASE + USART_CR1_OFFSET, RXNEIE_BIT);
-
-	//set NVIC
-	//SET_BIT(NVIC_ISER_BASE + NVIC_ISERn_OFFSET(1), 6); //IRQ37 => (m+(32*n)) | m=5, n=1
-}
-
-void usart2_send_char(const char ch){
-	//wait util TXE == 1
-	while (!READ_BIT(USART2_BASE + USART_SR_OFFSET, TXE_BIT))
-		;
-	REG(USART2_BASE + USART_DR_OFFSET) = (uint8_t)ch;
-}
-
-void usart2_handler(void){
-	if (READ_BIT(USART2_BASE + USART_SR_OFFSET, ORE_BIT))
-	{
-		char ch = (char)REG(USART2_BASE + USART_DR_OFFSET);
-		for (unsigned int i = 0; i < 5000000; i++)
-			;
-		if (ch == '\r')
-			usart2_send_char('\n');
-		usart2_send_char(ch);
-		usart2_send_char('~');
-	}
-	else if (READ_BIT(USART2_BASE + USART_SR_OFFSET, RXNE_BIT))
-	{
-		char ch = (char)REG(USART2_BASE + USART_DR_OFFSET);
-		if (ch == '\r')
-			usart2_send_char('\n');
-		usart2_send_char(ch);
-	}
-}
-
-void init_usart3(void){
-	//RCC EN GPIO
-	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTD));
-
-	//MODER => 10
-	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_1_BIT(8));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_0_BIT(8));
-
-	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_1_BIT(9));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_0_BIT(9));
-
-	//OT => 0
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OTYPER_OFFSET, OTy_BIT(8));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OTYPER_OFFSET, OTy_BIT(9));
-
-	//OSPEEDR => 10
-	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(8));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(8));
-
-	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(9));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(9));
-
-	//PUPDR = 00 => No pull-up, pull-down
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(8));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(8));
-
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(9));
-	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(9));
-
-	//AF sel
-	WRITE_BITS(GPIO_BASE(GPIO_PORTD) + GPIOx_AFRH_OFFSET, AFRHy_3_BIT(8), AFRHy_0_BIT(8), 7);
-	WRITE_BITS(GPIO_BASE(GPIO_PORTD) + GPIOx_AFRH_OFFSET, AFRHy_3_BIT(9), AFRHy_0_BIT(9), 7);
-
-	//RCC EN USART2
-	SET_BIT(RCC_BASE + RCC_APB1ENR_OFFSET, USART3EN);
-
-	//baud rate
-	const unsigned int BAUDRATE = 115200;
-	const unsigned int SYSCLK_MHZ = 168;
-	const double USARTDIV = SYSCLK_MHZ * 1.0e6 / 8 / 2 / BAUDRATE;
-
-	const uint32_t DIV_MANTISSA = (uint32_t)USARTDIV;
-	const uint32_t DIV_FRACTION = (uint32_t)((USARTDIV - DIV_MANTISSA) * 16);
-
-	WRITE_BITS(USART3_BASE + USART_BRR_OFFSET, DIV_MANTISSA_11_BIT, DIV_MANTISSA_0_BIT, DIV_MANTISSA);
-	WRITE_BITS(USART3_BASE + USART_BRR_OFFSET, DIV_FRACTION_3_BIT, DIV_FRACTION_0_BIT, DIV_FRACTION);
-
-	//usart2 enable
-	SET_BIT(USART3_BASE + USART_CR1_OFFSET, UE_BIT);
-
-	//set TE
-	SET_BIT(USART3_BASE + USART_CR1_OFFSET, TE_BIT);
-
-	//set RE
-	SET_BIT(USART3_BASE + USART_CR1_OFFSET, RE_BIT);
-
-	//set RXNEIE
-	SET_BIT(USART3_BASE + USART_CR1_OFFSET, RXNEIE_BIT);
-
-	//set NVIC
-	//SET_BIT(NVIC_ISER_BASE + NVIC_ISERn_OFFSET(1), 5); //IRQ71 => (m+(32*n)) | m=7, n=2
-}
-
-void usart3_send_char(const char ch){
-	//wait util TXE == 1
-	while (!READ_BIT(USART3_BASE + USART_SR_OFFSET, TXE_BIT))
-		;
-	REG(USART3_BASE + USART_DR_OFFSET) = (uint8_t)ch;
-}
-
-void usart3_handler(void){
-
-	if (READ_BIT(USART3_BASE + USART_SR_OFFSET, ORE_BIT))
-	{
-		/*
-		char ch = (char)REG(USART2_BASE + USART_DR_OFFSET);
-
-		for (unsigned int i = 0; i < 5000000; i++)
-			;
-
-		if (ch == '\r')
-			usart2_send_char('\n');
-
-		usart2_send_char(ch);
-		usart2_send_char('~');
-		*/
-		usart2_send_char(receive_count);
-		receive_count = 0;
-	}
-
-	else if (READ_BIT(USART3_BASE + USART_SR_OFFSET, RXNE_BIT))
-	{
-		/*
-		char ch = (char)REG(USART2_BASE + USART_DR_OFFSET);
-		if (ch == '\r')
-			usart2_send_char('\n');
-		usart2_send_char(ch);
-		*/
-		*(rece_ptr+receive_count) = (uint8_t)REG(USART3_BASE + USART_DR_OFFSET);
-		receive_count++;
-		if (receive_count>= 200){
-			if(rece_ptr==rec_play_buf_fir){
-				rece_ptr = rec_play_buf_sec;
-				play_ptr = rec_play_buf_fir;
-			}
-			else if(rece_ptr==rec_play_buf_sec){
-				rece_ptr = rec_play_buf_fir;
-				play_ptr = rec_play_buf_sec;
-			}
-			usart3_send_char(receive_count);
-			receive_count = 0;
-		}
-	}
-}
+// Distributed middleware ethernet function
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 uint8_t init_eth(uint16_t PHYAddress, uint8_t *Addr){
 	SET_BIT(NVIC_ISER_BASE + NVIC_ISERn_OFFSET(1), 29); //IRQ61 => (m+(32*n)) | m=29, n=1
@@ -2482,7 +2231,922 @@ void eth_handler(void){
 	SET_BIT(ETHERNET_MAC_BASE + ETH_DMASR_OFFSET, NIS);
 	taskEXIT_CRITICAL_FROM_ISR(uxSavedInterruptStatus);
 }
+
+// Distributed middleware communicate function, including init node id , request/release priviledge, check node exist, dispatch subtask, subtask finish, retrieve result, complete sequence, update free memory information and Distributed_ManageTask.
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Middleware eth funciton
+void Distributed_SendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t Size){
+	init_eth(DP83848_PHY_ADDRESS, MyMacAddr);
+	uint8_t Send_success_flag = 0;
+	while(!Send_success_flag){
+		Send_success_flag = DP83848Send(Target_Addr, Size);
+		if (!Send_success_flag){
+			while(!init_eth(DP83848_PHY_ADDRESS, MyMacAddr)){
+				printf("Reset eth\r\n");
+				for(uint32_t i=0;i<0x000000FF;i++)
+					;
+			}
+
+		}
+	}
+	tickcount_lo_bound = xTaskGetTickCount();
+	tickcount_hi_bound = tickcount_lo_bound + Timeout_Tick_Count*Global_Node_count + 10;
+}
+
+// init node id
+void Distributed_NodeGetID(){
+	SendFlag = Distributed_NodeGetID_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[13] = {  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeGetID_MSG};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	Distributed_SendMsg(MyMacAddr, mydata, 13);
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeGetID\r\n");
+	#endif
+}
+
+void Distributed_NodeGetIDAgain(){
+	SendFlag = Distributed_NodeGetIDAgain_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeGetIDAgain_MSG};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	Distributed_SendMsg(MyMacAddr, mydata, 13);
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeGetIDAgain\r\n");
+	#endif
+}
+
+void Distributed_NodeResponseID(){
+	SendFlag = Distributed_NodeResponseID_MSG;
+	uint32_t Dispatch_id = Global_Node_count + 1;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[17] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeResponseID_MSG, 0x00, 0x00, 0x00, 0x00};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+13] = *((uint8_t*)&Dispatch_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	Distributed_SendMsg(MyMacAddr, mydata, 17);
+	#if(PrintSendRecv > 0)
+		printf("Send Distributed_NodeResponseID, Dispatch_id: 0x%lX\r\n", Dispatch_id);
+	#endif
+}
+
+uint8_t Distributed_NodeCheck(uint32_t Target_Node_id, uint32_t Needsize){
+	SendFlag = Distributed_NodeCheck_MSG;
+	if (DisrtibutedNodeCheckIDFlag == 0){
+		DisrtibutedNodeCheckIDFlag = Target_Node_id;
+		uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+		uint8_t mydata[17] = { 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeCheck_MSG, 0x00, 0x00, 0x00, 0x00};
+		for(uint8_t i=0;i<4;i++){
+			MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+			mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+			mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+			mydata[i+13] = *((uint8_t*)&Needsize+i);
+		}
+		Distributed_SendMsg(MyMacAddr, mydata, 17);
+		#if(PrintSendRecv > 0)
+			printf("Send Distributed_NodeCheck to Node 0x%lX\r\n", Target_Node_id);
+		#endif
+		return 1;
+	}
+	else
+		return 0;
+}
+
+void Distributed_NodeCheckback(uint32_t Target_Node_id, uint8_t checkback_flag){
+	SendFlag = Distributed_NodeCheckback_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[14] = { 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeCheckback_MSG, 0x00};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	mydata[13] = *((uint8_t*)&checkback_flag);
+	Distributed_SendMsg(MyMacAddr, mydata, 14);
+	#if(PrintSendRecv > 0)
+		printf("Send Distributed_NodeCheckback to Node 0x%lX, checkback_flag: 0x%X\r\n", Target_Node_id, checkback_flag);
+	#endif
+}
+
+void Distributed_NodeBackupMaster(uint32_t Target_Node_id){
+	SendFlag = Distributed_NodeBackupMaster_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[13] = { 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeBackupMaster_MSG};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	Distributed_SendMsg(MyMacAddr, mydata, 13);
+	#if(PrintSendRecv > 0)
+		printf("Send Distributed_NodeBackupMaster to Node 0x%lX\r\n", Target_Node_id);
+	#endif
+}
+
+void Distributed_NodeInvalid(uint32_t Target_Node_id){
+	SendFlag = Distributed_NodeInvalid_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[17] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeInvalid_MSG, 0x00, 0x00, 0x00, 0x00};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+13] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	Distributed_SendMsg(MyMacAddr, mydata, 17);
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeInvalid Node 0x%lX\r\n", Target_Node_id);
+	#endif
+}
+
+// request/release priviledge
+void Distributed_NodeDisablePublish(uint32_t Target_Node_id){
+	SendFlag = Distributed_NodeDisablePublish_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeDisablePublish_MSG};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	PublishFlag = 0;
+	Distributed_SendMsg(MyMacAddr, mydata, 13);
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeDisablePublish Node\r\n");
+	#endif
+}
+
+void Distributed_NodeEnablePublish(uint32_t Target_Node_id){
+	SendFlag = Distributed_NodeEnablePublish_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeEnablePublish_MSG};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	PublishFlag = 1;
+	Distributed_SendMsg(MyMacAddr, mydata, 13);
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeEnablePublish Node\r\n");
+	#endif
+}
+
+void Distributed_NodeResponsePublish(uint32_t Target_Node_id){
+	SendFlag = Distributed_NodeResponsePublish_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeResponsePublish_MSG};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	Distributed_SendMsg(MyMacAddr, mydata, 13);
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeResponsePublish Node\r\n");
+	#endif
+}
+
+void Distributed_NodeRequestKey(){
+	SendFlag = Distributed_NodeRequestKey_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeRequestKey_MSG};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	Distributed_SendMsg(MyMacAddr, mydata, 13);
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeRequestKey Node\r\n");
+	#endif
+}
+
+void Distributed_NodeReleaseKey(){
+	SendFlag = Distributed_NodeReleaseKey_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeReleaseKey_MSG};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	Distributed_SendMsg(MyMacAddr, mydata, 13);
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeReleaseKey Node\r\n");
+	#endif
+}
+
+void Distributed_NodeResponseKey(uint32_t Target_Node_id, uint8_t response_flag){
+	SendFlag = Distributed_NodeResponseKey_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[14] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeResponseKey_MSG, response_flag};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	Distributed_SendMsg(MyMacAddr, mydata, 14);
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeResponseKey Node\r\n");
+	#endif
+}
+
+uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
+	if(DisableEnableFlag == 0){
+		while(1){
+			if(Global_Node_id == Global_Node_Master){
+				vPortEnterCritical();
+				if((RequestKeyFlag != 0) && (RequestKeyFlag != Global_Node_id))			//	RequestKeyFlag is occupy
+					ResponseKeyFlag = Global_Node_count + 1;
+				else{
+					ResponseKeyFlag = Global_Node_id;									//	Request RequestKeyFlag
+					RequestKeyFlag = Global_Node_id;
+				}
+				vPortExitCritical();
+			}
+			else{																		//	Local node is not Master, try to request or release by communication
+				ResponseKeyFlag = 0;
+				while(ResponseKeyFlag == 0){
+					//while(!Check_Sendable_Without_Limit());
+					if(PublishFlag > 0)
+						Distributed_NodeRequestKey();									//	Request by communication
+					WaitForFlag(&ResponseKeyFlag, 1);
+				}
+			}
+			if(ResponseKeyFlag > Global_Node_count){									//	RequestKeyFlag is occupy, clear ResponseKeyFlag
+				ResponseKeyFlag = 0;													//	Not Get the Key
+				//PublishFlag = 0;
+				return	0;
+			}
+			else{																		//	occupy RequestKeyFlag, clear ResponseKeyFlag
+				PublishFlag = 0;
+				ResponseKeyFlag = 0;
+				break;
+			}
+		}
+		for(uint32_t i=1;i<=Global_Node_count;i++){										//	Disable/Enable all node
+			if((i != Global_Node_Master) && (i != Global_Node_id)){
+				uint32_t Timeout_count_limit = 10;
+				uint32_t Timeout_count = 0;
+				while(PublishResponseFlag != i){
+					///while(!Check_Sendable_Without_Limit());
+					PublishResponseFlag = 0;
+					Distributed_NodeDisablePublish(i);
+					WaitForFlag(&PublishResponseFlag, 1);
+					if(PublishResponseFlag == i){										//	Got ResponsePublish
+						break;
+					}
+					else{
+						global_record_requestrelease_fail_count[i-1]++;
+						//	Should publish Invalid Node
+						//	??????
+						Timeout_count++;
+						if(Timeout_count > Timeout_count_limit){
+							//printf("Over time out limit: 0x%lX\r\n", Timeout_count_limit);
+							break;
+						}
+					}
+				}
+			}
+			else if (i == Global_Node_id){
+				PublishFlag = 0;
+			}
+		}
+	}
+	else{
+		for(uint32_t i=1;i<=Global_Node_count;i++){										//	Disable/Enable all node
+			if((i != Global_Node_Master) && (i != Global_Node_id)){
+				uint32_t Timeout_count_limit = 20;
+				uint32_t Timeout_count = 0;
+				while(PublishResponseFlag != i){
+					//while(!Check_Sendable_Without_Limit());
+					PublishResponseFlag = 0;
+					Distributed_NodeEnablePublish(i);
+					WaitForFlag(&PublishResponseFlag, 1);
+					if(PublishResponseFlag == i){										//	Got ResponsePublish
+						break;
+					}
+					else{
+						global_record_requestrelease_fail_count[i-1]++;
+						//	Should publish Invalid Node
+						//	??????
+						Timeout_count++;
+						if(Timeout_count > Timeout_count_limit){
+							//printf("Over time out limit: 0x%lX\r\n", Timeout_count_limit);
+							break;
+						}
+					}
+				}
+			}
+			else if (i == Global_Node_id){
+				PublishFlag = 1;
+			}
+		}
+		while(1){
+			if(Global_Node_id == Global_Node_Master){
+				vPortEnterCritical();
+				if((RequestKeyFlag != Global_Node_id) && (RequestKeyFlag != 0))		//	Not the RequestKeyFlag occupy node
+					ResponseKeyFlag = Global_Node_count + 1;
+				else{																//	Release RequestKeyFlag
+					ResponseKeyFlag = Global_Node_id;
+					RequestKeyFlag = 0;
+				}
+				vPortExitCritical();
+			}
+			else{																		//	Local node is not Master, try to request or release by communication
+				ResponseKeyFlag = 0;
+				while(ResponseKeyFlag == 0){
+					Distributed_NodeReleaseKey();									//	Release by communication
+					WaitForFlag(&ResponseKeyFlag, 1);
+				}
+			}
+			/*
+			if(ResponseKeyFlag > Global_Node_count){									//	RequestKeyFlag is occupy, clear ResponseKeyFlag
+				#if(PrintSendRecv > 0)
+					if(DisableEnableFlag == 0)
+						printf("Not Request the Key, RequestKeyFlag is occupy\r\n");
+					else
+						printf("Not Release the Key, RequestKeyFlag is occupy\r\n");
+				#endif
+				ResponseKeyFlag = 0;													//	Not Get the Key
+				return	0;
+			}
+			else{																		//	occupy RequestKeyFlag, clear ResponseKeyFlag
+				ResponseKeyFlag = 0;
+				break;
+			}
+			*/
+			if(ResponseKeyFlag > Global_Node_count)
+				PublishFlag = 0;
+			ResponseKeyFlag = 0;
+			break;
+		}
+	}
+	return	1;
+}
+
+// check node exist
+uint8_t Distributed_NodeCheckSizeTimeout(uint32_t tick, uint32_t Target_Node_id, uint32_t Needsize){
+	if(Target_Node_id != Global_Node_id){
+		uint32_t bool_timeout_flag = 0;
+		uint8_t success_flag = 0xFF;
+		while(!(Distributed_NodeCheck(Target_Node_id, Needsize)));
+		uint32_t base_tick = xTaskGetTickCount();
+		uint32_t timeout_tick = base_tick + tick;
+		while((bool_timeout_flag == 0) && (DisrtibutedNodeCheckIDFlag != 0)){
+			uint32_t now_tick = xTaskGetTickCount();
+			if(timeout_tick > base_tick){
+				if((now_tick > timeout_tick) || (now_tick < base_tick))
+					bool_timeout_flag = 1;
+			}
+			else{
+				if((now_tick > timeout_tick) && (now_tick < base_tick))
+					bool_timeout_flag = 1;
+			}
+		}
+
+		if(DisrtibutedNodeCheckIDFlag == 0){
+			success_flag = CheckbackFlag;
+		}
+		else{
+			//printf("Without check back, timeout!?\r\n");
+			DisrtibutedNodeCheckIDFlag = 0;
+		}
+		return success_flag;
+	}
+	else{
+		return 0xff;															//	"Dame you should not check yourself node"
+	}
+}
+
+// dispatch subtask
+void Distributed_NodeSendSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size){
+	SendFlag = Distributed_NodeSendSubtask_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	*((uint8_t*)Subtask_addr) = 0xff;
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		*(((uint8_t*)Subtask_addr+2)+i) = *((uint8_t*)&Target_Node_id+i);
+		*(((uint8_t*)Subtask_addr+8)+i) = *((uint8_t*)&Global_Node_id+i);
+		*((uint8_t*)Subtask_addr+12) = Distributed_NodeSendSubtask_MSG;
+	}
+	Distributed_SendMsg(MyMacAddr, Subtask_addr, Subtask_size);
+	#if(PrintSendRecv > 0)
+		printf("Broadcast DistributedNodeSubtask Node 0x%lX, Subtask_size: 0x%lX\r\n", Target_Node_id, Subtask_size);
+	#endif
+}
+
+void Distributed_NodeSendRemainSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size, uint32_t Remain_th){
+	SendFlag = Distributed_NodeSendRemainSubtask_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t* Send_Addr = Subtask_addr - 17;
+	uint8_t tmp_data[17];
+	for(uint32_t i=0;i<17;i++)
+		tmp_data[i] = *(Send_Addr+i);
+	Subtask_size += 17;
+	*((uint8_t*)Send_Addr) = 0xff;
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		*((uint8_t*)Send_Addr+2+i) = *((uint8_t*)&Target_Node_id+i);
+		*((uint8_t*)Send_Addr+8+i) = *((uint8_t*)&Global_Node_id+i);
+		*((uint8_t*)Send_Addr+13+i) = *((uint8_t*)&Remain_th+i);
+	}
+	*((uint8_t*)Send_Addr+12) = Distributed_NodeSendRemainSubtask_MSG;
+	Distributed_SendMsg(MyMacAddr, Send_Addr, Subtask_size);
+	for(uint32_t i=0;i<17;i++)
+		*(Send_Addr+i) = tmp_data[i];
+
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeSendRemainSubtask Node 0x%lX, Subtask_size: 0x%lX\r\n", Target_Node_id, Subtask_size);
+	#endif
+}
+
+void Distributed_NodeRecvSubtask(uint32_t Target_Node_id){
+	SendFlag = Distributed_NodeRecvSubtask_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeRecvSubtask_MSG};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	Distributed_SendMsg(MyMacAddr, mydata, 13);
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeRecvSubtask Node\r\n");
+	#endif
+}
+
+void Distributed_NodeRecvRemainSubtask(uint32_t Target_Node_id, uint32_t Remain_th){
+	SendFlag = Distributed_NodeRecvRemainSubtask_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[17] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeRecvRemainSubtask_MSG, 0x00, 0x00, 0x00, 0x00};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+13] = *((uint8_t*)&Remain_th+i);
+	}
+	Distributed_SendMsg(MyMacAddr, mydata, 17);
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeRecvRemainSubtask Node\r\n");
+	#endif
+}
+
+// subtask finish
+void Distributed_NodeSubtaskFinish(uint32_t Target_Node_id, uint32_t Task_id, uint32_t Subtask_id, uint32_t Size){
+	SendFlag = Distributed_NodeSubtaskFinish_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[25] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeSubtaskFinish_MSG, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+13] = *((uint8_t*)&Task_id+i);
+		mydata[i+17] = *((uint8_t*)&Subtask_id+i);
+		mydata[i+21] = *((uint8_t*)&Size+i);
+	}
+	Distributed_SendMsg(MyMacAddr, mydata, 25);
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeSubtaskFinish to Node: 0x%lX, Task_id: 0x%lX, Subtask_id: 0x%lX, Size: 0x%lX\r\n", Target_Node_id, Task_id, Subtask_id, Size);
+	#endif
+}
+
+void Distributed_NodeResponseSubtaskFinish(uint32_t Target_Node_id, uint32_t Target_Task_id, uint32_t Target_Subtask_id){
+	SendFlag = Distributed_NodeResponseSubtaskFinish_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[21] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeResponseSubtaskFinish_MSG, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+13] = *((uint8_t*)&Target_Task_id+i);
+		mydata[i+17] = *((uint8_t*)&Target_Subtask_id+i);
+	}
+	Distributed_SendMsg(MyMacAddr, mydata, 21);
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeResponseSubtaskFinish to Node: 0x%lX, Subtask: 0x%lX\r\n", Target_Node_id, Target_Subtask_id);
+	#endif
+}
+
+// retrieve result
+void Distributed_NodeRequestResult(uint32_t Target_Node_id, uint32_t Task_id, uint32_t Subtask_id){
+	SendFlag = Distributed_NodeRequestResult_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[21] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeRequestResult_MSG, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+13] = *((uint8_t*)&Task_id+i);
+		mydata[i+17] = *((uint8_t*)&Subtask_id+i);
+	}
+	Distributed_SendMsg(MyMacAddr, mydata, 21);
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeRequestResult, Node: 0x%lX, Task: 0x%lX, Subtask: 0x%lX\r\n", Target_Node_id, Task_id, Subtask_id);
+	#endif
+}
+
+void Distributed_NodeRequestRemainResult(uint32_t Target_Node_id, uint32_t Remain_th){
+	SendFlag = Distributed_NodeRequestRemainResult_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[17] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeRequestRemainResult_MSG, 0x00, 0x00, 0x00, 0x00};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+13] = *((uint8_t*)&Remain_th+i);
+	}
+	Distributed_SendMsg(MyMacAddr, mydata, 17);
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeRequestRemainResult, Node: 0x%lX, Remain_th: 0x%lX\r\n", Target_Node_id, Remain_th);
+	#endif
+}
+
+void Distributed_NodeResponseResult(uint32_t Target_Node_id, uint8_t* Result_addr, uint32_t Result_size){
+	SendFlag = Distributed_NodeResponseResult_MSG;
+	//printf("Result_size: 0x%lX\r\n", Result_size);
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	*((uint8_t*)Result_addr) = 0xff;
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		*(((uint8_t*)Result_addr+2)+i) = *((uint8_t*)&Target_Node_id+i);
+		*(((uint8_t*)Result_addr+8)+i) = *((uint8_t*)&Global_Node_id+i);
+	}
+	*((uint8_t*)Result_addr+12) = Distributed_NodeResponseResult_MSG;
+	Distributed_SendMsg(MyMacAddr, Result_addr, Result_size);
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeResponseResult Node 0x%lX\r\n", Target_Node_id);
+	#endif
+}
+
+void Distributed_NodeResponseRemainResult(uint32_t Target_Node_id, uint8_t* Result_addr, uint32_t Result_size, uint32_t Remain_th){
+	SendFlag = Distributed_NodeResponseRemainResult_MSG;
+	//printf("Result_size: 0x%lX\r\n", Result_size);
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t* Send_Addr = Result_addr - 17;
+	uint8_t tmp_data[17];
+	for(uint32_t i=0;i<17;i++)
+		tmp_data[i] = *(Send_Addr+i);
+	Result_size += 17;
+	*((uint8_t*)Send_Addr) = 0xff;
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		*((uint8_t*)Send_Addr+2+i) = *((uint8_t*)&Target_Node_id+i);
+		*((uint8_t*)Send_Addr+8+i) = *((uint8_t*)&Global_Node_id+i);
+		*((uint8_t*)Send_Addr+13+i) = *((uint8_t*)&Remain_th+i);
+	}
+	*((uint8_t*)Send_Addr+12) = Distributed_NodeResponseRemainResult_MSG;
+
+	Distributed_SendMsg(MyMacAddr, Send_Addr, Result_size);
+	for(uint32_t i=0;i<17;i++)
+		*(Send_Addr+i) = tmp_data[i];
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeResponseRemainResult Node 0x%lX\r\n", Target_Node_id);
+	#endif
+}
+
+void Distributed_NodeRemoveTask(uint32_t Target_Node_id, uint32_t Source_Node_id, uint32_t Task_id){
+	SendFlag = Distributed_NodeRemoveTask_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[21] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeRemoveTask_MSG, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+13] = *((uint8_t*)&Source_Node_id+i);
+		mydata[i+17] = *((uint8_t*)&Task_id+i);
+	}
+	Distributed_SendMsg(MyMacAddr, mydata, 21);
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeRemoveTask, Source_Node_id: 0x%lX, Task_id: 0x%lX\r\n", Source_Node_id, Task_id);
+	#endif
+}
+
+void Distributed_NodeSendComplete(uint32_t Target_Node_id, uint8_t Remain_th){
+	SendFlag = Distributed_NodeSendComplete_MSG;
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8_t mydata[21] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeSendComplete_MSG, Remain_th };
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	mydata[13] = Remain_th;
+	Distributed_SendMsg(MyMacAddr, mydata, 14);
+	#if(PrintSendRecv > 0)
+		printf("Broadcast Distributed_NodeSendComplete, Target_Node_id: 0x%lX, Remain_th: 0x%lX\r\n", Target_Node_id, (uint32_t)Remain_th);
+	#endif
+}
+
+// complete sequence
+uint8_t Distributed_NodeSendCompleteSequence(uint32_t Target_Node_id){
+	vPortEnterCritical();
+	uint8_t Remain_th = 1;
+	SendCompleteFlag = 0;
+	Distributed_NodeSendComplete(Target_Node_id, Remain_th);
+	vPortExitCritical();
+	WaitForFlag(&SendCompleteFlag, 1);
+	vPortEnterCritical();
+	if(SendCompleteFlag == (Remain_th+1)){
+		Remain_th = SendCompleteFlag + 1;
+		Distributed_NodeSendComplete(Target_Node_id, Remain_th);
+		SendCompleteFlag = 0;
+		vPortExitCritical();
+		return Remain_th;
+	}
+	else{
+		global_record_fail_count[Target_Node_id-1] = global_record_fail_count[Target_Node_id-1]+1;
+		SendCompleteFlag = 0;
+		vPortExitCritical();
+		return 0;
+	}
+}
+
+uint8_t Distributed_NodeRecvCompleteSequence(uint32_t Target_Node_id){
+	WaitForFlag(&SendCompleteFlag, 1);
+	vPortEnterCritical();
+	uint8_t Remain_th = 0;
+	if(SendCompleteFlag == (Remain_th+1)){
+		Remain_th = SendCompleteFlag + 1;
+		SendCompleteFlag = 0;
+		uint32_t recv_complete_count = 0;
+		uint32_t recv_complete_limit = 10;
+		while(1){
+			Distributed_NodeSendComplete(Target_Node_id, Remain_th);
+			vPortExitCritical();
+			WaitForFlag(&SendCompleteFlag, 1);
+			vPortEnterCritical();
+			if(SendCompleteFlag == (Remain_th+1)){
+				Remain_th = SendCompleteFlag + 1;
+				break;
+			}
+			else{
+				global_record_fail_count[Target_Node_id+4-1] = global_record_fail_count[Target_Node_id+4-1]+1;
+				recv_complete_count++;
+				if(recv_complete_count > recv_complete_limit){
+					break;
+				}
+			}
+		}
+		SendCompleteFlag = 0;
+		vPortExitCritical();
+		return Remain_th;
+	}
+	else{
+		global_record_fail_count[Target_Node_id+4-1] = global_record_fail_count[Target_Node_id+4-1]+1;
+		SendCompleteFlag = 0;
+		vPortExitCritical();
+		return 0;
+	}
+}
+
+// update free memory information
+void Distributed_NodeSendFreeBlock(uint32_t Target_Node_id, uint32_t Node_id){
+	vPortEnterCritical();
+
+	SendFlag = Distributed_NodeSendFreeBlock_MSG;
+	if(Target_Node_id == 0)
+		Target_Node_id = 0xFFFFFFFF;
+	UpdateLocalFreeBlock();
+	uint32_t node_number = 0;
+	uint32_t block_number = 0;
+	Distributed_FreeBlock* FreeBlockStart = DF_Start;
+	Distributed_FreeBlock* tmp_block = FreeBlockStart;
+	if(Node_id > 0){
+		while((tmp_block != NULL) && (tmp_block->Node_id != Node_id)){
+			tmp_block = tmp_block->Next_Distributed_FreeBlock;
+		}
+		if(tmp_block == NULL){
+			printf("Distributed_NodeSendFreeBlock Fail, Without Node_id: 0x%lX\r\n", Node_id);
+		}
+		else{
+			node_number++;
+			block_number += tmp_block->Block_number;
+		}
+	}
+	else{
+		while(tmp_block != NULL){
+			node_number++;
+			block_number += tmp_block->Block_number;
+			tmp_block = tmp_block->Next_Distributed_FreeBlock;
+		}
+	}
+	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint32_t Send_size = 14+(node_number*sizeof(Distributed_FreeBlock))+block_number*sizeof(uint32_t);
+	uint8_t mydata[Send_size];
+	mydata[0] = 0xff;
+	mydata[1] = 0xff;
+	mydata[12] = Distributed_NodeSendFreeBlock_MSG;
+	mydata[13] = node_number;
+	for(uint8_t i=0;i<4;i++){
+		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
+		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
+		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+	}
+	uint32_t tmp_node_number = 0;
+	uint32_t tmp_node_data_count = 0;
+	uint32_t source_node_count = 0;
+	if(Node_id == 0){
+		tmp_block = FreeBlockStart;
+		while(tmp_block != NULL){
+			source_node_count++;
+			for(uint8_t i=0;i<sizeof(Distributed_FreeBlock);i++){
+				*((uint8_t*)(mydata+14+tmp_node_number*sizeof(Distributed_FreeBlock)+i)) = *((uint8_t*)tmp_block+i);
+			}
+			for(uint32_t i=0;i<tmp_block->Block_number;i++){
+				for(uint32_t j=0;j<sizeof(uint32_t);j++){
+					*((uint8_t*)(mydata+14+node_number*sizeof(Distributed_FreeBlock)+tmp_node_data_count)) = *((uint8_t*)(tmp_block->Block_size_array+i)+j);
+					tmp_node_data_count++;
+				}
+			}
+			tmp_node_number++;
+			tmp_block = tmp_block->Next_Distributed_FreeBlock;
+		}
+	}
+	else{
+		if (tmp_block->Node_id == Node_id){
+			for(uint8_t i=0;i<sizeof(Distributed_FreeBlock);i++)
+				*((uint8_t*)(mydata+14+i)) = *((uint8_t*)tmp_block+i);
+			for(uint32_t i=0;i<tmp_block->Block_number;i++){
+				for(uint32_t j=0;j<sizeof(uint32_t);j++){
+					*((uint8_t*)(mydata+14+node_number*sizeof(Distributed_FreeBlock)+4*i+j)) = *((uint8_t*)tmp_block->Block_size_array+4*i+j);
+				}
+			}
+		}
+	}
+	vPortExitCritical();
+	Distributed_SendMsg(MyMacAddr, mydata, Send_size);
+	BlockChangeFlag = 0;
+}
+
+void UpdateLocalFreeBlock(){
+	//printf("  UpdateLocalFreeBlock Start\r\n");
+	vPortEnterCritical();
+	Distributed_FreeBlock* local_free_block = DF_Start;
+	while((local_free_block != NULL) && (local_free_block->Node_id != Global_Node_id)){
+		local_free_block = local_free_block->Next_Distributed_FreeBlock;
+	}
+	if(local_free_block == NULL){
+		local_free_block = pvPortMalloc(sizeof(Distributed_FreeBlock));
+		local_free_block->Node_id = Global_Node_id;
+		local_free_block->Block_number = 0;
+		Distributed_FreeBlock* tmp_free_block = DF_Start;
+		while((tmp_free_block->Next_Distributed_FreeBlock != NULL) && ((tmp_free_block->Next_Distributed_FreeBlock)->Node_id <= Global_Node_id)){
+			tmp_free_block = tmp_free_block->Next_Distributed_FreeBlock;
+		}
+		if(tmp_free_block != DF_Start){
+			local_free_block->Next_Distributed_FreeBlock = tmp_free_block->Next_Distributed_FreeBlock;
+			tmp_free_block->Next_Distributed_FreeBlock = local_free_block;
+		}
+		else{
+			if (DF_Start == NULL){
+				DF_Start = local_free_block;
+			}
+			else{
+				if (DF_Start->Node_id > Global_Node_id){
+					local_free_block->Next_Distributed_FreeBlock = DF_Start;
+					DF_Start = local_free_block;
+				}
+				else{
+					local_free_block->Next_Distributed_FreeBlock = DF_Start->Next_Distributed_FreeBlock;
+					DF_Start->Next_Distributed_FreeBlock = local_free_block;
+				}
+			}
+		}
+	}
+	uint32_t block_number = 0;
+	BlockLink_t* tmp_block = &xStart;
+	while(tmp_block != NULL){
+		if(tmp_block->xBlockSize > 0){
+			block_number++;
+		}
+		tmp_block = tmp_block->pxNextFreeBlock;
+	}
+	if(block_number != local_free_block->Block_number){
+		if(local_free_block->Block_number > 0){
+			vPortFree(local_free_block->Block_size_array);
+			block_number = 0;
+			tmp_block = &xStart;
+			while(tmp_block != NULL){
+				if(tmp_block->xBlockSize > 0){
+					block_number++;
+				}
+				tmp_block = tmp_block->pxNextFreeBlock;
+			}
+		}
+		local_free_block->Block_size_array = pvPortMalloc(block_number*sizeof(uint32_t));
+	}
+	block_number = 0;
+	tmp_block = &xStart;
+	while(tmp_block != NULL){
+		if(tmp_block->xBlockSize > 0){
+			*(local_free_block->Block_size_array+block_number) = tmp_block->xBlockSize;
+			block_number++;
+		}
+		tmp_block = tmp_block->pxNextFreeBlock;
+	}
+	local_free_block->Block_number = block_number;
+	vPortExitCritical();
+}
+
+uint8_t Check_Sendable(){
+	uint8_t bool_send_flag = 0;
+	uint32_t tickcount = xTaskGetTickCount();
+	if(tickcount_hi_bound > tickcount_lo_bound){
+		if((tickcount>tickcount_hi_bound) || (tickcount<tickcount_lo_bound)){
+			bool_send_flag = 1;
+		}
+	}
+	else{
+		if((tickcount>tickcount_hi_bound) && (tickcount<tickcount_lo_bound)){
+			bool_send_flag = 1;
+		}
+	}
+	if (PublishFlag == 0){
+		bool_send_flag = 0;
+	}
+	return bool_send_flag;
+}
+
+uint8_t Check_Sendable_Without_Limit(){
+	uint8_t bool_send_flag = 0;
+	uint32_t tickcount = xTaskGetTickCount();
+	if(tickcount_hi_bound > tickcount_lo_bound){
+		if((tickcount>tickcount_hi_bound) || (tickcount<tickcount_lo_bound)){
+			bool_send_flag = 1;
+		}
+	}
+	else{
+		if((tickcount>tickcount_hi_bound) && (tickcount<tickcount_lo_bound)){
+			bool_send_flag = 1;
+		}
+	}
+	return bool_send_flag;
+}
+
+Distributed_FreeBlock* GetFreeBlockNode(uint32_t Node_id){
+	vPortEnterCritical();
+	Distributed_FreeBlock* free_block = DF_Start;
+	while((free_block != NULL) && (free_block->Node_id != Node_id))
+		free_block = free_block->Next_Distributed_FreeBlock;
+	if(free_block == NULL){
+		free_block = pvPortMalloc(sizeof(Distributed_FreeBlock));
+		free_block->Node_id = Node_id;
+		free_block->Block_number = 0;
+		Distributed_FreeBlock* tmp_free_block = DF_Start;
+		while((tmp_free_block->Next_Distributed_FreeBlock != NULL) && ((tmp_free_block->Next_Distributed_FreeBlock)->Node_id <= Node_id)){
+			tmp_free_block = tmp_free_block->Next_Distributed_FreeBlock;
+		}
+		if(tmp_free_block != DF_Start){
+			free_block->Next_Distributed_FreeBlock = tmp_free_block->Next_Distributed_FreeBlock;
+			tmp_free_block->Next_Distributed_FreeBlock = free_block;
+		}
+		else{
+			if (DF_Start == NULL){
+				DF_Start = free_block;
+			}
+			else{
+				if (DF_Start->Node_id > Node_id){
+					free_block->Next_Distributed_FreeBlock = DF_Start;
+					DF_Start = free_block;
+				}
+				else{
+					free_block->Next_Distributed_FreeBlock = DF_Start->Next_Distributed_FreeBlock;
+					DF_Start->Next_Distributed_FreeBlock = free_block;
+				}
+			}
+		}
+	}
+	vPortExitCritical();
+
+	return free_block;
+}
+
+void Distributed_Show_FreeBlock(){
+	printf("\r\nStart---------------------------------------\r\n");
+	vPortEnterCritical();
+
+	Distributed_FreeBlock* free_block = DF_Start;
+	while(free_block != NULL){
+		printf("free_block Node_id: 0x%lX, Block_number: 0x%lX, Block_size_array: 0x%lX\r\n", free_block->Node_id, free_block->Block_number, (uint32_t)free_block->Block_size_array);
+		printf("Block: ");
+		for(uint32_t i=0;i<free_block->Block_number;i++)
+			printf("0x%lX, ", *(free_block->Block_size_array+i));
+		printf("\r\n");
+		free_block = free_block->Next_Distributed_FreeBlock;
+	}
+	vPortExitCritical();
+
+	printf("End  ---------------------------------------\r\n\r\n");
+}
+
+// Distributed manage task
 void Distributed_ManageTask(){
 	while(1){
 		if ((READ_BIT(USART3_BASE + USART_SR_OFFSET, RXNE_BIT)) || (READ_BIT(USART3_BASE + USART_SR_OFFSET, ORE_BIT))){
@@ -3703,10 +4367,55 @@ void Distributed_ManageTask(){
 	}
 }
 
-void test_inline(){
-	__asm (	"svc	#0x6				\n");
+uint32_t WaitForFlag(volatile uint32_t* Flag_Addr, uint32_t timeout_time){
+	uint32_t base_tick = xTaskGetTickCount();
+	uint32_t timeout_tick = base_tick + timeout_time*Timeout_Tick_Count;
+	while(*(Flag_Addr) == 0){
+		uint32_t now_tick = xTaskGetTickCount();
+		if(timeout_tick > base_tick){
+			if((now_tick > timeout_tick) || (now_tick < base_tick))
+				break;
+		}
+		else{
+			if((now_tick > timeout_tick) && (now_tick < base_tick))
+				break;
+		}
+	}
+	return *(Flag_Addr);
 }
 
+// Quick sort in dispatch task
+//-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+void swap(int *a, int *b){
+    int temp = *a;
+    *a = *b;
+    *b = temp;
+}
+
+int Partition(int *arr, int front, int end){
+    int pivot = arr[end];
+    int i = front -1;
+    for (int j = front; j < end; j++) {
+        if (arr[j] < pivot) {
+            i++;
+            swap(&arr[i], &arr[j]);
+        }
+    }
+    i++;
+    swap(&arr[i], &arr[end]);
+    return i;
+}
+
+void QuickSort(int *arr, int front, int end){
+    if (front < end) {
+        int pivot = Partition(arr, front, end);
+        QuickSort(arr, front, pivot - 1);
+        QuickSort(arr, pivot + 1, end);
+    }
+}
+
+// UserDefine distributed / local task ezxample
+//-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 void UserDefine_Distributed_Task(void *task_info){
 	Distributed_TaskHandle_List_t *data_info = Distributed_Start(task_info);
 	Distributed_Data_t* array1 = Distributed_GetTragetData(data_info);
@@ -3733,6 +4442,7 @@ void UserDefine_Distributed_Task(void *task_info){
 	*/
 	Distributed_End(data_info, array1->Data_addr, array1->Data_size);
 }
+
 void UserDefine_Distributed_Task_matrix_multiplication(void *task_info){
 	Distributed_TaskHandle_List_t *data_info = Distributed_Start(task_info);
 	Distributed_Data_t* array1 = Distributed_GetTragetData(data_info);
@@ -3742,7 +4452,6 @@ void UserDefine_Distributed_Task_matrix_multiplication(void *task_info){
 	uint32_t column1 = (uint32_t)*(array1_column->Data_addr);
 	uint32_t column2 = (uint32_t)*(array2_column->Data_addr);
 	uint32_t row1 = array1->Data_size/column1;
-	uint32_t row2 = array2->Data_size/column2;
 	uint32_t target_size = row1*column2*sizeof(uint32_t);
 	uint32_t* target_addr;
 	Distributed_pvPortMalloc(target_addr, target_size);
@@ -3822,7 +4531,6 @@ void UserDefine_Distributed_Task_2d_array_convolution(void *task_info){
 	Distributed_End(data_info, malloc_addr, malloc_size);
 }
 
-
 void UserDefine_Distributed_Task_bgr_gray_transform(void *task_info){
 	Distributed_TaskHandle_List_t* data_info = Distributed_Start(task_info);
 
@@ -3847,6 +4555,38 @@ void UserDefine_Distributed_Task_bgr_gray_transform(void *task_info){
 		global_record_data[5] += (xTaskGetTickCount() - tmp_get_tickcount);
 
 	Distributed_End(data_info, malloc_addr, ret_size);
+}
+
+void UserDefine_Distributed_Task_RSA(void *task_info){
+	Distributed_TaskHandle_List_t *data_info = Distributed_Start(task_info);
+	uint32_t tmp_get_tickcount = 0;
+	if(data_info->DSubTask_id == 0)
+		tmp_get_tickcount = xTaskGetTickCount();
+	Distributed_Data_t* array = Distributed_GetTragetData(data_info);
+	Distributed_Data_t* e_d_info = Distributed_GetTragetData(data_info);
+	Distributed_Data_t* n_info = Distributed_GetTragetData(data_info);
+
+	uint32_t e_d = *(e_d_info->Data_addr);
+	uint32_t n = *(n_info->Data_addr);
+
+	uint32_t* malloc_addr = NULL;
+	uint32_t malloc_size = array->Data_size;
+	Distributed_pvPortMalloc(malloc_addr, malloc_size*sizeof(uint32_t));
+
+	for(uint32_t i=0;i<array->Data_size;i++){
+		uint32_t process_data = *(array->Data_addr + i);
+		uint32_t result_data = 0;
+		for(uint32_t j=0;j<4;j++){
+			uint32_t process_byte = ((process_data >> ((j*8))) & 0x000000FF);
+			uint32_t cipher = powMod(process_byte, e_d, n);
+			result_data |= (cipher << (j*8));
+		}
+		*(malloc_addr + i) = result_data;
+	}
+
+	if(data_info->DSubTask_id == 0)
+		global_record_data[5] += (xTaskGetTickCount() - tmp_get_tickcount);
+	Distributed_End(data_info, malloc_addr, malloc_size);
 }
 
 void UserDefine_Distributed_Task_bgr_gray_transform_with_2D_convolution(void *task_info){
@@ -3908,86 +4648,6 @@ void UserDefine_Distributed_Task_bgr_gray_transform_with_2D_convolution(void *ta
 	Distributed_End(data_info, tar_malloc_addr, ret_size);
 }
 
-void UserDefine_Distributed_Task_RSA(void *task_info){
-	Distributed_TaskHandle_List_t *data_info = Distributed_Start(task_info);
-	uint32_t tmp_get_tickcount = 0;
-	if(data_info->DSubTask_id == 0)
-		tmp_get_tickcount = xTaskGetTickCount();
-	Distributed_Data_t* array = Distributed_GetTragetData(data_info);
-	Distributed_Data_t* e_d_info = Distributed_GetTragetData(data_info);
-	Distributed_Data_t* n_info = Distributed_GetTragetData(data_info);
-
-	uint32_t e_d = *(e_d_info->Data_addr);
-	uint32_t n = *(n_info->Data_addr);
-
-	uint32_t* malloc_addr = NULL;
-	uint32_t malloc_size = array->Data_size;
-	Distributed_pvPortMalloc(malloc_addr, malloc_size*sizeof(uint32_t));
-
-	for(uint32_t i=0;i<array->Data_size;i++){
-		uint32_t process_data = *(array->Data_addr + i);
-		uint32_t result_data = 0;
-		for(uint32_t j=0;j<4;j++){
-			uint32_t process_byte = ((process_data >> ((j*8))) & 0x000000FF);
-			uint32_t cipher = powMod(process_byte, e_d, n);
-			result_data |= (cipher << (j*8));
-		}
-		*(malloc_addr + i) = result_data;
-	}
-
-	if(data_info->DSubTask_id == 0)
-		global_record_data[5] += (xTaskGetTickCount() - tmp_get_tickcount);
-	Distributed_End(data_info, malloc_addr, malloc_size);
-}
-
-uint32_t checkPrime(uint32_t n){
-	uint32_t i;
-	uint32_t m = n / 2;
-	for (i = 2; i <= m; i++) {
-		if (n % i == 0) {
-			return 0; // Not Prime
-		}
-	}
-	return 1; // Prime
-}
-
-uint32_t findGCD(uint32_t n1, uint32_t n2){
-	uint32_t i, gcd;
-	for(i = 1; i <= n1 && i <= n2; ++i) {
-		if(n1 % i == 0 && n2 % i == 0)
-			gcd = i;
-	}
-	return gcd;
-}
-
-uint32_t powMod(uint32_t a, uint32_t b, uint32_t n) {
-	uint32_t x = 1, y = a;
-	while (b > 0) {
-		if (b % 2 == 1)
-			x = (x * y) % n;
-		y = (y * y) % n; // Squaring the base
-		b /= 2;
-	}
-	return (x % n);
-}
-
-void public_key(uint32_t* e, uint32_t* d, uint32_t* n, uint32_t p, uint32_t q){
-	*n = (p * q);
-	uint32_t phin = (p - 1) * (q - 1);
-	*e = 0;
-	for ((*e) = 5; (*e) <= 100; (*e)++) {
-		if (findGCD(phin, (*e)) == 1)
-			break;
-	}
-	*d = 0;
-	while(1){
-		if ( (((*d) * (*e)) % phin) == 1)
-			break;
-		(*d)++;
-	}
-}
-
-/*
 void UserDefine_Local_Task_2d_array_convolution(uint32_t rec_Count){
 	uint32_t kernel_Data_addr[] = {2, 2, 2, 2, 2, 2, 2, 2, 2};
 	uint32_t array_a_column = 128;
@@ -4028,7 +4688,6 @@ void UserDefine_Local_Task_2d_array_convolution(uint32_t rec_Count){
 	uint32_t Local_Task_2d_array_tick = xTaskGetTickCount() - tmp_get_tickcount;
 	printf("array_Data_size: %u, Local_Task_2d_array_tick: %u\r\n", (unsigned int)array_Data_size, (unsigned int)Local_Task_2d_array_tick);
 }
-*/
 
 void UserDefine_Local_Task_RSA(uint32_t rec_Count, uint32_t e_d, uint32_t n, uint32_t array_Data_size){
 	uint32_t* array_Data_addr = (uint32_t*)0x10000000;
@@ -4087,7 +4746,6 @@ void UserDefine_Local_Task_bgr_gray_transform(uint32_t rec_Count){
 	printf("rec_Count: %u, UserDefine_Local_Task_bgr_gray_transform: %u\r\n", (unsigned int)rec_Count, (unsigned int)UserDefine_Local_Task_bgr_gray_transform);
 	#endif
 }
-
 
 void UserDefine_Local_Task_bgr_gray_transform_with_2D_convolution(uint32_t rec_Count){
 	#if(SENDIMAGE == 0)
@@ -4163,6 +4821,61 @@ void UserDefine_Local_Task_bgr_gray_transform_with_2D_convolution(uint32_t rec_C
 	uint32_t Local_Task_bgr_gray_transform_with_2D_convolution_tick = xTaskGetTickCount() - tmp_get_tickcount;
 	printf("rec_Count: %u, Local_Task_bgr_gray_transform_with_2D_convolution_tick: %u\r\n", (unsigned int)rec_Count, (unsigned int)Local_Task_bgr_gray_transform_with_2D_convolution_tick);
 	#endif
+}
+
+// UserDefine RSA fuinction
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+uint32_t checkPrime(uint32_t n){
+	uint32_t i;
+	uint32_t m = n / 2;
+	for (i = 2; i <= m; i++) {
+		if (n % i == 0) {
+			return 0; // Not Prime
+		}
+	}
+	return 1; // Prime
+}
+
+uint32_t findGCD(uint32_t n1, uint32_t n2){
+	uint32_t i, gcd;
+	for(i = 1; i <= n1 && i <= n2; ++i) {
+		if(n1 % i == 0 && n2 % i == 0)
+			gcd = i;
+	}
+	return gcd;
+}
+
+uint32_t powMod(uint32_t a, uint32_t b, uint32_t n) {
+	uint32_t x = 1, y = a;
+	while (b > 0) {
+		if (b % 2 == 1)
+			x = (x * y) % n;
+		y = (y * y) % n; // Squaring the base
+		b /= 2;
+	}
+	return (x % n);
+}
+
+void public_key(uint32_t* e, uint32_t* d, uint32_t* n, uint32_t p, uint32_t q){
+	*n = (p * q);
+	uint32_t phin = (p - 1) * (q - 1);
+	*e = 0;
+	for ((*e) = 5; (*e) <= 100; (*e)++) {
+		if (findGCD(phin, (*e)) == 1)
+			break;
+	}
+	*d = 0;
+	while(1){
+		if ( (((*d) * (*e)) % phin) == 1)
+			break;
+		(*d)++;
+	}
+}
+
+// UserDefine other fuinction, not so important
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+void test_inline(){
+	__asm (	"svc	#0x6				\n");
 }
 
 void UserDefine_Task(){
@@ -4747,910 +5460,172 @@ void LED_BLUE_TASK(){
 	}
 }
 
+// other peripheral function, not so important
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-void Distributed_NodeGetID(){
-	SendFlag = Distributed_NodeGetID_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[13] = {  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeGetID_MSG};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-	}
-	Distributed_SendMsg(MyMacAddr, mydata, 13);
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeGetID\r\n");
+void init_external_interrupt(void){
+	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTA));
+	//GPIO Configurations
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_1_BIT(0));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTA)+ GPIOx_MODER_OFFSET, MODERy_0_BIT(0));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTA)+ GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(0));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTA)+ GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(0));
+
+	//RCC Enable SYSCFG
+	SET_BIT(SYSCFG_BASE + RCC_APB2ENR_OFFSET, SYSCFGEN_BIT);
+
+	//SYSCFG Configurations
+	WRITE_BITS(SYSCFG_BASE + SYSCFG_EXTICR1_OFFSET, EXTI0_3_BIT, EXTI0_0_BIT, 0);
+
+	SET_BIT(EXTI_BASE + EXTI_IMR_OFFSET, 0);
+	SET_BIT(EXTI_BASE + EXTI_RTSR_OFFSET, 0);
+	SET_BIT(EXTI_BASE + EXTI_FTSR_OFFSET, 0);
+	SET_BIT(EXTI_BASE + EXTI_PR_OFFSET, 0);
+	SET_BIT(NVIC_ISER_BASE + NVIC_ISERn_OFFSET(0), 6); //IRQ6
+}
+
+void exti0_handler_c(uint32_t LR, uint32_t MSP){
+	#if(SENDIMAGE == 1)
+	exti0_flag = 1;
 	#endif
-}
-
-void Distributed_NodeGetIDAgain(){
-	SendFlag = Distributed_NodeGetIDAgain_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeGetIDAgain_MSG};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-	}
-	Distributed_SendMsg(MyMacAddr, mydata, 13);
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeGetIDAgain\r\n");
-	#endif
-}
-
-void Distributed_NodeResponseID(){
-	SendFlag = Distributed_NodeResponseID_MSG;
-	uint32_t Dispatch_id = Global_Node_count + 1;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[17] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeResponseID_MSG, 0x00, 0x00, 0x00, 0x00};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+13] = *((uint8_t*)&Dispatch_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-	}
-	Distributed_SendMsg(MyMacAddr, mydata, 17);
-	#if(PrintSendRecv > 0)
-		printf("Send Distributed_NodeResponseID, Dispatch_id: 0x%lX\r\n", Dispatch_id);
-	#endif
-}
-
-uint8_t Distributed_NodeCheck(uint32_t Target_Node_id, uint32_t Needsize){
-	SendFlag = Distributed_NodeCheck_MSG;
-	if (DisrtibutedNodeCheckIDFlag == 0){
-		DisrtibutedNodeCheckIDFlag = Target_Node_id;
-		uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-		uint8_t mydata[17] = { 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeCheck_MSG, 0x00, 0x00, 0x00, 0x00};
-		for(uint8_t i=0;i<4;i++){
-			MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-			mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
-			mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-			mydata[i+13] = *((uint8_t*)&Needsize+i);
-		}
-		Distributed_SendMsg(MyMacAddr, mydata, 17);
-		#if(PrintSendRecv > 0)
-			printf("Send Distributed_NodeCheck to Node 0x%lX\r\n", Target_Node_id);
-		#endif
-		return 1;
-	}
-	else
-		return 0;
-}
-
-void Distributed_NodeCheckback(uint32_t Target_Node_id, uint8_t checkback_flag){
-	SendFlag = Distributed_NodeCheckback_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[14] = { 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeCheckback_MSG, 0x00};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-	}
-	mydata[13] = *((uint8_t*)&checkback_flag);
-	Distributed_SendMsg(MyMacAddr, mydata, 14);
-	#if(PrintSendRecv > 0)
-		printf("Send Distributed_NodeCheckback to Node 0x%lX, checkback_flag: 0x%X\r\n", Target_Node_id, checkback_flag);
-	#endif
-}
-
-void Distributed_NodeBackupMaster(uint32_t Target_Node_id){
-	SendFlag = Distributed_NodeBackupMaster_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[13] = { 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeBackupMaster_MSG};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-	}
-	Distributed_SendMsg(MyMacAddr, mydata, 13);
-	#if(PrintSendRecv > 0)
-		printf("Send Distributed_NodeBackupMaster to Node 0x%lX\r\n", Target_Node_id);
-	#endif
-}
-
-void Distributed_NodeInvalid(uint32_t Target_Node_id){
-	SendFlag = Distributed_NodeInvalid_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[17] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeInvalid_MSG, 0x00, 0x00, 0x00, 0x00};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+13] = *((uint8_t*)&Target_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-	}
-	Distributed_SendMsg(MyMacAddr, mydata, 17);
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeInvalid Node 0x%lX\r\n", Target_Node_id);
-	#endif
-}
-
-void Distributed_NodeSendFreeBlock(uint32_t Target_Node_id, uint32_t Node_id){
-	vPortEnterCritical();
-
-	SendFlag = Distributed_NodeSendFreeBlock_MSG;
-	if(Target_Node_id == 0)
-		Target_Node_id = 0xFFFFFFFF;
-	UpdateLocalFreeBlock();
-	uint32_t node_number = 0;
-	uint32_t block_number = 0;
-	Distributed_FreeBlock* FreeBlockStart = DF_Start;
-	Distributed_FreeBlock* tmp_block = FreeBlockStart;
-	if(Node_id > 0){
-		while((tmp_block != NULL) && (tmp_block->Node_id != Node_id)){
-			tmp_block = tmp_block->Next_Distributed_FreeBlock;
-		}
-		if(tmp_block == NULL){
-			printf("Distributed_NodeSendFreeBlock Fail, Without Node_id: 0x%lX\r\n", Node_id);
-		}
-		else{
-			node_number++;
-			block_number += tmp_block->Block_number;
-		}
+	uint32_t *stack_frame_ptr;
+	if (LR & 0x4){
+		stack_frame_ptr = (uint32_t *)read_psp();
 	}
 	else{
-		while(tmp_block != NULL){
-			node_number++;
-			block_number += tmp_block->Block_number;
-			tmp_block = tmp_block->Next_Distributed_FreeBlock;
-		}
+		stack_frame_ptr = (uint32_t *)MSP;
 	}
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint32_t Send_size = 14+(node_number*sizeof(Distributed_FreeBlock))+block_number*sizeof(uint32_t);
-	uint8_t mydata[Send_size];
-	mydata[0] = 0xff;
-	mydata[1] = 0xff;
-	mydata[12] = Distributed_NodeSendFreeBlock_MSG;
-	mydata[13] = node_number;
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-	}
-	uint32_t tmp_node_number = 0;
-	uint32_t tmp_node_data_count = 0;
-	uint32_t source_node_count = 0;
-	if(Node_id == 0){
-		tmp_block = FreeBlockStart;
-		while(tmp_block != NULL){
-			source_node_count++;
-			for(uint8_t i=0;i<sizeof(Distributed_FreeBlock);i++){
-				*((uint8_t*)(mydata+14+tmp_node_number*sizeof(Distributed_FreeBlock)+i)) = *((uint8_t*)tmp_block+i);
-			}
-			for(uint32_t i=0;i<tmp_block->Block_number;i++){
-				for(uint32_t j=0;j<sizeof(uint32_t);j++){
-					*((uint8_t*)(mydata+14+node_number*sizeof(Distributed_FreeBlock)+tmp_node_data_count)) = *((uint8_t*)(tmp_block->Block_size_array+i)+j);
-					tmp_node_data_count++;
-				}
-			}
-			tmp_node_number++;
-			tmp_block = tmp_block->Next_Distributed_FreeBlock;
-		}
-	}
-	else{
-		if (tmp_block->Node_id == Node_id){
-			for(uint8_t i=0;i<sizeof(Distributed_FreeBlock);i++)
-				*((uint8_t*)(mydata+14+i)) = *((uint8_t*)tmp_block+i);
-			for(uint32_t i=0;i<tmp_block->Block_number;i++){
-				for(uint32_t j=0;j<sizeof(uint32_t);j++){
-					*((uint8_t*)(mydata+14+node_number*sizeof(Distributed_FreeBlock)+4*i+j)) = *((uint8_t*)tmp_block->Block_size_array+4*i+j);
-				}
-			}
-		}
-	}
-	vPortExitCritical();
-	Distributed_SendMsg(MyMacAddr, mydata, Send_size);
-	BlockChangeFlag = 0;
-}
-
-void Distributed_NodeSendSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size){
-	SendFlag = Distributed_NodeSendSubtask_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	*((uint8_t*)Subtask_addr) = 0xff;
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		*(((uint8_t*)Subtask_addr+2)+i) = *((uint8_t*)&Target_Node_id+i);
-		*(((uint8_t*)Subtask_addr+8)+i) = *((uint8_t*)&Global_Node_id+i);
-		*((uint8_t*)Subtask_addr+12) = Distributed_NodeSendSubtask_MSG;
-	}
-	Distributed_SendMsg(MyMacAddr, Subtask_addr, Subtask_size);
-	#if(PrintSendRecv > 0)
-		printf("Broadcast DistributedNodeSubtask Node 0x%lX, Subtask_size: 0x%lX\r\n", Target_Node_id, Subtask_size);
+	uint32_t stacked_return_addr = *(stack_frame_ptr+6);
+	uint32_t stacked_LR = *(stack_frame_ptr+5);
+	#if(SENDIMAGE == 0)
+	printf("DebugFlag: 0x%lX, SendFlag: 0x%lX, RecvFlag: 0x%lX, PublishFlag: 0x%lX, Return_addr: 0x%lX, LR: 0x%lX\r\n", DebugFlag, SendFlag, RecvFlag, PublishFlag, stacked_return_addr, stacked_LR);
 	#endif
+	SET_BIT(EXTI_BASE + EXTI_PR_OFFSET, 0);
 }
 
-void Distributed_NodeSendRemainSubtask(uint32_t Target_Node_id, uint8_t* Subtask_addr, uint32_t Subtask_size, uint32_t Remain_th){
-	SendFlag = Distributed_NodeSendRemainSubtask_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t* Send_Addr = Subtask_addr - 17;
-	uint8_t tmp_data[17];
-	for(uint32_t i=0;i<17;i++)
-		tmp_data[i] = *(Send_Addr+i);
-	Subtask_size += 17;
-	*((uint8_t*)Send_Addr) = 0xff;
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		*((uint8_t*)Send_Addr+2+i) = *((uint8_t*)&Target_Node_id+i);
-		*((uint8_t*)Send_Addr+8+i) = *((uint8_t*)&Global_Node_id+i);
-		*((uint8_t*)Send_Addr+13+i) = *((uint8_t*)&Remain_th+i);
-	}
-	*((uint8_t*)Send_Addr+12) = Distributed_NodeSendRemainSubtask_MSG;
-	Distributed_SendMsg(MyMacAddr, Send_Addr, Subtask_size);
-	for(uint32_t i=0;i<17;i++)
-		*(Send_Addr+i) = tmp_data[i];
+void init_dac(void){
+	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTA));
+	SET_BIT(RCC_BASE + RCC_APB1ENR_OFFSET, DACEN);
 
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeSendRemainSubtask Node 0x%lX, Subtask_size: 0x%lX\r\n", Target_Node_id, Subtask_size);
-	#endif
+	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_1_BIT(4));
+	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_MODER_OFFSET, MODERy_0_BIT(4));
+
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(4));
+	SET_BIT(GPIO_BASE(GPIO_PORTA) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(4));
+
+	CLEAR_BIT(DAC_BASE + DAC_CR_OFFSET, DAC_CR_DMAUDRIE1);
+	CLEAR_BIT(DAC_BASE + DAC_CR_OFFSET, DAC_CR_DMAEN1);
+	WRITE_BITS(DAC_BASE + DAC_CR_OFFSET, DAC_CR_MAMP1_3_BIT, DAC_CR_MAMP1_0_BIT, 0);
+	WRITE_BITS(DAC_BASE + DAC_CR_OFFSET, DAC_CR_WAVE1_1_BIT, DAC_CR_WAVE1_0_BIT, 0);
+	WRITE_BITS(DAC_BASE + DAC_CR_OFFSET, DAC_CR_TSEL1_2_BIT, DAC_CR_TSEL1_0_BIT, 7);
+	CLEAR_BIT(DAC_BASE + DAC_CR_OFFSET, DAC_CR_TEN1);
+	SET_BIT(DAC_BASE + DAC_CR_OFFSET, DAC_CR_BOFF1);
+	SET_BIT(DAC_BASE + DAC_CR_OFFSET, DAC_CR_EN1);
+	DAC_SetChannel1Data(0);
 }
 
-
-void Distributed_NodeRecvSubtask(uint32_t Target_Node_id){
-	SendFlag = Distributed_NodeRecvSubtask_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeRecvSubtask_MSG};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-	}
-	Distributed_SendMsg(MyMacAddr, mydata, 13);
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeRecvSubtask Node\r\n");
-	#endif
+void DAC_SetChannel1Data(uint8_t vol){
+	WRITE_BITS( DAC_BASE + DAC_DHR8R1_OFFSET, DAC_DHR8R1_DACC1DHR_7_BIT, DAC_DHR8R1_DACC1DHR_0_BIT, vol);
 }
 
-void Distributed_NodeRecvRemainSubtask(uint32_t Target_Node_id, uint32_t Remain_th){
-	SendFlag = Distributed_NodeRecvRemainSubtask_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[17] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeRecvRemainSubtask_MSG, 0x00, 0x00, 0x00, 0x00};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+13] = *((uint8_t*)&Remain_th+i);
-	}
-	Distributed_SendMsg(MyMacAddr, mydata, 17);
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeRecvRemainSubtask Node\r\n");
-	#endif
+void init_timer4(void){
+	SET_BIT(RCC_BASE + RCC_APB1ENR_OFFSET, TIM4EN);
+	WRITE_BITS(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_CKD_1_BIT, TIMx_CKD_0_BIT, 0b00);
+	SET_BIT(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_ARPE);
+	WRITE_BITS(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_CMS_1_BIT, TIMx_CMS_0_BIT, 0b00);
+	CLEAR_BIT(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_DIR);
+	CLEAR_BIT(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_OPM);
+	CLEAR_BIT(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_URS);
+	CLEAR_BIT(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_UDIS);
+	WRITE_BITS(TIM4_BASE + TIMx_PSC_OFFSET, TIMx_PSC_15_BIT, TIMx_PSC_0_BIT, 3);
+	WRITE_BITS(TIM4_BASE + TIMx_ARR_OFFSET, TIMx_ARR_15_BIT, TIMx_ARR_0_BIT, 952);
+	SET_BIT(TIM4_BASE + TIMx_CR1_OFFSET, TIMx_CEN);
 }
 
-void Distributed_NodeDisablePublish(uint32_t Target_Node_id){
-	SendFlag = Distributed_NodeDisablePublish_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeDisablePublish_MSG};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-	}
-	PublishFlag = 0;
-	Distributed_SendMsg(MyMacAddr, mydata, 13);
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeDisablePublish Node\r\n");
-	#endif
+void init_usart3(void){
+	//RCC EN GPIO
+	SET_BIT(RCC_BASE + RCC_AHB1ENR_OFFSET, GPIO_EN_BIT(GPIO_PORTD));
+
+	//MODER => 10
+	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_1_BIT(8));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_0_BIT(8));
+
+	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_1_BIT(9));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_MODER_OFFSET, MODERy_0_BIT(9));
+
+	//OT => 0
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OTYPER_OFFSET, OTy_BIT(8));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OTYPER_OFFSET, OTy_BIT(9));
+
+	//OSPEEDR => 10
+	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(8));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(8));
+
+	SET_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_1_BIT(9));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_OSPEEDR_OFFSET, OSPEEDRy_0_BIT(9));
+
+	//PUPDR = 00 => No pull-up, pull-down
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(8));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(8));
+
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_1_BIT(9));
+	CLEAR_BIT(GPIO_BASE(GPIO_PORTD) + GPIOx_PUPDR_OFFSET, PUPDRy_0_BIT(9));
+
+	//AF sel
+	WRITE_BITS(GPIO_BASE(GPIO_PORTD) + GPIOx_AFRH_OFFSET, AFRHy_3_BIT(8), AFRHy_0_BIT(8), 7);
+	WRITE_BITS(GPIO_BASE(GPIO_PORTD) + GPIOx_AFRH_OFFSET, AFRHy_3_BIT(9), AFRHy_0_BIT(9), 7);
+
+	//RCC EN USART3
+	SET_BIT(RCC_BASE + RCC_APB1ENR_OFFSET, USART3EN);
+
+	//baud rate
+	const unsigned int BAUDRATE = 115200;
+	const unsigned int SYSCLK_MHZ = 168;
+	const double USARTDIV = SYSCLK_MHZ * 1.0e6 / 8 / 2 / BAUDRATE;
+
+	const uint32_t DIV_MANTISSA = (uint32_t)USARTDIV;
+	const uint32_t DIV_FRACTION = (uint32_t)((USARTDIV - DIV_MANTISSA) * 16);
+
+	WRITE_BITS(USART3_BASE + USART_BRR_OFFSET, DIV_MANTISSA_11_BIT, DIV_MANTISSA_0_BIT, DIV_MANTISSA);
+	WRITE_BITS(USART3_BASE + USART_BRR_OFFSET, DIV_FRACTION_3_BIT, DIV_FRACTION_0_BIT, DIV_FRACTION);
+
+	//usart3 enable
+	SET_BIT(USART3_BASE + USART_CR1_OFFSET, UE_BIT);
+
+	//set TE
+	SET_BIT(USART3_BASE + USART_CR1_OFFSET, TE_BIT);
+
+	//set RE
+	SET_BIT(USART3_BASE + USART_CR1_OFFSET, RE_BIT);
+
+	//set RXNEIE
+	SET_BIT(USART3_BASE + USART_CR1_OFFSET, RXNEIE_BIT);
+
+	//set NVIC
+	//SET_BIT(NVIC_ISER_BASE + NVIC_ISERn_OFFSET(1), 5); //IRQ71 => (m+(32*n)) | m=7, n=2
 }
 
-void Distributed_NodeEnablePublish(uint32_t Target_Node_id){
-	SendFlag = Distributed_NodeEnablePublish_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeEnablePublish_MSG};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-	}
-	PublishFlag = 1;
-	Distributed_SendMsg(MyMacAddr, mydata, 13);
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeEnablePublish Node\r\n");
-	#endif
+void usart3_send_char(const char ch){
+	//wait util TXE == 1
+	while (!READ_BIT(USART3_BASE + USART_SR_OFFSET, TXE_BIT))
+		;
+	REG(USART3_BASE + USART_DR_OFFSET) = (uint8_t)ch;
 }
 
-void Distributed_NodeResponsePublish(uint32_t Target_Node_id){
-	SendFlag = Distributed_NodeResponsePublish_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeResponsePublish_MSG};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
+void usart3_handler(void){
+
+	if (READ_BIT(USART3_BASE + USART_SR_OFFSET, ORE_BIT))
+	{
+		usart3_send_char('~');
 	}
-	Distributed_SendMsg(MyMacAddr, mydata, 13);
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeResponsePublish Node\r\n");
-	#endif
-}
 
-void Distributed_NodeRequestKey(){
-	SendFlag = Distributed_NodeRequestKey_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeRequestKey_MSG};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-	}
-	Distributed_SendMsg(MyMacAddr, mydata, 13);
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeRequestKey Node\r\n");
-	#endif
-}
-
-void Distributed_NodeReleaseKey(){
-	SendFlag = Distributed_NodeReleaseKey_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[13] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeReleaseKey_MSG};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-	}
-	Distributed_SendMsg(MyMacAddr, mydata, 13);
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeReleaseKey Node\r\n");
-	#endif
-}
-
-void Distributed_NodeResponseKey(uint32_t Target_Node_id, uint8_t response_flag){
-	SendFlag = Distributed_NodeResponseKey_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[14] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeResponseKey_MSG, response_flag};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-	}
-	Distributed_SendMsg(MyMacAddr, mydata, 14);
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeResponseKey Node\r\n");
-	#endif
-}
-
-void Distributed_NodeSubtaskFinish(uint32_t Target_Node_id, uint32_t Task_id, uint32_t Subtask_id, uint32_t Size){
-	SendFlag = Distributed_NodeSubtaskFinish_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[25] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeSubtaskFinish_MSG, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+13] = *((uint8_t*)&Task_id+i);
-		mydata[i+17] = *((uint8_t*)&Subtask_id+i);
-		mydata[i+21] = *((uint8_t*)&Size+i);
-	}
-	Distributed_SendMsg(MyMacAddr, mydata, 25);
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeSubtaskFinish to Node: 0x%lX, Task_id: 0x%lX, Subtask_id: 0x%lX, Size: 0x%lX\r\n", Target_Node_id, Task_id, Subtask_id, Size);
-	#endif
-}
-
-void Distributed_NodeResponseSubtaskFinish(uint32_t Target_Node_id, uint32_t Target_Task_id, uint32_t Target_Subtask_id){
-	SendFlag = Distributed_NodeResponseSubtaskFinish_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[21] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeResponseSubtaskFinish_MSG, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+13] = *((uint8_t*)&Target_Task_id+i);
-		mydata[i+17] = *((uint8_t*)&Target_Subtask_id+i);
-	}
-	Distributed_SendMsg(MyMacAddr, mydata, 21);
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeResponseSubtaskFinish to Node: 0x%lX, Subtask: 0x%lX\r\n", Target_Node_id, Target_Subtask_id);
-	#endif
-}
-
-void Distributed_NodeRequestResult(uint32_t Target_Node_id, uint32_t Task_id, uint32_t Subtask_id){
-	SendFlag = Distributed_NodeRequestResult_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[21] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeRequestResult_MSG, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+13] = *((uint8_t*)&Task_id+i);
-		mydata[i+17] = *((uint8_t*)&Subtask_id+i);
-	}
-	Distributed_SendMsg(MyMacAddr, mydata, 21);
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeRequestResult, Node: 0x%lX, Task: 0x%lX, Subtask: 0x%lX\r\n", Target_Node_id, Task_id, Subtask_id);
-	#endif
-}
-
-void Distributed_NodeRequestRemainResult(uint32_t Target_Node_id, uint32_t Remain_th){
-	SendFlag = Distributed_NodeRequestRemainResult_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[17] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeRequestRemainResult_MSG, 0x00, 0x00, 0x00, 0x00};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+13] = *((uint8_t*)&Remain_th+i);
-	}
-	Distributed_SendMsg(MyMacAddr, mydata, 17);
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeRequestRemainResult, Node: 0x%lX, Remain_th: 0x%lX\r\n", Target_Node_id, Remain_th);
-	#endif
-}
-
-void Distributed_NodeResponseResult(uint32_t Target_Node_id, uint8_t* Result_addr, uint32_t Result_size){
-	SendFlag = Distributed_NodeResponseResult_MSG;
-	//printf("Result_size: 0x%lX\r\n", Result_size);
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	*((uint8_t*)Result_addr) = 0xff;
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		*(((uint8_t*)Result_addr+2)+i) = *((uint8_t*)&Target_Node_id+i);
-		*(((uint8_t*)Result_addr+8)+i) = *((uint8_t*)&Global_Node_id+i);
-	}
-	*((uint8_t*)Result_addr+12) = Distributed_NodeResponseResult_MSG;
-	Distributed_SendMsg(MyMacAddr, Result_addr, Result_size);
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeResponseResult Node 0x%lX\r\n", Target_Node_id);
-	#endif
-}
-
-void Distributed_NodeResponseRemainResult(uint32_t Target_Node_id, uint8_t* Result_addr, uint32_t Result_size, uint32_t Remain_th){
-	SendFlag = Distributed_NodeResponseRemainResult_MSG;
-	//printf("Result_size: 0x%lX\r\n", Result_size);
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t* Send_Addr = Result_addr - 17;
-	uint8_t tmp_data[17];
-	for(uint32_t i=0;i<17;i++)
-		tmp_data[i] = *(Send_Addr+i);
-	Result_size += 17;
-	*((uint8_t*)Send_Addr) = 0xff;
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		*((uint8_t*)Send_Addr+2+i) = *((uint8_t*)&Target_Node_id+i);
-		*((uint8_t*)Send_Addr+8+i) = *((uint8_t*)&Global_Node_id+i);
-		*((uint8_t*)Send_Addr+13+i) = *((uint8_t*)&Remain_th+i);
-	}
-	*((uint8_t*)Send_Addr+12) = Distributed_NodeResponseRemainResult_MSG;
-
-	Distributed_SendMsg(MyMacAddr, Send_Addr, Result_size);
-	for(uint32_t i=0;i<17;i++)
-		*(Send_Addr+i) = tmp_data[i];
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeResponseRemainResult Node 0x%lX\r\n", Target_Node_id);
-	#endif
-}
-
-void Distributed_NodeRemoveTask(uint32_t Target_Node_id, uint32_t Source_Node_id, uint32_t Task_id){
-	SendFlag = Distributed_NodeRemoveTask_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[21] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeRemoveTask_MSG, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+13] = *((uint8_t*)&Source_Node_id+i);
-		mydata[i+17] = *((uint8_t*)&Task_id+i);
-	}
-	Distributed_SendMsg(MyMacAddr, mydata, 21);
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeRemoveTask, Source_Node_id: 0x%lX, Task_id: 0x%lX\r\n", Source_Node_id, Task_id);
-	#endif
-}
-
-void Distributed_NodeSendComplete(uint32_t Target_Node_id, uint8_t Remain_th){
-	SendFlag = Distributed_NodeSendComplete_MSG;
-	uint8_t MyMacAddr[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-	uint8_t mydata[21] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, Distributed_NodeSendComplete_MSG, Remain_th };
-	for(uint8_t i=0;i<4;i++){
-		MyMacAddr[2+i] = *((uint8_t*)&Global_Node_id+i);
-		mydata[i+2] = *((uint8_t*)&Target_Node_id+i);
-		mydata[i+8] = *((uint8_t*)&Global_Node_id+i);
-	}
-	mydata[13] = Remain_th;
-	Distributed_SendMsg(MyMacAddr, mydata, 14);
-	#if(PrintSendRecv > 0)
-		printf("Broadcast Distributed_NodeSendComplete, Target_Node_id: 0x%lX, Remain_th: 0x%lX\r\n", Target_Node_id, (uint32_t)Remain_th);
-	#endif
-}
-
-void Distributed_SendMsg(uint8_t* MyMacAddr, uint8_t* Target_Addr, uint32_t Size){
-	init_eth(DP83848_PHY_ADDRESS, MyMacAddr);
-	uint8_t Send_success_flag = 0;
-	while(!Send_success_flag){
-		Send_success_flag = DP83848Send(Target_Addr, Size);
-		if (!Send_success_flag){
-			while(!init_eth(DP83848_PHY_ADDRESS, MyMacAddr)){
-				printf("Reset eth\r\n");
-				for(uint32_t i=0;i<0x000000FF;i++)
-					;
-			}
-
-		}
-	}
-	tickcount_lo_bound = xTaskGetTickCount();
-	tickcount_hi_bound = tickcount_lo_bound + Timeout_Tick_Count*Global_Node_count + 10;
-}
-
-uint8_t Distributed_NodeCheckSizeTimeout(uint32_t tick, uint32_t Target_Node_id, uint32_t Needsize){
-	if(Target_Node_id != Global_Node_id){
-		uint32_t bool_timeout_flag = 0;
-		uint8_t success_flag = 0xFF;
-		while(!(Distributed_NodeCheck(Target_Node_id, Needsize)));
-		uint32_t base_tick = xTaskGetTickCount();
-		uint32_t timeout_tick = base_tick + tick;
-		while((bool_timeout_flag == 0) && (DisrtibutedNodeCheckIDFlag != 0)){
-			uint32_t now_tick = xTaskGetTickCount();
-			if(timeout_tick > base_tick){
-				if((now_tick > timeout_tick) || (now_tick < base_tick))
-					bool_timeout_flag = 1;
-			}
-			else{
-				if((now_tick > timeout_tick) && (now_tick < base_tick))
-					bool_timeout_flag = 1;
-			}
-		}
-
-		if(DisrtibutedNodeCheckIDFlag == 0){
-			success_flag = CheckbackFlag;
-		}
-		else{
-			//printf("Without check back, timeout!?\r\n");
-			DisrtibutedNodeCheckIDFlag = 0;
-		}
-		return success_flag;
-	}
-	else{
-		return 0xff;															//	"Dame you should not check yourself node"
+	else if (READ_BIT(USART3_BASE + USART_SR_OFFSET, RXNE_BIT))
+	{
+		char c = (char)REG(USART3_BASE + USART_DR_OFFSET);
+		usart3_send_char(c);
 	}
 }
 
-uint8_t Distributed_NodeRequestReleaseSequence(uint8_t DisableEnableFlag){
-	if(DisableEnableFlag == 0){
-		while(1){
-			if(Global_Node_id == Global_Node_Master){
-				vPortEnterCritical();
-				if((RequestKeyFlag != 0) && (RequestKeyFlag != Global_Node_id))			//	RequestKeyFlag is occupy
-					ResponseKeyFlag = Global_Node_count + 1;
-				else{
-					ResponseKeyFlag = Global_Node_id;									//	Request RequestKeyFlag
-					RequestKeyFlag = Global_Node_id;
-				}
-				vPortExitCritical();
-			}
-			else{																		//	Local node is not Master, try to request or release by communication
-				ResponseKeyFlag = 0;
-				while(ResponseKeyFlag == 0){
-					//while(!Check_Sendable_Without_Limit());
-					if(PublishFlag > 0)
-						Distributed_NodeRequestKey();									//	Request by communication
-					WaitForFlag(&ResponseKeyFlag, 1);
-				}
-			}
-			if(ResponseKeyFlag > Global_Node_count){									//	RequestKeyFlag is occupy, clear ResponseKeyFlag
-				ResponseKeyFlag = 0;													//	Not Get the Key
-				//PublishFlag = 0;
-				return	0;
-			}
-			else{																		//	occupy RequestKeyFlag, clear ResponseKeyFlag
-				PublishFlag = 0;
-				ResponseKeyFlag = 0;
-				break;
-			}
-		}
-		for(uint32_t i=1;i<=Global_Node_count;i++){										//	Disable/Enable all node
-			if((i != Global_Node_Master) && (i != Global_Node_id)){
-				uint32_t Timeout_count_limit = 10;
-				uint32_t Timeout_count = 0;
-				while(PublishResponseFlag != i){
-					///while(!Check_Sendable_Without_Limit());
-					PublishResponseFlag = 0;
-					Distributed_NodeDisablePublish(i);
-					WaitForFlag(&PublishResponseFlag, 1);
-					if(PublishResponseFlag == i){										//	Got ResponsePublish
-						break;
-					}
-					else{
-						global_record_requestrelease_fail_count[i-1]++;
-						//	Should publish Invalid Node
-						//	??????
-						Timeout_count++;
-						if(Timeout_count > Timeout_count_limit){
-							//printf("Over time out limit: 0x%lX\r\n", Timeout_count_limit);
-							break;
-						}
-					}
-				}
-			}
-			else if (i == Global_Node_id){
-				PublishFlag = 0;
-			}
-		}
-	}
-	else{
-		for(uint32_t i=1;i<=Global_Node_count;i++){										//	Disable/Enable all node
-			if((i != Global_Node_Master) && (i != Global_Node_id)){
-				uint32_t Timeout_count_limit = 20;
-				uint32_t Timeout_count = 0;
-				while(PublishResponseFlag != i){
-					//while(!Check_Sendable_Without_Limit());
-					PublishResponseFlag = 0;
-					Distributed_NodeEnablePublish(i);
-					WaitForFlag(&PublishResponseFlag, 1);
-					if(PublishResponseFlag == i){										//	Got ResponsePublish
-						break;
-					}
-					else{
-						global_record_requestrelease_fail_count[i-1]++;
-						//	Should publish Invalid Node
-						//	??????
-						Timeout_count++;
-						if(Timeout_count > Timeout_count_limit){
-							//printf("Over time out limit: 0x%lX\r\n", Timeout_count_limit);
-							break;
-						}
-					}
-				}
-			}
-			else if (i == Global_Node_id){
-				PublishFlag = 1;
-			}
-		}
-		while(1){
-			if(Global_Node_id == Global_Node_Master){
-				vPortEnterCritical();
-				if((RequestKeyFlag != Global_Node_id) && (RequestKeyFlag != 0))		//	Not the RequestKeyFlag occupy node
-					ResponseKeyFlag = Global_Node_count + 1;
-				else{																//	Release RequestKeyFlag
-					ResponseKeyFlag = Global_Node_id;
-					RequestKeyFlag = 0;
-				}
-				vPortExitCritical();
-			}
-			else{																		//	Local node is not Master, try to request or release by communication
-				ResponseKeyFlag = 0;
-				while(ResponseKeyFlag == 0){
-					Distributed_NodeReleaseKey();									//	Release by communication
-					WaitForFlag(&ResponseKeyFlag, 1);
-				}
-			}
-			/*
-			if(ResponseKeyFlag > Global_Node_count){									//	RequestKeyFlag is occupy, clear ResponseKeyFlag
-				#if(PrintSendRecv > 0)
-					if(DisableEnableFlag == 0)
-						printf("Not Request the Key, RequestKeyFlag is occupy\r\n");
-					else
-						printf("Not Release the Key, RequestKeyFlag is occupy\r\n");
-				#endif
-				ResponseKeyFlag = 0;													//	Not Get the Key
-				return	0;
-			}
-			else{																		//	occupy RequestKeyFlag, clear ResponseKeyFlag
-				ResponseKeyFlag = 0;
-				break;
-			}
-			*/
-			if(ResponseKeyFlag > Global_Node_count)
-				PublishFlag = 0;
-			ResponseKeyFlag = 0;
-			break;
-		}
-	}
-	return	1;
-}
-
-uint8_t Distributed_NodeSendCompleteSequence(uint32_t Target_Node_id){
-	vPortEnterCritical();
-	uint8_t Remain_th = 1;
-	SendCompleteFlag = 0;
-	Distributed_NodeSendComplete(Target_Node_id, Remain_th);
-	vPortExitCritical();
-	WaitForFlag(&SendCompleteFlag, 1);
-	vPortEnterCritical();
-	if(SendCompleteFlag == (Remain_th+1)){
-		Remain_th = SendCompleteFlag + 1;
-		Distributed_NodeSendComplete(Target_Node_id, Remain_th);
-		SendCompleteFlag = 0;
-		vPortExitCritical();
-		return Remain_th;
-	}
-	else{
-		global_record_fail_count[Target_Node_id-1] = global_record_fail_count[Target_Node_id-1]+1;
-		SendCompleteFlag = 0;
-		vPortExitCritical();
-		return 0;
-	}
-}
-
-uint8_t Distributed_NodeRecvCompleteSequence(uint32_t Target_Node_id){
-	WaitForFlag(&SendCompleteFlag, 1);
-	vPortEnterCritical();
-	uint8_t Remain_th = 0;
-	if(SendCompleteFlag == (Remain_th+1)){
-		Remain_th = SendCompleteFlag + 1;
-		SendCompleteFlag = 0;
-		uint32_t recv_complete_count = 0;
-		uint32_t recv_complete_limit = 10;
-		while(1){
-			Distributed_NodeSendComplete(Target_Node_id, Remain_th);
-			vPortExitCritical();
-			WaitForFlag(&SendCompleteFlag, 1);
-			vPortEnterCritical();
-			if(SendCompleteFlag == (Remain_th+1)){
-				Remain_th = SendCompleteFlag + 1;
-				break;
-			}
-			else{
-				global_record_fail_count[Target_Node_id+4-1] = global_record_fail_count[Target_Node_id+4-1]+1;
-				recv_complete_count++;
-				if(recv_complete_count > recv_complete_limit){
-					break;
-				}
-			}
-		}
-		SendCompleteFlag = 0;
-		vPortExitCritical();
-		return Remain_th;
-	}
-	else{
-		global_record_fail_count[Target_Node_id+4-1] = global_record_fail_count[Target_Node_id+4-1]+1;
-		SendCompleteFlag = 0;
-		vPortExitCritical();
-		return 0;
-	}
-}
-
-void UpdateLocalFreeBlock(){
-	//printf("  UpdateLocalFreeBlock Start\r\n");
-	vPortEnterCritical();
-	Distributed_FreeBlock* local_free_block = DF_Start;
-	while((local_free_block != NULL) && (local_free_block->Node_id != Global_Node_id)){
-		local_free_block = local_free_block->Next_Distributed_FreeBlock;
-	}
-	if(local_free_block == NULL){
-		local_free_block = pvPortMalloc(sizeof(Distributed_FreeBlock));
-		local_free_block->Node_id = Global_Node_id;
-		local_free_block->Block_number = 0;
-		Distributed_FreeBlock* tmp_free_block = DF_Start;
-		while((tmp_free_block->Next_Distributed_FreeBlock != NULL) && ((tmp_free_block->Next_Distributed_FreeBlock)->Node_id <= Global_Node_id)){
-			tmp_free_block = tmp_free_block->Next_Distributed_FreeBlock;
-		}
-		if(tmp_free_block != DF_Start){
-			local_free_block->Next_Distributed_FreeBlock = tmp_free_block->Next_Distributed_FreeBlock;
-			tmp_free_block->Next_Distributed_FreeBlock = local_free_block;
-		}
-		else{
-			if (DF_Start == NULL){
-				DF_Start = local_free_block;
-			}
-			else{
-				if (DF_Start->Node_id > Global_Node_id){
-					local_free_block->Next_Distributed_FreeBlock = DF_Start;
-					DF_Start = local_free_block;
-				}
-				else{
-					local_free_block->Next_Distributed_FreeBlock = DF_Start->Next_Distributed_FreeBlock;
-					DF_Start->Next_Distributed_FreeBlock = local_free_block;
-				}
-			}
-		}
-	}
-	uint32_t block_number = 0;
-	BlockLink_t* tmp_block = &xStart;
-	while(tmp_block != NULL){
-		if(tmp_block->xBlockSize > 0){
-			block_number++;
-		}
-		tmp_block = tmp_block->pxNextFreeBlock;
-	}
-	if(block_number != local_free_block->Block_number){
-		if(local_free_block->Block_number > 0){
-			vPortFree(local_free_block->Block_size_array);
-			block_number = 0;
-			tmp_block = &xStart;
-			while(tmp_block != NULL){
-				if(tmp_block->xBlockSize > 0){
-					block_number++;
-				}
-				tmp_block = tmp_block->pxNextFreeBlock;
-			}
-		}
-		local_free_block->Block_size_array = pvPortMalloc(block_number*sizeof(uint32_t));
-	}
-	block_number = 0;
-	tmp_block = &xStart;
-	while(tmp_block != NULL){
-		if(tmp_block->xBlockSize > 0){
-			*(local_free_block->Block_size_array+block_number) = tmp_block->xBlockSize;
-			block_number++;
-		}
-		tmp_block = tmp_block->pxNextFreeBlock;
-	}
-	local_free_block->Block_number = block_number;
-	vPortExitCritical();
-}
-
-Distributed_FreeBlock* GetFreeBlockNode(uint32_t Node_id){
-	vPortEnterCritical();
-	Distributed_FreeBlock* free_block = DF_Start;
-	while((free_block != NULL) && (free_block->Node_id != Node_id))
-		free_block = free_block->Next_Distributed_FreeBlock;
-	if(free_block == NULL){
-		free_block = pvPortMalloc(sizeof(Distributed_FreeBlock));
-		free_block->Node_id = Node_id;
-		free_block->Block_number = 0;
-		Distributed_FreeBlock* tmp_free_block = DF_Start;
-		while((tmp_free_block->Next_Distributed_FreeBlock != NULL) && ((tmp_free_block->Next_Distributed_FreeBlock)->Node_id <= Node_id)){
-			tmp_free_block = tmp_free_block->Next_Distributed_FreeBlock;
-		}
-		if(tmp_free_block != DF_Start){
-			free_block->Next_Distributed_FreeBlock = tmp_free_block->Next_Distributed_FreeBlock;
-			tmp_free_block->Next_Distributed_FreeBlock = free_block;
-		}
-		else{
-			if (DF_Start == NULL){
-				DF_Start = free_block;
-			}
-			else{
-				if (DF_Start->Node_id > Node_id){
-					free_block->Next_Distributed_FreeBlock = DF_Start;
-					DF_Start = free_block;
-				}
-				else{
-					free_block->Next_Distributed_FreeBlock = DF_Start->Next_Distributed_FreeBlock;
-					DF_Start->Next_Distributed_FreeBlock = free_block;
-				}
-			}
-		}
-	}
-	vPortExitCritical();
-
-	return free_block;
-}
-
-uint8_t Check_Sendable(){
-	uint8_t bool_send_flag = 0;
-	uint32_t tickcount = xTaskGetTickCount();
-	if(tickcount_hi_bound > tickcount_lo_bound){
-		if((tickcount>tickcount_hi_bound) || (tickcount<tickcount_lo_bound)){
-			bool_send_flag = 1;
-		}
-	}
-	else{
-		if((tickcount>tickcount_hi_bound) && (tickcount<tickcount_lo_bound)){
-			bool_send_flag = 1;
-		}
-	}
-	if (PublishFlag == 0){
-		bool_send_flag = 0;
-	}
-	return bool_send_flag;
-}
-
-uint8_t Check_Sendable_Without_Limit(){
-	uint8_t bool_send_flag = 0;
-	uint32_t tickcount = xTaskGetTickCount();
-	if(tickcount_hi_bound > tickcount_lo_bound){
-		if((tickcount>tickcount_hi_bound) || (tickcount<tickcount_lo_bound)){
-			bool_send_flag = 1;
-		}
-	}
-	else{
-		if((tickcount>tickcount_hi_bound) && (tickcount<tickcount_lo_bound)){
-			bool_send_flag = 1;
-		}
-	}
-	return bool_send_flag;
-}
-
-void Distributed_Show_FreeBlock(){
-	printf("\r\nStart---------------------------------------\r\n");
-	vPortEnterCritical();
-
-	Distributed_FreeBlock* free_block = DF_Start;
-	while(free_block != NULL){
-		printf("free_block Node_id: 0x%lX, Block_number: 0x%lX, Block_size_array: 0x%lX\r\n", free_block->Node_id, free_block->Block_number, (uint32_t)free_block->Block_size_array);
-		printf("Block: ");
-		for(uint32_t i=0;i<free_block->Block_number;i++)
-			printf("0x%lX, ", *(free_block->Block_size_array+i));
-		printf("\r\n");
-		free_block = free_block->Next_Distributed_FreeBlock;
-	}
-	vPortExitCritical();
-
-	printf("End  ---------------------------------------\r\n\r\n");
-}
+// main
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 int main(void){
 	DStart->Next_TaskHandle_List = NULL;
@@ -5667,48 +5642,8 @@ int main(void){
 	while(1)
 		;
 }
-//-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
-void swap(int *a, int *b){
-    int temp = *a;
-    *a = *b;
-    *b = temp;
-}
-int Partition(int *arr, int front, int end){
-    int pivot = arr[end];
-    int i = front -1;
-    for (int j = front; j < end; j++) {
-        if (arr[j] < pivot) {
-            i++;
-            swap(&arr[i], &arr[j]);
-        }
-    }
-    i++;
-    swap(&arr[i], &arr[end]);
-    return i;
-}
-void QuickSort(int *arr, int front, int end){
-    if (front < end) {
-        int pivot = Partition(arr, front, end);
-        QuickSort(arr, front, pivot - 1);
-        QuickSort(arr, pivot + 1, end);
-    }
-}
-uint32_t WaitForFlag(volatile uint32_t* Flag_Addr, uint32_t timeout_time){
-	uint32_t base_tick = xTaskGetTickCount();
-	uint32_t timeout_tick = base_tick + timeout_time*Timeout_Tick_Count;
-	while(*(Flag_Addr) == 0){
-		uint32_t now_tick = xTaskGetTickCount();
-		if(timeout_tick > base_tick){
-			if((now_tick > timeout_tick) || (now_tick < base_tick))
-				break;
-		}
-		else{
-			if((now_tick > timeout_tick) && (now_tick < base_tick))
-				break;
-		}
-	}
-	return *(Flag_Addr);
-}
+
+// stdio.h porting
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 void *_sbrk(int incr){
 	extern uint8_t _mybss_vma_end; //Defined by the linker script

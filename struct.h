@@ -1,12 +1,24 @@
 #define Distributed_End(s, target_addr, target_size)		 		\
 do {                			 									\
-	s->Data_addr = target_addr;										\
-	s->Data_number = target_size;									\
+	s->Data_addr = (uint32_t*)target_addr;							\
+	s->Data_number = (uint32_t)target_size;							\
 	for(uint32_t tmp_COUNT=0;tmp_COUNT<1;tmp_COUNT++)				\
 		;															\
 	__asm volatile ("svc	#0x2	\n");							\
-	Distributed_LocalSubtaskDone(s, target_addr, target_size);		\
+	Distributed_LocalSubtaskDone(s, (uint32_t*)target_addr, (uint32_t)target_size);	\
 } while (0)
+
+#define Distributed_GetTragetData(s)		 														\
+({																									\
+	Distributed_Data_t* tmp_array = s->Distributed_Data_List;										\
+	if (s->Remain_Data_number < s->Data_number){													\
+		for(uint32_t Data_number_i=0;Data_number_i<s->Remain_Data_number;Data_number_i++){			\
+			tmp_array = tmp_array->Next_Distributed_Data;											\
+		}																							\
+		s->Remain_Data_number = s->Remain_Data_number + 1;											\
+	}																								\
+	tmp_array;																						\
+})
 
 #define Distributed_pvPortMalloc(malloc_addr, malloc_size)		 							\
 do {																						\
@@ -24,7 +36,6 @@ do {																						\
 	__asm (	"svc	#0x5				\n");												\
 	__asm (	"pop	{r0}				\n");												\
 } while (0)
-
 
 typedef struct Distributed_Data{
     uint32_t* Data_addr;
@@ -79,18 +90,6 @@ typedef struct A_BLOCK_LINK {
 	struct A_BLOCK_LINK *pxNextFreeBlock;
 	size_t xBlockSize;
 } BlockLink_t;
-
-#define Distributed_GetTragetData(s)		 														\
-({																									\
-	Distributed_Data_t* tmp_array = s->Distributed_Data_List;										\
-	if (s->Remain_Data_number < s->Data_number){													\
-		for(uint32_t Data_number_i=0;Data_number_i<s->Remain_Data_number;Data_number_i++){			\
-			tmp_array = tmp_array->Next_Distributed_Data;											\
-		}																							\
-		s->Remain_Data_number = s->Remain_Data_number + 1;											\
-	}																								\
-	tmp_array;																						\
-})
 
 typedef struct {
 	volatile uint32_t   Status;
