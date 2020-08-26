@@ -20,12 +20,12 @@ while True:
         x = ser.read(8)
         if(str(x) == "camera_0"):
             ser.flush()
-            x = ser.read(16384)
-            if (len(x) == 16384):
+            x = ser.read(4096)
+            if (len(x) == 4096):
                 rawfile = np.frombuffer(x, "uint8")
-                rawfile.shape = (128,128)
+                rawfile.shape = (64,64)
                 #misc.imsave("test.png", rawfile)
-                im = PIL.Image.frombuffer("L", (128,128), x, "raw", "L", 0, 1)
+                im = PIL.Image.frombuffer("L", (64,64), x, "raw", "L", 0, 1)
                 misc.imsave("test{0}.png".format(count), im)
                 count = count + 1
                 print("len(rawfile): {0}".format(len(rawfile)))
@@ -33,12 +33,12 @@ while True:
             ser.flush()
         elif(str(x) == "camera_1"):
             ser.flush()
-            x = ser.read(32768)
-            if (len(x) == 32768):
+            x = ser.read(8192)
+            if (len(x) == 8192):
                 rawfile = np.frombuffer(x, "uint16")
-                rawfile.shape = (128,128)
+                rawfile.shape = (64,64)
                 #misc.imsave("test.png", rawfile)
-                im = PIL.Image.frombuffer("RGB", (128,128), x, "raw", "BGR;16")
+                im = PIL.Image.frombuffer("RGB", (64,64), x, "raw", "BGR;16")
                 misc.imsave("test{0}.png".format(count), im)
                 count = count + 1
                 print("len(rawfile): {0}".format(len(rawfile)))

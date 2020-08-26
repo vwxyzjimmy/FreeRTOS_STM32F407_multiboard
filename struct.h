@@ -10,7 +10,7 @@ do {                			 									\
 	Distributed_LocalSubtaskDone(s, (uint32_t*)target_addr, (uint32_t)target_size);	\
 } while (0)
 
-#define Distributed_GetTragetData(s)		 														\
+#define Distributed_GetTargetData(s)		 														\
 ({																									\
 	Distributed_Data_t* tmp_array = s->Distributed_Data_List;										\
 	if (s->Remain_Data_number < s->Data_number){													\

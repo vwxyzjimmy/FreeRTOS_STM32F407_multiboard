@@ -4428,11 +4428,11 @@ uint32_t WaitForFlag(volatile uint32_t* Flag_Addr, uint32_t timeout_time){
 // Distributed task example, in the distributed task function
 void UserDefine_Distributed_Task(void *task_info){
 	Distributed_TaskHandle_List_t *data_info = Distributed_Start(task_info);
-	Distributed_Data_t* array1 = Distributed_GetTragetData(data_info);
+	Distributed_Data_t* array1 = Distributed_GetTargetData(data_info);
 
 	/*
-	Distributed_Data_t* array2 = Distributed_GetTragetData(data_info);
-	Distributed_Data_t* array3 = Distributed_GetTragetData(data_info);
+	Distributed_Data_t* array2 = Distributed_GetTargetData(data_info);
+	Distributed_Data_t* array3 = Distributed_GetTargetData(data_info);
 	*/
 	/*
 	uint32_t* malloc_addr = NULL;
@@ -4457,10 +4457,10 @@ void UserDefine_Distributed_Task_matrix_multiplication(void *task_info){
 	Distributed_TaskHandle_List_t *data_info = Distributed_Start(task_info);
 	if(data_info->DSubTask_id == 0)
 		printf("mtfk\r\n");
-	Distributed_Data_t* array1 = Distributed_GetTragetData(data_info);
-	Distributed_Data_t* array2 = Distributed_GetTragetData(data_info);
-	Distributed_Data_t* array1_column = Distributed_GetTragetData(data_info);
-	Distributed_Data_t* array2_column = Distributed_GetTragetData(data_info);
+	Distributed_Data_t* array1 = Distributed_GetTargetData(data_info);
+	Distributed_Data_t* array2 = Distributed_GetTargetData(data_info);
+	Distributed_Data_t* array1_column = Distributed_GetTargetData(data_info);
+	Distributed_Data_t* array2_column = Distributed_GetTargetData(data_info);
 	uint32_t column1 = (uint32_t)*(array1_column->Data_addr);
 	uint32_t column2 = (uint32_t)*(array2_column->Data_addr);
 	uint32_t row1 = array1->Data_size/column1;
@@ -4480,7 +4480,7 @@ void UserDefine_Distributed_Task_do_nothing(void *task_info){
 	uint32_t tmp_get_tickcount = 0;
 	if(data_info->DSubTask_id == 0)
 		tmp_get_tickcount = xTaskGetTickCount();
-	Distributed_Data_t* array1 = Distributed_GetTragetData(data_info);
+	Distributed_Data_t* array1 = Distributed_GetTargetData(data_info);
 	if(data_info->DSubTask_id == 0)
 		global_record_data[5] += (xTaskGetTickCount() - tmp_get_tickcount);
 	Distributed_End(data_info, array1->Data_addr, array1->Data_size);
@@ -4491,7 +4491,7 @@ void UserDefine_Distributed_Task_multiple(void *task_info){
 	uint32_t tmp_get_tickcount = 0;
 	if(data_info->DSubTask_id == 0)
 		tmp_get_tickcount = xTaskGetTickCount();
-	Distributed_Data_t* array1 = Distributed_GetTragetData(data_info);
+	Distributed_Data_t* array1 = Distributed_GetTargetData(data_info);
 	for(uint32_t i=0;i<array1->Data_size;i++)
 		*(array1->Data_addr + i) = *(array1->Data_addr + i)*2;
 	if(data_info->DSubTask_id == 0)
@@ -4506,10 +4506,10 @@ void UserDefine_Distributed_Task_2d_array_convolution(void *task_info){
 	if(data_info->DSubTask_id == 0)
 		tmp_get_tickcount = xTaskGetTickCount();
 
-	Distributed_Data_t* array = Distributed_GetTragetData(data_info);
-	Distributed_Data_t* array_column = Distributed_GetTragetData(data_info);
-	Distributed_Data_t* kernel = Distributed_GetTragetData(data_info);
-	Distributed_Data_t* kernel_column = Distributed_GetTragetData(data_info);
+	Distributed_Data_t* array = Distributed_GetTargetData(data_info);
+	Distributed_Data_t* array_column = Distributed_GetTargetData(data_info);
+	Distributed_Data_t* kernel = Distributed_GetTargetData(data_info);
+	Distributed_Data_t* kernel_column = Distributed_GetTargetData(data_info);
 	uint32_t array_a_column = *(array_column->Data_addr);
 	uint32_t kernel_a_column = *(kernel_column->Data_addr);
 	uint32_t* malloc_addr = NULL;
@@ -4550,7 +4550,7 @@ void UserDefine_Distributed_Task_bgr_gray_transform(void *task_info){
 	if(data_info->DSubTask_id == 0)
 		tmp_get_tickcount = xTaskGetTickCount();
 
-	Distributed_Data_t* array = Distributed_GetTragetData(data_info);
+	Distributed_Data_t* array = Distributed_GetTargetData(data_info);
 	uint8_t* image_addr = (uint8_t*)array->Data_addr;
 	uint32_t image_size = sizeof(uint32_t)*(array->Data_size);
 	uint8_t* malloc_addr = NULL;
@@ -4574,9 +4574,9 @@ void UserDefine_Distributed_Task_RSA(void *task_info){
 	uint32_t tmp_get_tickcount = 0;
 	if(data_info->DSubTask_id == 0)
 		tmp_get_tickcount = xTaskGetTickCount();
-	Distributed_Data_t* array = Distributed_GetTragetData(data_info);
-	Distributed_Data_t* e_d_info = Distributed_GetTragetData(data_info);
-	Distributed_Data_t* n_info = Distributed_GetTragetData(data_info);
+	Distributed_Data_t* array = Distributed_GetTargetData(data_info);
+	Distributed_Data_t* e_d_info = Distributed_GetTargetData(data_info);
+	Distributed_Data_t* n_info = Distributed_GetTargetData(data_info);
 
 	uint32_t e_d = *(e_d_info->Data_addr);
 	uint32_t n = *(n_info->Data_addr);
@@ -4608,7 +4608,7 @@ void UserDefine_Distributed_Task_bgr_gray_transform_with_2D_convolution(void *ta
 	if(data_info->DSubTask_id == 0)
 		tmp_get_tickcount = xTaskGetTickCount();
 
-	Distributed_Data_t* array = Distributed_GetTragetData(data_info);
+	Distributed_Data_t* array = Distributed_GetTargetData(data_info);
 
 	uint8_t* image_addr = (uint8_t*)array->Data_addr;
 	uint32_t image_size = sizeof(uint32_t)*(array->Data_size);
@@ -4622,9 +4622,9 @@ void UserDefine_Distributed_Task_bgr_gray_transform_with_2D_convolution(void *ta
 		*(malloc_addr+i) = (uint8_t)((R*299 + G*587 + B*114 + 500)/1000);
 	}
 
-	Distributed_Data_t* array_column = Distributed_GetTragetData(data_info);
-	Distributed_Data_t* kernel = Distributed_GetTragetData(data_info);
-	Distributed_Data_t* kernel_column = Distributed_GetTragetData(data_info);
+	Distributed_Data_t* array_column = Distributed_GetTargetData(data_info);
+	Distributed_Data_t* kernel = Distributed_GetTargetData(data_info);
+	Distributed_Data_t* kernel_column = Distributed_GetTargetData(data_info);
 	uint32_t array_a_column = *(array_column->Data_addr);
 	uint32_t kernel_a_column = *(kernel_column->Data_addr);
 
@@ -5310,7 +5310,7 @@ void UserDefine_Task(){
 					while(ov_rev_ok == 0)
 						;
 					DCMI_Stop();
-					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)camera_buffer, (32768/4), 1);
+					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)camera_buffer, (PIC_WIDTH*PIC_HEIGHT*2/4), 1);
 					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task_bgr_gray_transform, data_info, 1000, WithBarrier);
 					Distributed_Data_t* Result_data = NULL;
 					while(Result_data == NULL)
@@ -5341,7 +5341,7 @@ void UserDefine_Task(){
 					while(ov_rev_ok == 0)
 						;
 					DCMI_Stop();
-					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)camera_buffer, (32768/4), 256);
+					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)camera_buffer, (PIC_WIDTH*PIC_HEIGHT*2/4), 256);
 					Distributed_AddTargetData(data_info, &array_column, 1, 0);
 					Distributed_AddTargetData(data_info, kernel, 9, 0);
 					Distributed_AddTargetData(data_info, &kernel_column, 1, 0);
