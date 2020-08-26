@@ -5022,7 +5022,7 @@ void UserDefine_Task(){
 					Count++;
 				}
 				*/
-				/* //	UserDefine_Distributed_Task_2d_array_convolution
+				 //	UserDefine_Distributed_Task_2d_array_convolution
 				while(Count < 1){
 					uint32_t tmp_global_record_data_7 = xTaskGetTickCount();
 					uint32_t array_column = 128;
@@ -5036,20 +5036,6 @@ void UserDefine_Task(){
 					Distributed_Data_t* Result_data = NULL;
 					while(Result_data == NULL)
 						Result_data = Distributed_GetResult(Result);
-
-					//uint32_t all_right = 1;
-					//for(uint32_t i=0;i<Result_data->Data_size;i++){
-					//	if(*(Result_data->Data_addr+i) != 0x12){
-					//		all_right = 0;
-					//	}
-					//}
-					//if(all_right == 1)
-					//	//printf("Count: 0x%lX, All answer right\r\n", Count);
-					//	;
-					//else{
-					//	printf("Count: 0x%lX, Some answer is wrong\r\n", Count);
-					//}
-					//printf("Result_data Data_size: 0x%lX\r\n", Result_data->Data_size);
 					for(uint32_t i=0;i<Result_data->Data_size;i++){
 						printf("%u, ", (unsigned int)*(Result_data->Data_addr+i));
 						if((i%128) == 0)
@@ -5062,7 +5048,7 @@ void UserDefine_Task(){
 					printf("Task: %u ticks	=\r\n", (unsigned int)Count);
 					Count++;
 				}
-				*/
+
 				/* //	UserDefine_Local_Task_RSA
 				//printf("================================\r\n");
 
