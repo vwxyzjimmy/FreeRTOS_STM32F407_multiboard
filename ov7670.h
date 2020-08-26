@@ -24,10 +24,10 @@
 
 
 #if(USE_CAMERA == 1)
-    #define PIC_START_X				128
-    #define PIC_START_Y				128
-    #define PIC_WIDTH				256
-    #define PIC_HEIGHT				256
+    #define PIC_START_X				64
+    #define PIC_START_Y				64
+    #define PIC_WIDTH				128
+    #define PIC_HEIGHT				128
 #else
     #define PIC_START_X				0
     #define PIC_START_Y				0
