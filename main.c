@@ -4425,7 +4425,7 @@ uint32_t WaitForFlag(volatile uint32_t* Flag_Addr, uint32_t timeout_time){
 
 // UserDefine funciton
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// Distributed  task example
+// Distributed task example, in the distributed task function
 void UserDefine_Distributed_Task(void *task_info){
 	Distributed_TaskHandle_List_t *data_info = Distributed_Start(task_info);
 	Distributed_Data_t* array1 = Distributed_GetTragetData(data_info);
@@ -4888,7 +4888,9 @@ void public_key(uint32_t* e, uint32_t* d, uint32_t* n, uint32_t p, uint32_t q){
 void test_inline(){
 	__asm (	"svc	#0x6				\n");
 }
-
+// UserDefine_Task
+//-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Distributed task example, before and after distributed task
 void UserDefine_Task(){
 	#if(USE_CAMERA == 1)
 		uint8_t OV7670_Init_flag = OV7670_Init();
@@ -5127,6 +5129,7 @@ void UserDefine_Task(){
 					Count++;
 				}
 				*/
+				/* //	UserDefine_Local_Task_2d_array_convolution(1);*/
 				/* //	UserDefine_Distributed_Task_bgr_gray_transform with camera
 				#if(USE_CAMERA == 1)
 
@@ -5193,20 +5196,6 @@ void UserDefine_Task(){
 				DCMI_Stop();
 				#endif
 				*/
-				/* //	UserDefine_Distributed_Task
-				while(1){
-					Distributed_Data_t* data_info = Distributed_SetTargetData((uint32_t*)0x10000000, 0x400, 1);
-					Distributed_AddTargetData(data_info, (uint32_t*)0x10001000, 0x400, 1);
-					Distributed_AddTargetData(data_info, (uint32_t*)0x10002000, 0x400, 1);
-					Distributed_Result* Result = Distributed_CreateTask(UserDefine_Distributed_Task, data_info, 1000, WithBarrier);
-					Distributed_Data_t* Result_data = NULL;
-					while(Result_data == NULL)
-						Result_data = Distributed_GetResult(Result);
-					Distributed_FreeResult(Result_data);
-					Count++;
-					printf("Task: %u ticks	=\r\n", (unsigned int)Count);
-				}
-				*/
 				uint32_t duration_time = (xTaskGetTickCount() - Total_base_tick);
 				printf("Duration: %u ticks	=\r\n", (unsigned int)duration_time);
 
@@ -5229,7 +5218,6 @@ void UserDefine_Task(){
 				for(uint32_t i=0;i<8;i++)
 					printf("send_recv_data_time[%u]: %u\r\n", (unsigned int)i, (unsigned int)send_recv_data_time[i]);
 				*/
-				//UserDefine_Local_Task_2d_array_convolution(10000);
 				/*
 				printf("Middleware Dispatch: %u, %u, Recycle:  %u, %u, ticks\r\n", (unsigned int)global_record_time_dispatch_array[0], (unsigned int)global_record_time_dispatch_array[1], (unsigned int)global_record_time_dispatch_array[2], (unsigned int)global_record_time_dispatch_array[3]);
 				printf("Dispatch Request: %u, %u, Release: %u, %u, ticks\r\n", (unsigned int)global_record_time_dispatch_array[4], (unsigned int)global_record_time_dispatch_array[5], (unsigned int)global_record_time_dispatch_array[6], (unsigned int)global_record_time_dispatch_array[7]);
